@@ -23,6 +23,7 @@ import LandManagementPage from '@/pages/admin/LandManagementPage';
 import LandFormPage from '@/pages/admin/LandFormPage';
 import PostManagementPage from '@/pages/admin/PostManagementPage';
 import AppointmentManagementPage from '@/pages/admin/AppointmentManagementPage';
+import AppointmentFormPage from '@/pages/admin/AppointmentFormPage';
 import UserManagementPage from '@/pages/admin/UserManagementPage';
 import CustomerManagementPage from '@/pages/admin/CustomerManagementPage';
 import EmployeeManagementPage from '@/pages/admin/EmployeeManagementPage';
@@ -109,6 +110,8 @@ const router = createBrowserRouter([
 
             // Appointments
             { path: 'appointments', element: <AppointmentManagementPage /> },
+            { path: 'appointments/create', element: <AppointmentFormPage /> },
+            { path: 'appointments/:id/edit', element: <AppointmentFormPage /> },
 
             // Users
             { path: 'users', element: <UserManagementPage /> },
