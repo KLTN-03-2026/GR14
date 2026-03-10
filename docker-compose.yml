@@ -33,7 +33,6 @@ services:
       JWT_EXPIRES: ${JWT_EXPIRES:-15m}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       JWT_REFRESH_EXPIRES: ${JWT_REFRESH_EXPIRES:-7d}
-      MAX_REFRESH_TOKENS_PER_USER: ${MAX_REFRESH_TOKENS_PER_USER:-5}
       PORT: 5000
       CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
       CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
@@ -75,11 +74,11 @@ services:
     environment:
       VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:5000/api}
     volumes:
-      - ./real-estate-frontend/src:/app/src
-      - ./real-estate-frontend/public:/app/public
-      - ./real-estate-frontend/index.html:/app/index.html
+      - ./real-estate-frontend:/app
+      - /app/node_modules
     depends_on:
       - backend
+
 
 volumes:
   mysql_data:

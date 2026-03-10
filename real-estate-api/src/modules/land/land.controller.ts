@@ -9,6 +9,7 @@ import { LandService } from './land.service';
 import { CreateLandDto, UpdateLandDto } from './dto/land.dto';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Multer } from 'multer';
 
 @Controller('lands')
 export class LandController {
