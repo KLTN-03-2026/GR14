@@ -13,6 +13,12 @@ import { Roles } from '../auth/decorators/roles.decorator';
 export class UserController {
     constructor(private readonly userService: UserService) { }
 
+    @Get('check-phone')
+    @Roles('ADMIN')
+    checkPhone(@Query('phone') phone: string) {
+        return this.userService.checkPhone(phone);
+    }
+
     @Get()
     @Roles('ADMIN')
     findAll(@Query('page') page = 1, @Query('limit') limit = 10) {

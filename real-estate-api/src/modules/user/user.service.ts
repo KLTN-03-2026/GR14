@@ -7,6 +7,14 @@ import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
 export class UserService {
     constructor(private prisma: PrismaService) { }
 
+    async checkPhone(phone: string) {
+        const user = await this.prisma.user.findUnique({
+            where: { phone },
+            select: { id: true, fullName: true, phone: true, email: true },
+        });
+        return { exists: !!user, user: user || null };
+    }
+
     async findAll(page = 1, limit = 10) {
         const skip = (page - 1) * limit;
         const [users, total] = await Promise.all([

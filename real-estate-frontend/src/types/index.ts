@@ -141,13 +141,13 @@ export interface Appointment {
     customerId: number;
     employeeId?: number;
     appointmentDate: string;
-    status: number;
+    status: number; // 0: pending, 1: approved, 2: rejected
     actualStatus?: number;
     cancelReason?: string;
     createdAt: string;
     updatedAt: string;
-    house?: House;
-    land?: Land;
+    house?: Pick<House, 'id' | 'title' | 'city' | 'district'>;
+    land?: Pick<Land, 'id' | 'title' | 'city' | 'district'>;
     customer?: Customer;
     employee?: Employee;
 }

@@ -7,6 +7,9 @@ export const userApi = {
     getById: (id: number) =>
         apiClient.get(`/users/${id}`),
 
+    checkPhone: (phone: string) =>
+        apiClient.get('/users/check-phone', { params: { phone } }),
+
     create: (data: Record<string, unknown>) =>
         apiClient.post('/users', data),
 

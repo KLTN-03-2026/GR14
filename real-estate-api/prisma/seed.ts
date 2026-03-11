@@ -121,6 +121,83 @@ async function main() {
         }
     }
 
+    // Create employees
+    const employeeData = [
+        { username: 'emp01', fullName: 'Nguyễn Văn An', email: 'nvan.an@realestate.com', phone: '0901111001', code: 'EMP001' },
+        { username: 'emp02', fullName: 'Trần Thị Bảo', email: 'tthi.bao@realestate.com', phone: '0901111002', code: 'EMP002' },
+        { username: 'emp03', fullName: 'Lê Minh Cường', email: 'lm.cuong@realestate.com', phone: '0901111003', code: 'EMP003' },
+    ];
+
+    for (const emp of employeeData) {
+        const hashPassEmp = await bcrypt.hash('employee123', 10);
+        const empUser = await prisma.user.upsert({
+            where: { username: emp.username },
+            update: {},
+            create: {
+                username: emp.username,
+                password: hashPassEmp,
+                fullName: emp.fullName,
+                email: emp.email,
+                phone: emp.phone,
+                status: 1,
+            },
+        });
+
+        await prisma.userRole.upsert({
+            where: { userId_roleId: { userId: empUser.id, roleId: employeeRole.id } },
+            update: {},
+            create: { userId: empUser.id, roleId: employeeRole.id },
+        });
+
+        await prisma.employee.upsert({
+            where: { code: emp.code },
+            update: {},
+            create: {
+                code: emp.code,
+                userId: empUser.id,
+                startDate: new Date('2024-01-01'),
+            },
+        });
+    }
+
+    // Create customers
+    const customerData = [
+        { username: 'cus01', fullName: 'Phạm Thị Dung', email: 'pthi.dung@gmail.com', phone: '0912221001', code: 'CUS001' },
+        { username: 'cus02', fullName: 'Hoàng Văn Em', email: 'hvan.em@gmail.com', phone: '0912221002', code: 'CUS002' },
+        { username: 'cus03', fullName: 'Vũ Thị Phương', email: 'vthi.phuong@gmail.com', phone: '0912221003', code: 'CUS003' },
+    ];
+
+    for (const cus of customerData) {
+        const hashPassCus = await bcrypt.hash('customer123', 10);
+        const cusUser = await prisma.user.upsert({
+            where: { username: cus.username },
+            update: {},
+            create: {
+                username: cus.username,
+                password: hashPassCus,
+                fullName: cus.fullName,
+                email: cus.email,
+                phone: cus.phone,
+                status: 1,
+            },
+        });
+
+        await prisma.userRole.upsert({
+            where: { userId_roleId: { userId: cusUser.id, roleId: customerRole.id } },
+            update: {},
+            create: { userId: cusUser.id, roleId: customerRole.id },
+        });
+
+        await prisma.customer.upsert({
+            where: { code: cus.code },
+            update: {},
+            create: {
+                code: cus.code,
+                userId: cusUser.id,
+            },
+        });
+    }
+
     console.log('Seed completed successfully!');
 }
 
