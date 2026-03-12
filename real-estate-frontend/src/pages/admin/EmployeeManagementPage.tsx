@@ -1,145 +1,218 @@
-import { useEffect, useState } from 'react';
-import { Table, Button, Space, Input, Popconfirm, message, Typography, Modal, Form, DatePicker } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
-import type { ColumnsType } from 'antd/es/table';
-import { employeeApi } from '@/api';
-import { formatDateTime } from '@/utils';
-import type { Employee } from '@/types';
-import { DEFAULT_PAGE_SIZE } from '@/constants';
+import { useEffect, useState } from "react";
+import { Table, Button, Space, Modal, Form, Input, DatePicker, Popconfirm, message } from "antd";
+import { PlusOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
+import dayjs from "dayjs";
+import { employeeApi } from "@/api";
 
-const { Title } = Typography;
+const EmployeeManagementPage = () => {
 
-const EmployeeManagementPage: React.FC = () => {
-    const [employees, setEmployees] = useState<Employee[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [total, setTotal] = useState(0);
-    const [page, setPage] = useState(1);
-    const [search, setSearch] = useState('');
-    const [modalOpen, setModalOpen] = useState(false);
-    const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
-    const [form] = Form.useForm();
+  const [data,setData] = useState<any[]>([]);
+  const [loading,setLoading] = useState(false);
+  const [open,setOpen] = useState(false);
+  const [editing,setEditing] = useState<any>(null);
+  const [form] = Form.useForm();
 
-    useEffect(() => {
-        loadEmployees();
-    }, [page, search]);
+  const loadData = async () => {
+    setLoading(true);
+    try{
+      const res = await employeeApi.getAll({page:1,limit:10});
+      setData(res.data.data);
+    }catch(err){
+      message.error("Load employee failed");
+    }
+    setLoading(false);
+  };
 
-    const loadEmployees = async () => {
-        setLoading(true);
-        try {
-            const params: Record<string, unknown> = { page, limit: DEFAULT_PAGE_SIZE };
-            if (search) params.search = search;
-            const res = await employeeApi.getAll(params);
-            const data = res.data;
-            setEmployees(data.data || data);
-            setTotal(data.meta?.total || 0);
-        } catch {
-            message.error('Lỗi tải dữ liệu');
-        } finally {
-            setLoading(false);
-        }
-    };
+  useEffect(()=>{
+    loadData();
+  },[]);
 
-    const handleDelete = async (id: number) => {
-        try {
-            await employeeApi.delete(id);
-            message.success('Xóa thành công');
-            loadEmployees();
-        } catch {
-            message.error('Xóa thất bại');
-        }
-    };
+  const openModal = (record?:any)=>{
+    setEditing(record || null);
+    form.resetFields();
 
-    const handleOpenModal = (emp?: Employee) => {
-        setEditingEmployee(emp || null);
-        form.resetFields();
-        if (emp) form.setFieldsValue(emp);
-        setModalOpen(true);
-    };
+    if(record){
+      form.setFieldsValue({
+        ...record,
+        fullName:record.user?.fullName,
+        email:record.user?.email,
+        phone:record.user?.phone,
+        startDate:record.startDate ? dayjs(record.startDate) : null
+      });
+    }
 
-    const handleSubmit = async () => {
-        try {
-            const values = await form.validateFields();
-            if (editingEmployee) {
-                await employeeApi.update(editingEmployee.id, values);
-                message.success('Cập nhật thành công');
-            } else {
-                await employeeApi.create(values);
-                message.success('Tạo mới thành công');
-            }
-            setModalOpen(false);
-            loadEmployees();
-        } catch {
-            // validation
-        }
-    };
+    setOpen(true);
+  };
 
-    const columns: ColumnsType<Employee> = [
-        { title: 'Mã NV', dataIndex: 'code', key: 'code' },
-        { title: 'Họ tên', key: 'fullName', render: (_, r) => r.user?.fullName || '—' },
-        { title: 'Email', key: 'email', render: (_, r) => r.user?.email || '—' },
-        { title: 'SĐT', key: 'phone', render: (_, r) => r.user?.phone || '—' },
-        { title: 'Ngày vào', dataIndex: 'startDate', key: 'startDate', render: (d: string) => d ? formatDateTime(d) : '—' },
-        { title: 'Ngày tạo', dataIndex: 'createdAt', key: 'createdAt', render: (d: string) => formatDateTime(d) },
-        {
-            title: 'Hành động',
-            key: 'action',
-            width: 150,
-            render: (_, record) => (
-                <Space>
-                    <Button size="small" type="primary" icon={<EditOutlined />} onClick={() => handleOpenModal(record)} />
-                    <Popconfirm title="Bạn có chắc muốn xóa?" onConfirm={() => handleDelete(record.id)}>
-                        <Button size="small" danger icon={<DeleteOutlined />} />
-                    </Popconfirm>
-                </Space>
-            ),
-        },
-    ];
+  const submit = async () => {
 
-    return (
-        <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                <Title level={3} style={{ margin: 0 }}>Quản lý nhân viên</Title>
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpenModal()}>
-                    Thêm mới
-                </Button>
-            </div>
+    const values = await form.validateFields();
+  
+    if (values.startDate) {
+      values.startDate = values.startDate.format("YYYY-MM-DD");
+    }
+  
+    try {
+  
+      if (editing) {
+        await employeeApi.update(editing.id, values);
+        message.success("Update success");
+      } else {
+        await employeeApi.create(values);
+        message.success("Create success");
+      }
+  
+      setOpen(false);
+      loadData();
+  
+    } catch (err: any) {
+  
+      console.log("FULL ERROR:", err);
+  
+      if (err.response) {
+        console.log("STATUS:", err.response.status);
+        console.log("DATA:", err.response.data);
+      }
+  
+      const errorMessage =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Save failed";
+  
+      message.error(errorMessage);
+    }
+  };
 
-            <Input
-                placeholder="Tìm kiếm..."
-                prefix={<SearchOutlined />}
-                style={{ marginBottom: 16, maxWidth: 400 }}
-                value={search}
-                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                allowClear
-            />
+  const remove = async(id:number)=>{
+    await employeeApi.delete(id);
+    message.success("Disabled");
+    loadData();
+  };
 
-            <Table
-                columns={columns}
-                dataSource={employees}
-                rowKey="id"
-                loading={loading}
-                pagination={{ current: page, total, pageSize: DEFAULT_PAGE_SIZE, onChange: setPage, showTotal: (t) => `Tổng ${t} bản ghi` }}
-            />
+  const columns = [
+    {
+      title:"Mã NV",
+      dataIndex:"code"
+    },
+    {
+      title:"Họ tên",
+      render:(_:any,r:any)=>r.user?.fullName
+    },
+    {
+      title:"Email",
+      render:(_:any,r:any)=>r.user?.email
+    },
+    {
+      title:"SĐT",
+      render:(_:any,r:any)=>r.user?.phone
+    },
+    {
+      title:"Ngày vào",
+      render:(_:any,r:any)=>r.startDate ? dayjs(r.startDate).format("DD/MM/YYYY") : ""
+    },
+    {
+      title:"Ngày tạo",
+      render:(_:any,r:any)=>dayjs(r.createdAt).format("DD/MM/YYYY")
+    },
+    {
+      title:"Hành động",
+      render:(_:any,r:any)=>(
+        <Space>
+          <Button icon={<EditOutlined/>} onClick={()=>openModal(r)}/>
+          <Popconfirm title="Delete?" onConfirm={()=>remove(r.id)}>
+            <Button danger icon={<DeleteOutlined/>}/>
+          </Popconfirm>
+        </Space>
+      )
+    }
+  ];
 
-            <Modal
-                title={editingEmployee ? 'Chỉnh sửa nhân viên' : 'Thêm nhân viên mới'}
-                open={modalOpen}
-                onOk={handleSubmit}
-                onCancel={() => setModalOpen(false)}
-                okText={editingEmployee ? 'Cập nhật' : 'Tạo mới'}
-                cancelText="Hủy"
-            >
-                <Form form={form} layout="vertical">
-                    <Form.Item name="userId" label="User ID" rules={[{ required: true }]}>
-                        <Input type="number" />
-                    </Form.Item>
-                    <Form.Item name="startDate" label="Ngày vào làm">
-                        <DatePicker style={{ width: '100%' }} />
-                    </Form.Item>
-                </Form>
-            </Modal>
-        </div>
-    );
+  return(
+    <div>
+
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:20}}>
+        <h2>Quản lý nhân viên</h2>
+
+        {/* GIỮ NGUYÊN NÚT THÊM MỚI */}
+        <Button
+          type="primary"
+          icon={<PlusOutlined/>}
+          onClick={()=>openModal()}
+        >
+          Thêm mới
+        </Button>
+      </div>
+
+      <Table
+        rowKey="id"
+        columns={columns}
+        dataSource={data}
+        loading={loading}
+      />
+
+      <Modal
+        title={editing ? "Sửa nhân viên" : "Thêm nhân viên"}
+        open={open}
+        onOk={submit}
+        onCancel={()=>setOpen(false)}
+      >
+
+        <Form layout="vertical" form={form}>
+
+          <Form.Item
+            label="Mã NV"
+            name="code"
+            rules={[{required:true}]}
+          >
+            <Input/>
+          </Form.Item>
+
+          {!editing && (
+            <>
+              <Form.Item
+                label="Username"
+                name="username"
+                rules={[{required:true}]}
+              >
+                <Input/>
+              </Form.Item>
+
+              <Form.Item
+                label="Password"
+                name="password"
+                rules={[{required:true}]}
+              >
+                <Input.Password/>
+              </Form.Item>
+            </>
+          )}
+
+          <Form.Item
+            label="Họ tên"
+            name="fullName"
+            rules={[{required:true}]}
+          >
+            <Input/>
+          </Form.Item>
+
+          <Form.Item label="Email" name="email">
+            <Input/>
+          </Form.Item>
+
+          <Form.Item label="SĐT" name="phone">
+            <Input/>
+          </Form.Item>
+
+          <Form.Item label="Ngày vào" name="startDate">
+            <DatePicker style={{width:"100%"}}/>
+          </Form.Item>
+
+        </Form>
+
+      </Modal>
+
+    </div>
+  );
 };
 
 export default EmployeeManagementPage;
