@@ -2,12 +2,16 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CloudinaryService } from '../../common/cloudinary/cloudinary.service';
 import { CreatePostDto } from './dto/post.dto';
+import { MailProducerService } from '../../common/mail/mail-producer.service';
+import { MailService } from '../../common/mail/mail.service';
 
 @Injectable()
 export class PostService {
     constructor(
         private prisma: PrismaService,
         private cloudinaryService: CloudinaryService,
+        private mailProducer: MailProducerService,
+        private mailService: MailService,
     ) { }
 
     async create(dto: CreatePostDto, userId: number, files?: Express.Multer.File[]) {
@@ -158,7 +162,10 @@ export class PostService {
     }
 
     async approve(id: number) {
-        const post = await this.prisma.post.findUnique({ where: { id } });
+        const post = await this.prisma.post.findUnique({
+            where: { id },
+            include: { user: { select: { fullName: true, email: true } } },
+        });
         if (!post) throw new NotFoundException('Post not found');
 
         const updated = await this.prisma.post.update({
@@ -166,17 +173,36 @@ export class PostService {
             data: { status: 2, approvedAt: new Date() },
         });
 
+        if (post.user?.email) {
+            const html = this.mailService.getPostApprovedEmailHtml(
+                post.user.fullName || 'Quý khách',
+                post.title,
+            );
+            this.mailProducer.sendMail(post.user.email, 'Bài đăng đã được duyệt', html);
+        }
+
         return { message: 'Post approved', data: updated };
     }
 
     async reject(id: number) {
-        const post = await this.prisma.post.findUnique({ where: { id } });
+        const post = await this.prisma.post.findUnique({
+            where: { id },
+            include: { user: { select: { fullName: true, email: true } } },
+        });
         if (!post) throw new NotFoundException('Post not found');
 
         const updated = await this.prisma.post.update({
             where: { id },
             data: { status: 3, approvedAt: new Date() },
         });
+
+        if (post.user?.email) {
+            const html = this.mailService.getPostRejectedEmailHtml(
+                post.user.fullName || 'Quý khách',
+                post.title,
+            );
+            this.mailProducer.sendMail(post.user.email, 'Bài đăng chưa được duyệt', html);
+        }
 
         return { message: 'Post rejected', data: updated };
     }
