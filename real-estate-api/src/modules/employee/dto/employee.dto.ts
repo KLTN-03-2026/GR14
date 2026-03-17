@@ -23,12 +23,14 @@ export class CreateEmployeeDto {
     phone?: string;
 
     @IsOptional()
+    
     @IsEmail()
     email?: string;
 
     @IsOptional()
     @IsString()
     startDate?: string;
+   
 }
 
 export class UpdateEmployeeDto extends PartialType(CreateEmployeeDto) { }

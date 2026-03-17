@@ -1,4 +1,23 @@
-/* Global styles */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  button,
+  input,
+  select,
+  textarea {
+    @apply appearance-none bg-transparent border-0 outline-none;
+  }
+}
+
+@layer components {
+  .all-\[unset\] {
+    all: unset;
+  }
+}
+
+/* --- Global styles của dự án --- */
 * {
   margin: 0;
   padding: 0;
@@ -39,4 +58,136 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #555;
+}
+
+/* --- Biến CSS và Animation từ Figma --- */
+:root {
+  --a-font-family: "Lato", Helvetica;
+  --a-font-size: 16px;
+  --a-font-style: normal;
+  --a-font-weight: 700;
+  --a-letter-spacing: 0px;
+  --a-line-height: 150%;
+  --h-2-font-family: "Lato", Helvetica;
+  --h-2-font-size: 40px;
+  --h-2-font-style: normal;
+  --h-2-font-weight: 700;
+  --h-2-letter-spacing: 0px;
+  --h-2-line-height: 125%;
+  --h-4-font-family: "Lato", Helvetica;
+  --h-4-font-size: 22px;
+  --h-4-font-style: normal;
+  --h-4-font-weight: 700;
+  --h-4-letter-spacing: 0px;
+  --h-4-line-height: 125%;
+  --p-font-family: "Lato", Helvetica;
+  --p-font-size: 16px;
+  --p-font-style: normal;
+  --p-font-weight: 400;
+  --p-letter-spacing: 0px;
+  --p-line-height: 160%;
+  
+  --variable-collection-general-300: rgba(224, 224, 224, 1);
+  --variable-collection-general-700: rgba(99, 99, 102, 1);
+  --variable-collection-general-900: rgba(28, 28, 27, 1);
+  --variable-collection-general-white: rgba(255, 255, 255, 1);
+  --variable-collection-primary-800: rgba(37, 75, 134, 1);
+  
+  --animate-spin: spin 1s linear infinite;
+}
+
+.animate-fade-in {
+  animation: fade-in 1s var(--animation-delay, 0s) ease forwards;
+}
+
+.animate-fade-up {
+  animation: fade-up 1s var(--animation-delay, 0s) ease forwards;
+}
+
+.animate-marquee {
+  animation: marquee var(--duration) infinite linear;
+}
+
+.animate-marquee-vertical {
+  animation: marquee-vertical var(--duration) linear infinite;
+}
+
+.animate-shimmer {
+  animation: shimmer 8s infinite;
+}
+
+.animate-spin {
+  animation: var(--animate-spin);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@keyframes image-glow {
+  0% {
+    opacity: 0;
+    animation-timing-function: cubic-bezier(0.74, 0.25, 0.76, 1);
+  }
+  10% {
+    opacity: 0.7;
+    animation-timing-function: cubic-bezier(0.12, 0.01, 0.08, 0.99);
+  }
+  to {
+    opacity: 0.4;
+  }
+}
+
+@keyframes fade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade-up {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes shimmer {
+  0%,
+  90%,
+  to {
+    background-position: calc(-100% - var(--shimmer-width)) 0;
+  }
+  30%,
+  60% {
+    background-position: calc(100% + var(--shimmer-width)) 0;
+  }
+}
+
+@keyframes marquee {
+  0% {
+    transform: translate(0);
+  }
+  to {
+    transform: translateX(calc(-100% - var(--gap)));
+  }
+}
+
+@keyframes marquee-vertical {
+  0% {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(calc(-100% - var(--gap)));
+  }
 }

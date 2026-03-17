@@ -1,111 +1,65 @@
+import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Layout, Menu, Button, Space, Avatar, Dropdown } from 'antd';
-import { UserOutlined, HeartOutlined, LogoutOutlined, DashboardOutlined, WalletOutlined, FileTextOutlined } from '@ant-design/icons';
-import type { MenuProps } from 'antd';
-import { useAuthStore } from '@/stores/authStore';
+import group from "../../assets/logo.png"; 
 
-const { Header } = Layout;
+<img className="w-[45px] h-8" alt="Black'S City Logo" src={group} />
+const navigationItems = [
+  { label: "Trang Chủ", href: "/" },
+  { label: "Nhà Đất", href: "/houses" },
+  { label: "Đất Đai", href: "/lands" },
+  { label: "Tin Tức", href: "/news" },
+  { label: "Đăng Bài Viết", href: "/posts" },
+  { label: "Về Chúng Tôi", href: "/about" },
+  { label: "Liên Hệ", href: "/contact" },
+];
 
 const PublicHeader: React.FC = () => {
-    const navigate = useNavigate();
-    const { isAuthenticated, user, logout } = useAuthStore();
+  const navigate = useNavigate();
 
-    const handleLogout = () => {
-        logout();
-        navigate('/');
-    };
-
-    const userMenuItems: MenuProps['items'] = [
-        {
-            key: 'profile',
-            icon: <UserOutlined />,
-            label: 'Hồ sơ',
-            onClick: () => navigate('/admin/profile'),
-        },
-        {
-            key: 'my-posts',
-            icon: <FileTextOutlined />,
-            label: 'Tin đăng của tôi',
-            onClick: () => navigate('/my-posts'),
-        },
-        {
-            key: 'favorites',
-            icon: <HeartOutlined />,
-            label: 'Yêu thích',
-            onClick: () => navigate('/admin/favorites'),
-        },
-        {
-            key: 'payment-history',
-            icon: <WalletOutlined />,
-            label: 'Lịch sử thanh toán',
-            onClick: () => navigate('/admin/payment-history'),
-        },
-        {
-            key: 'dashboard',
-            icon: <DashboardOutlined />,
-            label: 'Quản trị',
-            onClick: () => navigate('/admin'),
-        },
-        { type: 'divider' },
-        {
-            key: 'logout',
-            icon: <LogoutOutlined />,
-            label: 'Đăng xuất',
-            onClick: handleLogout,
-        },
-    ];
-
-    const menuItems: MenuProps['items'] = [
-        { key: '/', label: <Link to="/">Trang chủ</Link> },
-        { key: '/houses', label: <Link to="/houses">Nhà</Link> },
-        { key: '/lands', label: <Link to="/lands">Đất</Link> },
-        { key: '/posts', label: <Link to="/posts">Tin đăng</Link> },
-    ];
-
-    return (
-        <Header
-            style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                background: '#fff',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-                padding: '0 48px',
-                position: 'sticky',
-                top: 0,
-                zIndex: 100,
-            }}
-        >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
-                <Link to="/" style={{ fontSize: 22, fontWeight: 'bold', color: '#1677ff' }}>
-                    🏠 Real Estate
-                </Link>
-                <Menu
-                    mode="horizontal"
-                    items={menuItems}
-                    style={{ border: 'none', minWidth: 400 }}
-                />
+  return (
+    <header className="flex h-20 items-center justify-center gap-2.5 p-2.5 w-full bg-[#f5f5f54c] sticky top-0 z-[100] shadow-sm backdrop-blur-md">
+      <nav className="flex w-full max-w-[1290px] items-center justify-between" aria-label="Main navigation">
+        <div className="inline-flex items-center gap-10">
+          <Link to="/" className="flex items-center gap-2" aria-label="Black'S City Home">
+            <img className="w-[45px] h-8" alt="Black'S City Logo" src={group} />
+            <div className="font-black text-variable-collection-primary-800 text-[22px] leading-7 whitespace-nowrap">
+              Black'S City
             </div>
+          </Link>
 
-            <Space>
-                {isAuthenticated ? (
-                    <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
-                        <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <Avatar icon={<UserOutlined />} />
-                            <span>{user?.fullName || user?.username}</span>
-                        </div>
-                    </Dropdown>
-                ) : (
-                    <Space>
-                        <Button onClick={() => navigate('/login')}>Đăng nhập</Button>
-                        <Button type="primary" onClick={() => navigate('/register')}>
-                            Đăng ký
-                        </Button>
-                    </Space>
-                )}
-            </Space>
-        </Header>
-    );
+          <ul className="hidden lg:flex items-center gap-[30px]">
+            {navigationItems.map((item, index) => (
+              <li key={index}>
+                <Link
+                  to={item.href}
+                  className="font-a font-[number:var(--a-font-weight)] text-variable-collection-general-900 text-[length:var(--a-font-size)] hover:text-blue-600 transition-colors"
+                >
+                  {item.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="inline-flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => navigate('/login')}
+            className="h-12 px-4 bg-white rounded-[10px] border border-solid border-[#254b86] font-a font-[number:var(--a-font-weight)] text-variable-collection-general-900 hover:bg-gray-50 transition-colors"
+          >
+            Đăng Nhập
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/register')}
+            className="h-12 px-[30px] bg-variable-collection-primary-800 rounded-[10px] font-a font-[number:var(--a-font-weight)] text-white hover:bg-[#1e3d6b] transition-colors"
+          >
+            Đăng Ký
+          </button>
+        </div>
+      </nav>
+    </header>
+  );
 };
 
 export default PublicHeader;
