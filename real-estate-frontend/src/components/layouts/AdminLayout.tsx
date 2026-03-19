@@ -9,7 +9,6 @@ import {
     CalendarOutlined,
     UserOutlined,
     TeamOutlined,
-    StarOutlined,
     AppstoreOutlined,
     SafetyOutlined,
     MenuFoldOutlined,
@@ -80,11 +79,6 @@ const menuItems: MenuProps['items'] = [
         key: '/admin/roles',
         icon: <SafetyOutlined />,
         label: 'Vai trò',
-    },
-    {
-        key: '/admin/favorites',
-        icon: <StarOutlined />,
-        label: 'Yêu thích',
     },
     {
         key: '/admin/payment-history',

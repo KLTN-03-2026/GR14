@@ -20,27 +20,28 @@ const ProfilePage: React.FC = () => {
     // Lấy dữ liệu profile mới nhất từ server khi vào trang
     useEffect(() => {
         const fetchProfile = async () => {
-            try {
-                const res = await authApi.getProfile();
-                const profileData = res.data; 
-                
-                // Đổ dữ liệu vào Form
-                formProfile.setFieldsValue({
-                    username: profileData.username,
-                    email: profileData.email,
-                    fullName: profileData.fullName,
-                    phone: profileData.phone,
-                    address: profileData.address,
-                });
-                
-                // Cập nhật lại store
-                setUser(profileData);
-            } catch (error) {
-                message.error('Không thể tải thông tin tài khoản');
-            } finally {
-                setLoadingData(false);
-            }
-        };
+    try {
+        const res = await authApi.getProfile();
+        // Kiểm tra xem backend trả về res.data hay res.data.data
+        const profileData = res.data?.data || res.data; 
+        
+        if (profileData) {
+            formProfile.setFieldsValue({
+                username: profileData.username,
+                email: profileData.email,
+                fullName: profileData.fullName,
+                phone: profileData.phone,
+                address: profileData.address,
+            });
+            setUser(profileData);
+        }
+    } catch (error) {
+        console.error("Profile error:", error);
+        // message.error('Không thể tải thông tin tài khoản');
+    } finally {
+        setLoadingData(false);
+    }
+};
 
         fetchProfile();
     }, [formProfile, setUser]);

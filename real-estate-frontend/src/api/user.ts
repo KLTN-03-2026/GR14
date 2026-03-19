@@ -21,11 +21,20 @@ export const userApi = {
 };
 
 export const customerApi = {
-    getAll: (params?: Record<string, unknown>) =>
+     getAll: (params?: Record<string, unknown>) =>
         apiClient.get('/customers', { params }),
 
     getById: (id: number) =>
         apiClient.get(`/customers/${id}`),
+
+    create: (data: Record<string, unknown>) =>
+        apiClient.post('/customers', data),
+
+    update: (id: number, data: Record<string, unknown>) =>
+        apiClient.put(`/customers/${id}`, data),
+
+    delete: (id: number) =>
+        apiClient.delete(`/customers/${id}`),
 };
 
 export const employeeApi = {

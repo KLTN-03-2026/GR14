@@ -3,6 +3,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { VNPayService } from './services/vnpay.service';
 import { MoMoService } from './services/momo.service';
 import { CreatePaymentDto } from './dto/payment.dto';
+import { MailService } from '../../common/mail/mail.service';
+import { MailProducerService } from '../../common/mail/mail-producer.service';
 
 @Injectable()
 export class PaymentService {
@@ -10,6 +12,8 @@ export class PaymentService {
         private prisma: PrismaService,
         private vnpayService: VNPayService,
         private momoService: MoMoService,
+        private mailService: MailService,
+        private mailProducer: MailProducerService,
     ) { }
 
     async createPayment(dto: CreatePaymentDto, userId: number, ipAddr: string) {
@@ -126,7 +130,15 @@ export class PaymentService {
         // Tìm payment
         const payment = await this.prisma.payment.findUnique({
             where: { transactionId },
-            include: { subscription: true },
+            include: {
+                subscription: {
+                    include: {
+                        package: true,
+                        post: { select: { title: true } },
+                    },
+                },
+                user: { select: { fullName: true, email: true } },
+            },
         });
 
         if (!payment) {
@@ -146,6 +158,7 @@ export class PaymentService {
         if (verification.isValid && responseCode === '00') {
             // Thanh toán thành công
             await this.activateSubscription(payment.id, payment.subscription);
+            this.sendPaymentNotification(payment, true);
             return { success: true, message: 'Payment successful' };
         } else {
             // Thanh toán thất bại
@@ -158,6 +171,8 @@ export class PaymentService {
                 where: { id: payment.subscriptionId },
                 data: { status: 3 }, // cancelled
             });
+
+            this.sendPaymentNotification(payment, false);
 
             return { success: false, message: 'Payment failed' };
         }
@@ -172,7 +187,15 @@ export class PaymentService {
         // Tìm payment
         const payment = await this.prisma.payment.findUnique({
             where: { transactionId },
-            include: { subscription: true },
+            include: {
+                subscription: {
+                    include: {
+                        package: true,
+                        post: { select: { title: true } },
+                    },
+                },
+                user: { select: { fullName: true, email: true } },
+            },
         });
 
         if (!payment) {
@@ -192,6 +215,7 @@ export class PaymentService {
         if (isValid && resultCode === 0) {
             // Thanh toán thành công
             await this.activateSubscription(payment.id, payment.subscription);
+            this.sendPaymentNotification(payment, true);
             return { success: true, message: 'Payment successful' };
         } else {
             // Thanh toán thất bại
@@ -204,6 +228,8 @@ export class PaymentService {
                 where: { id: payment.subscriptionId },
                 data: { status: 3 }, // cancelled
             });
+
+            this.sendPaymentNotification(payment, false);
 
             return { success: false, message: 'Payment failed' };
         }
@@ -252,6 +278,23 @@ export class PaymentService {
                 postedAt: now, // Cập nhật thời gian đăng để đưa lên đầu
             },
         });
+    }
+
+    private sendPaymentNotification(payment: any, isSuccess: boolean) {
+        if (!payment?.user?.email) return;
+        const packageName = payment.subscription?.package?.name || 'Gói VIP';
+        const postTitle = payment.subscription?.post?.title;
+        const amount = Number(payment.amount || 0);
+        const method = payment.paymentMethod;
+        const html = isSuccess
+            ? this.mailService.getPaymentSuccessEmailHtml(payment.user.fullName || 'Quý khách', amount, packageName, postTitle, method)
+            : this.mailService.getPaymentFailureEmailHtml(payment.user.fullName || 'Quý khách', amount, packageName, postTitle, method);
+
+        this.mailProducer.sendMail(
+            payment.user.email,
+            isSuccess ? 'Thanh toán VIP thành công' : 'Thanh toán VIP thất bại',
+            html,
+        );
     }
 
     async getPaymentById(id: number, userId: number) {

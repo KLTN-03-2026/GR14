@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../../common/mail/mail.service';
+import { MailProducerService } from '../../common/mail/mail-producer.service';
 import { formatDateTime } from '../../common/utils/format-datetime';
 import {
     CreateAppointmentDto,
@@ -23,7 +24,8 @@ const appointmentInclude = {
 export class AppointmentService {
     constructor(
         private prisma: PrismaService,
-        private mailService: MailService,
+        private mailService: MailService,          // dùng để lấy HTML template
+        private mailProducer: MailProducerService, // dùng để publish lên RabbitMQ
     ) { }
 
     async findAll(page = 1, limit = 10, search?: string) {
@@ -139,13 +141,14 @@ export class AppointmentService {
                 const code = `CUS${String(count + 1).padStart(3, '0')}`;
                 const bcrypt = await import('bcrypt');
                 const hashPass = await bcrypt.hash('customer123', 10);
+                const fallbackEmail = `cus-${dto.newCustomerPhone}@local.invalid`;
                 const newUser = await this.prisma.user.create({
                     data: {
                         username: `cus_${dto.newCustomerPhone}`,
                         password: hashPass,
                         fullName: dto.newCustomerName || '',
                         phone: dto.newCustomerPhone,
-                        email: dto.newCustomerEmail || null,
+                        email: dto.newCustomerEmail?.trim() || fallbackEmail,
                         status: 1,
                     },
                 });
@@ -169,7 +172,7 @@ export class AppointmentService {
                 customerId: resolvedCustomerId,
                 employeeId: dto.employeeId || null,
                 appointmentDate: new Date(dto.appointmentDate),
-                status: dto.employeeId ? 1 : 0,
+                status: 0,
             },
             include: appointmentInclude,
         });
@@ -186,7 +189,8 @@ export class AppointmentService {
                 formatDateTime(new Date(dto.appointmentDate)),
                 propertyTitle,
             );
-            await this.mailService.sendEmail(
+            // Publish lên RabbitMQ – không block request
+            this.mailProducer.sendMail(
                 customerWithUser.user.email,
                 'Lịch hẹn của bạn đã được tạo - BĐS',
                 html,
@@ -227,7 +231,8 @@ export class AppointmentService {
                 formatDateTime(appointmentFull.appointmentDate),
                 propertyTitle,
             );
-            await this.mailService.sendEmail(
+            // Publish lên RabbitMQ – không block request
+            this.mailProducer.sendMail(
                 appointmentFull.customer.user.email,
                 'Lịch hẹn của bạn đã bị từ chối - BĐS',
                 html,
@@ -293,7 +298,8 @@ export class AppointmentService {
                 formatDateTime(appointment.appointmentDate),
                 propertyTitle,
             );
-            await this.mailService.sendEmail(
+            // Publish lên RabbitMQ – không block request
+            this.mailProducer.sendMail(
                 appointment.customer.user.email,
                 'Lịch hẹn của bạn đã được duyệt - BĐS',
                 html,
@@ -334,7 +340,8 @@ export class AppointmentService {
                 propertyTitle,
                 dto?.cancelReason,
             );
-            await this.mailService.sendEmail(
+            // Publish lên RabbitMQ – không block request
+            this.mailProducer.sendMail(
                 appointment.customer.user.email,
                 'Lịch hẹn của bạn đã bị từ chối - BĐS',
                 html,

@@ -14,13 +14,13 @@ export class CreateUserDto {
     @IsString()
     fullName?: string;
 
-    @IsOptional()
+    @IsNotEmpty()
     @IsString()
-    phone?: string;
+    phone: string;
 
-    @IsOptional()
+    @IsNotEmpty()
     @IsEmail()
-    email?: string;
+    email: string;
 
     @IsOptional()
     @IsString()

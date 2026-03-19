@@ -1,17 +1,17 @@
 import { IsNotEmpty, IsString, IsOptional, IsEmail } from 'class-validator';
-
-export class RegisterDto {
+import { PartialType } from '@nestjs/mapped-types';
+export class CreateCustomerDto {
     @IsNotEmpty()
     @IsString()
-    username!: string;
-
-    @IsNotEmpty()
-    @IsString()
-    password!: string;
+    username: string;
 
     @IsNotEmpty()
     @IsString()
-    fullName: string;
+    password: string;
+
+    @IsOptional()
+    @IsString()
+    fullName?: string;
 
     @IsNotEmpty()
     @IsString()
@@ -19,15 +19,11 @@ export class RegisterDto {
 
     @IsNotEmpty()
     @IsEmail()
-    email!: string;
+    email: string;
 
     @IsOptional()
     @IsString()
     address?: string;
 }
 
-export class ConfirmRegisterDto extends RegisterDto {
-    @IsNotEmpty()
-    @IsString()
-    otp!: string;
-}
+export class UpdateCustomerDto extends PartialType(CreateCustomerDto) { }

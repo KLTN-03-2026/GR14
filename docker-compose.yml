@@ -18,6 +18,42 @@ services:
       retries: 10
       start_period: 30s
 
+  # ============ Redis Cache ============
+  redis:
+    image: redis:7-alpine
+    container_name: real-estate-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ============ RabbitMQ Message Broker ============
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: real-estate-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"   # AMQP protocol (backend kết nối)
+      - "15672:15672" # Management UI: http://localhost:15672  (guest/guest)
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
   # ============ NestJS Backend ============
   backend:
     build:
@@ -55,11 +91,17 @@ services:
       MOMO_ENDPOINT: ${MOMO_ENDPOINT:-https://test-payment.momo.vn/v2/gateway/api/create}
       MOMO_RETURN_URL: ${MOMO_RETURN_URL}
       MOMO_NOTIFY_URL: ${MOMO_NOTIFY_URL}
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      REDIS_URL: redis://redis:6379
     volumes:
       - ./real-estate-api/src:/app/src
       - ./real-estate-api/prisma:/app/prisma
     depends_on:
       db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   # ============ React Frontend ============
@@ -82,3 +124,6 @@ services:
 
 volumes:
   mysql_data:
+  rabbitmq_data:
+  redis_data:
+

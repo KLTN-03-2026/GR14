@@ -3,7 +3,8 @@ import apiClient from './client';
 export const houseApi = {
     getAll: (params?: Record<string, unknown>) =>
         apiClient.get('/houses', { params }),
-
+    getMyHouses: () => 
+        apiClient.get('/houses/my-houses'),
     getById: (id: number) =>
         apiClient.get(`/houses/${id}`),
 
