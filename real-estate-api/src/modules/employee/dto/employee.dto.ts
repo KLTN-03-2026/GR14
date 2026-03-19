@@ -18,19 +18,18 @@ export class CreateEmployeeDto {
     @IsString()
     fullName?: string;
 
-    @IsOptional()
+    @IsNotEmpty()
     @IsString()
-    phone?: string;
+    phone: string;
 
-    @IsOptional()
-    
+    @IsNotEmpty()
     @IsEmail()
-    email?: string;
+    email: string;
 
     @IsOptional()
     @IsString()
     startDate?: string;
-   
+
 }
 
 export class UpdateEmployeeDto extends PartialType(CreateEmployeeDto) { }

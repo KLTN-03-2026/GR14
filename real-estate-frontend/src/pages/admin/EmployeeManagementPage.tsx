@@ -6,6 +6,7 @@ import {
 import { PlusOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { employeeApi } from "@/api";
+import { getApiErrorMessage } from "@/utils";
 
 const EmployeeManagementPage = () => {
 
@@ -21,8 +22,8 @@ const EmployeeManagementPage = () => {
       setLoading(true);
       const res = await employeeApi.getAll({ page: 1, limit: 10 });
       setData(res.data.data);
-    } catch {
-      message.error("Load employee failed");
+    } catch (err) {
+      message.error(getApiErrorMessage(err, "Tải danh sách nhân viên thất bại"));
     } finally {
       setLoading(false);
     }
@@ -70,8 +71,9 @@ const EmployeeManagementPage = () => {
       setOpen(false);
       loadData();
 
-    } catch {
-      message.error("Save failed");
+    } catch (err: any) {
+      if (err?.errorFields) return;
+      message.error(getApiErrorMessage(err, editing ? "Cập nhật nhân viên thất bại" : "Tạo nhân viên thất bại"));
     }
   };
 
@@ -86,18 +88,18 @@ const EmployeeManagementPage = () => {
         prev.map(item =>
           item.id === id
             ? {
-                ...item,
-                user: item.user
-                  ? { ...item.user, status: 0 }
-                  : item.user
-              }
+              ...item,
+              user: item.user
+                ? { ...item.user, status: 0 }
+                : item.user
+            }
             : item
         )
       );
 
 
-    } catch {
-      message.error("Xóa thất bại");
+    } catch (err) {
+      message.error(getApiErrorMessage(err, "Khóa tài khoản thất bại"));
     }
   };
 
@@ -181,31 +183,38 @@ const EmployeeManagementPage = () => {
       >
         <Form layout="vertical" form={form}>
 
-          <Form.Item name="code" label="Mã NV" rules={[{ required: true }]}>
+          <Form.Item name="code" label="Mã NV" rules={[{ required: true, message: "Vui lòng nhập mã nhân viên" }]}>
             <Input />
           </Form.Item>
 
           {!editing && (
             <>
-              <Form.Item name="username" label="Username" rules={[{ required: true }]}>
+              <Form.Item name="username" label="Username" rules={[{ required: true, message: "Vui lòng nhập tên đăng nhập" }]}>
                 <Input />
               </Form.Item>
 
-              <Form.Item name="password" label="Password" rules={[{ required: true }]}>
+              <Form.Item name="password" label="Password" rules={[{ required: true, message: "Vui lòng nhập mật khẩu" }]}>
                 <Input.Password />
               </Form.Item>
             </>
           )}
 
-          <Form.Item name="fullName" label="Họ tên" rules={[{ required: true }]}>
+          <Form.Item name="fullName" label="Họ tên" rules={[{ required: true, message: "Vui lòng nhập họ tên" }]}>
             <Input />
           </Form.Item>
 
-          <Form.Item name="email" label="Email">
+          <Form.Item
+            name="email"
+            label="Email"
+            rules={[
+              { required: true, message: "Vui lòng nhập email" },
+              { type: "email", message: "Email không đúng định dạng" },
+            ]}
+          >
             <Input />
           </Form.Item>
 
-          <Form.Item name="phone" label="SĐT">
+          <Form.Item name="phone" label="SĐT" rules={[{ required: true, message: "Vui lòng nhập số điện thoại" }]}>
             <Input />
           </Form.Item>
 

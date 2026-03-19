@@ -9,7 +9,6 @@ import {
     CalendarOutlined,
     UserOutlined,
     TeamOutlined,
-    StarOutlined,
     AppstoreOutlined,
     SafetyOutlined,
     MenuFoldOutlined,

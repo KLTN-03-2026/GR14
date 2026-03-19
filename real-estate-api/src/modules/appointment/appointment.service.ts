@@ -141,13 +141,14 @@ export class AppointmentService {
                 const code = `CUS${String(count + 1).padStart(3, '0')}`;
                 const bcrypt = await import('bcrypt');
                 const hashPass = await bcrypt.hash('customer123', 10);
+                const fallbackEmail = `cus-${dto.newCustomerPhone}@local.invalid`;
                 const newUser = await this.prisma.user.create({
                     data: {
                         username: `cus_${dto.newCustomerPhone}`,
                         password: hashPass,
                         fullName: dto.newCustomerName || '',
                         phone: dto.newCustomerPhone,
-                        email: dto.newCustomerEmail || null,
+                        email: dto.newCustomerEmail?.trim() || fallbackEmail,
                         status: 1,
                     },
                 });

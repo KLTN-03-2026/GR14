@@ -6,7 +6,7 @@ import {
 import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { customerApi } from '@/api';
-import { formatDateTime } from '@/utils';
+import { formatDateTime, getApiErrorMessage } from '@/utils';
 import type { Customer } from '@/types';
 import { DEFAULT_PAGE_SIZE } from '@/constants';
 import { Tag } from 'antd';
@@ -37,39 +37,39 @@ const CustomerManagementPage: React.FC = () => {
 
             setCustomers(data.data || data);
             setTotal(data.totalItems || 0);
-        } catch {
-            message.error('Lỗi tải dữ liệu');
+        } catch (err) {
+            message.error(getApiErrorMessage(err, 'Lỗi tải dữ liệu'));
         } finally {
             setLoading(false);
         }
     };
 
     const handleDelete = async (id: number) => {
-    try {
-        await customerApi.delete(id);
+        try {
+            await customerApi.delete(id);
 
-        message.success('Đã khóa tài khoản');
+            message.success('Đã khóa tài khoản');
 
-        setCustomers(prev =>
-            prev.map(item =>
-                item.id === id
-                    ? {
-                        ...item,
-                        user: item.user
-                            ? {
-                                ...item.user,
-                                status: 0
-                            }
-                            : item.user
-                    }
-                    : item
-            )
-        );
+            setCustomers(prev =>
+                prev.map(item =>
+                    item.id === id
+                        ? {
+                            ...item,
+                            user: item.user
+                                ? {
+                                    ...item.user,
+                                    status: 0
+                                }
+                                : item.user
+                        }
+                        : item
+                )
+            );
 
-    } catch {
-        message.error('Xóa thất bại');
-    }
-};
+        } catch (err) {
+            message.error(getApiErrorMessage(err, 'Xóa thất bại'));
+        }
+    };
 
     const handleOpenModal = (item?: Customer) => {
         setEditingCustomer(item || null);
@@ -124,7 +124,8 @@ const CustomerManagementPage: React.FC = () => {
             form.resetFields();
 
         } catch (err: any) {
-            message.error(err?.response?.data?.message || 'Thất bại');
+            if (err?.errorFields) return;
+            message.error(getApiErrorMessage(err, editingCustomer ? 'Cập nhật thất bại' : 'Tạo mới thất bại'));
         }
     };
 
@@ -165,12 +166,12 @@ const CustomerManagementPage: React.FC = () => {
                         title="Bạn có chắc muốn xóa?"
                         onConfirm={() => handleDelete(record.id)}
                     >
-                       <Button
-                        size="small"
-                        danger
-                        icon={<DeleteOutlined />}
-                        disabled={record.user?.status === 0}
-                    />
+                        <Button
+                            size="small"
+                            danger
+                            icon={<DeleteOutlined />}
+                            disabled={record.user?.status === 0}
+                        />
                     </Popconfirm>
                 </Space>
             ),
@@ -224,25 +225,32 @@ const CustomerManagementPage: React.FC = () => {
                 <Form form={form} layout="vertical">
                     {!editingCustomer && (
                         <>
-                            <Form.Item name="username" label="Username" rules={[{ required: true }]}>
+                            <Form.Item name="username" label="Username" rules={[{ required: true, message: 'Vui lòng nhập tên đăng nhập' }]}>
                                 <Input />
                             </Form.Item>
 
-                            <Form.Item name="password" label="Password" rules={[{ required: true }]}>
+                            <Form.Item name="password" label="Password" rules={[{ required: true, message: 'Vui lòng nhập mật khẩu' }]}>
                                 <Input.Password />
                             </Form.Item>
                         </>
                     )}
 
-                    <Form.Item name="fullName" label="Họ tên">
+                    <Form.Item name="fullName" label="Họ tên" rules={[{ required: true, message: 'Vui lòng nhập họ tên' }]}>
                         <Input />
                     </Form.Item>
 
-                    <Form.Item name="phone" label="SĐT">
+                    <Form.Item name="phone" label="SĐT" rules={[{ required: true, message: 'Vui lòng nhập số điện thoại' }]}>
                         <Input />
                     </Form.Item>
 
-                    <Form.Item name="email" label="Email">
+                    <Form.Item
+                        name="email"
+                        label="Email"
+                        rules={[
+                            { required: true, message: 'Vui lòng nhập email' },
+                            { type: 'email', message: 'Email không đúng định dạng' },
+                        ]}
+                    >
                         <Input />
                     </Form.Item>
 

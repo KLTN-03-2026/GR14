@@ -13,17 +13,17 @@ export class CreateCustomerDto {
     @IsString()
     fullName?: string;
 
-    @IsOptional()
+    @IsNotEmpty()
     @IsString()
-    phone?: string;
+    phone: string;
 
-    @IsOptional()
+    @IsNotEmpty()
     @IsEmail()
-    email?: string;
+    email: string;
 
     @IsOptional()
     @IsString()
     address?: string;
 }
 
-export class UpdateCustomerDto extends PartialType(CreateCustomerDto) {}
+export class UpdateCustomerDto extends PartialType(CreateCustomerDto) { }
