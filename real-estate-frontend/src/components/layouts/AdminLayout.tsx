@@ -82,11 +82,6 @@ const menuItems: MenuProps['items'] = [
         label: 'Vai trò',
     },
     {
-        key: '/admin/favorites',
-        icon: <StarOutlined />,
-        label: 'Yêu thích',
-    },
-    {
         key: '/admin/payment-history',
         icon: <WalletOutlined />,
         label: 'Lịch sử thanh toán',

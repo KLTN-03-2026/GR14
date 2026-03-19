@@ -9,7 +9,7 @@ import { customerApi } from '@/api';
 import { formatDateTime } from '@/utils';
 import type { Customer } from '@/types';
 import { DEFAULT_PAGE_SIZE } from '@/constants';
-
+import { Tag } from 'antd';
 const { Title } = Typography;
 
 const CustomerManagementPage: React.FC = () => {
@@ -23,7 +23,7 @@ const CustomerManagementPage: React.FC = () => {
     const [form] = Form.useForm();
 
     useEffect(() => {
-        loadCustomers();
+        loadCustomers(); // ✅ chỉ gọi cái này
     }, [page, search]);
 
     const loadCustomers = async () => {
@@ -36,7 +36,7 @@ const CustomerManagementPage: React.FC = () => {
             const data = res.data;
 
             setCustomers(data.data || data);
-            setTotal(data.meta?.total || 0);
+            setTotal(data.totalItems || 0);
         } catch {
             message.error('Lỗi tải dữ liệu');
         } finally {
@@ -45,14 +45,31 @@ const CustomerManagementPage: React.FC = () => {
     };
 
     const handleDelete = async (id: number) => {
-        try {
-            await customerApi.delete(id);
-            message.success('Xóa thành công');
-            loadCustomers();
-        } catch {
-            message.error('Xóa thất bại');
-        }
-    };
+    try {
+        await customerApi.delete(id);
+
+        message.success('Đã khóa tài khoản');
+
+        setCustomers(prev =>
+            prev.map(item =>
+                item.id === id
+                    ? {
+                        ...item,
+                        user: item.user
+                            ? {
+                                ...item.user,
+                                status: 0
+                            }
+                            : item.user
+                    }
+                    : item
+            )
+        );
+
+    } catch {
+        message.error('Xóa thất bại');
+    }
+};
 
     const handleOpenModal = (item?: Customer) => {
         setEditingCustomer(item || null);
@@ -71,26 +88,46 @@ const CustomerManagementPage: React.FC = () => {
     };
 
     const handleSubmit = async () => {
-    try {
-        const values = await form.validateFields();
+        try {
+            const values = await form.validateFields();
 
-        console.log("DATA SUBMIT:", values); // 👈 DEBUG
+            if (editingCustomer) {
+                await customerApi.update(editingCustomer.id, values);
 
-        if (editingCustomer) {
-            await customerApi.update(editingCustomer.id, values);
-            message.success('Cập nhật thành công');
-        } else {
-            await customerApi.create(values);
-            message.success('Tạo mới thành công');
+                setCustomers(prev =>
+                    prev.map(item =>
+                        item.id === editingCustomer.id
+                            ? {
+                                ...item,
+                                user: {
+                                    ...item.user,
+                                    ...values,
+                                },
+                            }
+                            : item
+                    )
+                );
+
+                message.success('Cập nhật thành công');
+
+            } else {
+                const res = await customerApi.create(values);
+                const newCustomer = res.data.data;
+
+                setCustomers(prev => [newCustomer, ...prev]);
+
+                message.success('Tạo mới thành công');
+            }
+
+
+            setModalOpen(false);
+            form.resetFields();
+
+        } catch (err: any) {
+            message.error(err?.response?.data?.message || 'Thất bại');
         }
+    };
 
-        setModalOpen(false);
-        loadCustomers();
-    } catch (err: any) {
-        console.log("ERROR:", err?.response?.data); // 👈 QUAN TRỌNG
-        message.error(err?.response?.data?.message || 'Tạo thất bại');
-    }
-};
     const columns: ColumnsType<Customer> = [
         { title: 'Mã KH', dataIndex: 'code', key: 'code' },
         { title: 'Họ tên', render: (_, r) => r.user?.fullName || '—' },
@@ -100,6 +137,18 @@ const CustomerManagementPage: React.FC = () => {
             title: 'Ngày tạo',
             dataIndex: 'createdAt',
             render: (d: string) => formatDateTime(d),
+        },
+        {
+            title: 'Trạng thái',
+            render: (_, record) => {
+                const isActive = record.user?.status === 1;
+
+                return (
+                    <Tag color={isActive ? 'green' : 'red'}>
+                        {isActive ? 'Hoạt động' : 'Đã khóa'}
+                    </Tag>
+                );
+            }
         },
         {
             title: 'Hành động',
@@ -116,7 +165,12 @@ const CustomerManagementPage: React.FC = () => {
                         title="Bạn có chắc muốn xóa?"
                         onConfirm={() => handleDelete(record.id)}
                     >
-                        <Button size="small" danger icon={<DeleteOutlined />} />
+                       <Button
+                        size="small"
+                        danger
+                        icon={<DeleteOutlined />}
+                        disabled={record.user?.status === 0}
+                    />
                     </Popconfirm>
                 </Space>
             ),
@@ -161,14 +215,11 @@ const CustomerManagementPage: React.FC = () => {
                 }}
             />
 
-            {/* MODAL */}
             <Modal
                 title={editingCustomer ? 'Chỉnh sửa khách hàng' : 'Thêm khách hàng'}
                 open={modalOpen}
                 onOk={handleSubmit}
                 onCancel={() => setModalOpen(false)}
-                okText={editingCustomer ? 'Cập nhật' : 'Tạo mới'}
-                cancelText="Hủy"
             >
                 <Form form={form} layout="vertical">
                     {!editingCustomer && (

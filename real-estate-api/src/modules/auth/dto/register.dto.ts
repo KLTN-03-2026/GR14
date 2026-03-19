@@ -9,13 +9,13 @@ export class RegisterDto {
     @IsString()
     password: string;
 
-    @IsOptional()
+    @IsNotEmpty()
     @IsString()
-    fullName?: string;
+    fullName: string;
 
-    @IsOptional()
+    @IsNotEmpty()
     @IsString()
-    phone?: string;
+    phone: string;
 
     @IsNotEmpty()
     @IsEmail()

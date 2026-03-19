@@ -31,7 +31,7 @@ const UserManagementPage: React.FC = () => {
             const res = await userApi.getAll(params);
             const data = res.data;
             setUsers(data.data || data);
-            setTotal(data.meta?.total || 0);
+            setTotal(data.totalItems || 0);
         } catch {
             message.error('Lỗi tải dữ liệu');
         } finally {

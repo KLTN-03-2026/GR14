@@ -73,7 +73,7 @@ CREATE TABLE `customers` (
     `user_id` INTEGER NOT NULL,
     `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updated_at` DATETIME(3) NOT NULL,
-
+    
     UNIQUE INDEX `customers_customer_code_key`(`customer_code`),
     UNIQUE INDEX `customers_user_id_key`(`user_id`),
     PRIMARY KEY (`id`)

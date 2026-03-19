@@ -1,17 +1,40 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CloudinaryService } from '../../common/cloudinary/cloudinary.service';
+import { RedisService } from '../../common/redis/redis.service';
 import { CreateHouseDto, UpdateHouseDto } from './dto/house.dto';
 import { validateFieldsNoSpecialChars } from '../../common/utils/validators';
 
+// Cache TTL (seconds)
+const HOUSE_LIST_TTL = 600;   // 10 minutes
+const HOUSE_DETAIL_TTL = 900;  // 15 minutes
+const HOUSE_SEARCH_TTL = 300;   // 5 minutes
+
+const houseListKey = (page: number, limit: number) => `houses:list:${page}:${limit}`;
+const houseDetailKey = (id: number) => `house:${id}`;
+const houseSearchKey = (query: string, page: number, limit: number) => `houses:search:${query}:${page}:${limit}`;
+
 @Injectable()
 export class HouseService {
+    private readonly logger = new Logger(HouseService.name);
+
     constructor(
         private prisma: PrismaService,
         private cloudinaryService: CloudinaryService,
+        private redis: RedisService,
     ) { }
 
     async findAll(page = 1, limit = 10) {
+        const cacheKey = houseListKey(page, limit);
+
+        // Try cache first
+        const cached = await this.redis.get(cacheKey).catch(() => null);
+        if (cached) {
+            this.logger.debug(`Cache HIT: ${cacheKey}`);
+            return cached;
+        }
+
+        this.logger.debug(`Cache MISS: ${cacheKey}`);
         const skip = (page - 1) * limit;
         const [houses, total] = await Promise.all([
             this.prisma.house.findMany({
@@ -29,15 +52,32 @@ export class HouseService {
             this.prisma.house.count(),
         ]);
 
-        return {
+        const result = {
             data: houses,
             currentPage: page,
             totalPages: Math.ceil(total / limit),
             totalItems: total,
         };
+
+        // Set cache
+        await this.redis.set(cacheKey, result, HOUSE_LIST_TTL).catch(() => {
+            this.logger.warn(`Failed to cache ${cacheKey}`);
+        });
+
+        return result;
     }
 
     async findById(id: number) {
+        const cacheKey = houseDetailKey(id);
+
+        // Try cache first
+        const cached = await this.redis.get(cacheKey).catch(() => null);
+        if (cached) {
+            this.logger.debug(`Cache HIT: ${cacheKey}`);
+            return cached;
+        }
+
+        this.logger.debug(`Cache MISS: ${cacheKey}`);
         const house = await this.prisma.house.findUnique({
             where: { id },
             include: {
@@ -49,6 +89,12 @@ export class HouseService {
             },
         });
         if (!house) throw new NotFoundException('House not found');
+
+        // Set cache
+        await this.redis.set(cacheKey, house, HOUSE_DETAIL_TTL).catch(() => {
+            this.logger.warn(`Failed to cache ${cacheKey}`);
+        });
+
         return house;
     }
 
@@ -93,6 +139,9 @@ export class HouseService {
                 })),
             });
         }
+
+        // Invalidate cache
+        await this.invalidateHouseCache();
 
         return {
             message: 'House created successfully',
@@ -166,6 +215,10 @@ export class HouseService {
             }
         }
 
+        // Invalidate cache
+        await this.invalidateHouseCache();
+        await this.redis.del(houseDetailKey(id)).catch(() => { });
+
         return {
             message: 'House updated successfully',
             data: await this.findById(id),
@@ -188,10 +241,24 @@ export class HouseService {
         await this.prisma.houseImage.deleteMany({ where: { houseId: id } });
         await this.prisma.house.delete({ where: { id } });
 
+        // Invalidate cache
+        await this.invalidateHouseCache();
+        await this.redis.del(houseDetailKey(id)).catch(() => { });
+
         return { message: 'House deleted successfully' };
     }
 
     async search(query: string, page = 1, limit = 10) {
+        const cacheKey = houseSearchKey(query, page, limit);
+
+        // Try cache first
+        const cached = await this.redis.get(cacheKey).catch(() => null);
+        if (cached) {
+            this.logger.debug(`Cache HIT: ${cacheKey}`);
+            return cached;
+        }
+
+        this.logger.debug(`Cache MISS: ${cacheKey}`);
         const skip = (page - 1) * limit;
         const where = {
             OR: [
@@ -216,11 +283,28 @@ export class HouseService {
             this.prisma.house.count({ where }),
         ]);
 
-        return {
+        const result = {
             data: houses,
             currentPage: page,
             totalPages: Math.ceil(total / limit),
             totalItems: total,
         };
+
+        // Set cache
+        await this.redis.set(cacheKey, result, HOUSE_SEARCH_TTL).catch(() => {
+            this.logger.warn(`Failed to cache ${cacheKey}`);
+        });
+
+        return result;
+    }
+
+    private async invalidateHouseCache(): Promise<void> {
+        try {
+            await this.redis.delByPattern('houses:list:*');
+            await this.redis.delByPattern('houses:search:*');
+            this.logger.debug('House cache invalidated');
+        } catch (error) {
+            this.logger.warn('Failed to invalidate house cache:', error);
+        }
     }
 }

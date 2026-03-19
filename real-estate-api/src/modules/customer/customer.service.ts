@@ -98,14 +98,21 @@ export class CustomerService {
     }
 
     async delete(id: number) {
-        const customer = await this.prisma.customer.findUnique({ where: { id } });
-        if (!customer) throw new NotFoundException('Customer not found');
+    const customer = await this.prisma.customer.findUnique({
+        where: { id },
+        include: { user: true }
+    });
 
-        await this.prisma.$transaction([
-            this.prisma.customer.delete({ where: { id } }),
-            this.prisma.user.delete({ where: { id: customer.userId } }),
-        ]);
+    if (!customer) {
+        throw new NotFoundException('Customer not found');
+    }
 
-        return { message: 'Deleted' };
+    // 🔥 update status user
+    await this.prisma.user.update({
+        where: { id: customer.userId },
+        data: { status: 0 }
+    });
+
+        return { message: 'Disabled account customer' };
     }
 }

@@ -5,9 +5,10 @@ import { PaymentService } from './payment.service';
 import { VNPayService } from './services/vnpay.service';
 import { MoMoService } from './services/momo.service';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { MailModule } from '../../common/mail/mail.module';
 
 @Module({
-    imports: [PrismaModule, ConfigModule],
+    imports: [PrismaModule, ConfigModule, MailModule],
     controllers: [PaymentController],
     providers: [PaymentService, VNPayService, MoMoService],
     exports: [PaymentService],

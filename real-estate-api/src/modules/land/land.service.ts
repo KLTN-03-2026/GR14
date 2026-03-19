@@ -1,17 +1,40 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CloudinaryService } from '../../common/cloudinary/cloudinary.service';
+import { RedisService } from '../../common/redis/redis.service';
 import { CreateLandDto, UpdateLandDto } from './dto/land.dto';
 import { validateFieldsNoSpecialChars } from '../../common/utils/validators';
 
+// Cache TTL (seconds)
+const LAND_LIST_TTL = 600;   // 10 minutes
+const LAND_DETAIL_TTL = 900;  // 15 minutes
+const LAND_SEARCH_TTL = 300;   // 5 minutes
+
+const landListKey = (page: number, limit: number) => `lands:list:${page}:${limit}`;
+const landDetailKey = (id: number) => `land:${id}`;
+const landSearchKey = (query: string, page: number, limit: number) => `lands:search:${query}:${page}:${limit}`;
+
 @Injectable()
 export class LandService {
+    private readonly logger = new Logger(LandService.name);
+
     constructor(
         private prisma: PrismaService,
         private cloudinaryService: CloudinaryService,
+        private redis: RedisService,
     ) { }
 
     async findAll(page = 1, limit = 10) {
+        const cacheKey = landListKey(page, limit);
+
+        // Try cache first
+        const cached = await this.redis.get(cacheKey).catch(() => null);
+        if (cached) {
+            this.logger.debug(`Cache HIT: ${cacheKey}`);
+            return cached;
+        }
+
+        this.logger.debug(`Cache MISS: ${cacheKey}`);
         const skip = (page - 1) * limit;
         const [lands, total] = await Promise.all([
             this.prisma.land.findMany({
@@ -29,15 +52,32 @@ export class LandService {
             this.prisma.land.count(),
         ]);
 
-        return {
+        const result = {
             data: lands,
             currentPage: page,
             totalPages: Math.ceil(total / limit),
             totalItems: total,
         };
+
+        // Set cache
+        await this.redis.set(cacheKey, result, LAND_LIST_TTL).catch(() => {
+            this.logger.warn(`Failed to cache ${cacheKey}`);
+        });
+
+        return result;
     }
 
     async findById(id: number) {
+        const cacheKey = landDetailKey(id);
+
+        // Try cache first
+        const cached = await this.redis.get(cacheKey).catch(() => null);
+        if (cached) {
+            this.logger.debug(`Cache HIT: ${cacheKey}`);
+            return cached;
+        }
+
+        this.logger.debug(`Cache MISS: ${cacheKey}`);
         const land = await this.prisma.land.findUnique({
             where: { id },
             include: {
@@ -49,6 +89,12 @@ export class LandService {
             },
         });
         if (!land) throw new NotFoundException('Land not found');
+
+        // Set cache
+        await this.redis.set(cacheKey, land, LAND_DETAIL_TTL).catch(() => {
+            this.logger.warn(`Failed to cache ${cacheKey}`);
+        });
+
         return land;
     }
 
@@ -94,6 +140,9 @@ export class LandService {
                 })),
             });
         }
+
+        // Invalidate cache
+        await this.invalidateLandCache();
 
         return {
             message: 'Land created successfully',
@@ -168,6 +217,10 @@ export class LandService {
             }
         }
 
+        // Invalidate cache
+        await this.invalidateLandCache();
+        await this.redis.del(landDetailKey(id)).catch(() => { });
+
         return {
             message: 'Land updated successfully',
             data: await this.findById(id),
@@ -189,10 +242,24 @@ export class LandService {
         await this.prisma.landImage.deleteMany({ where: { landId: id } });
         await this.prisma.land.delete({ where: { id } });
 
+        // Invalidate cache
+        await this.invalidateLandCache();
+        await this.redis.del(landDetailKey(id)).catch(() => { });
+
         return { message: 'Land deleted successfully' };
     }
 
     async search(query: string, page = 1, limit = 10) {
+        const cacheKey = landSearchKey(query, page, limit);
+
+        // Try cache first
+        const cached = await this.redis.get(cacheKey).catch(() => null);
+        if (cached) {
+            this.logger.debug(`Cache HIT: ${cacheKey}`);
+            return cached;
+        }
+
+        this.logger.debug(`Cache MISS: ${cacheKey}`);
         const skip = (page - 1) * limit;
         const where = {
             OR: [
@@ -217,11 +284,28 @@ export class LandService {
             this.prisma.land.count({ where }),
         ]);
 
-        return {
+        const result = {
             data: lands,
             currentPage: page,
             totalPages: Math.ceil(total / limit),
             totalItems: total,
         };
+
+        // Set cache
+        await this.redis.set(cacheKey, result, LAND_SEARCH_TTL).catch(() => {
+            this.logger.warn(`Failed to cache ${cacheKey}`);
+        });
+
+        return result;
+    }
+
+    private async invalidateLandCache(): Promise<void> {
+        try {
+            await this.redis.delByPattern('lands:list:*');
+            await this.redis.delByPattern('lands:search:*');
+            this.logger.debug('Land cache invalidated');
+        } catch (error) {
+            this.logger.warn('Failed to invalidate land cache:', error);
+        }
     }
 }

@@ -1,12 +1,33 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { RedisService } from '../../common/redis/redis.service';
+
+// Cache TTL: 5 phút
+const FAVORITES_TTL = 300;
+const favoritesKey = (userId: number) => `favorites:${userId}`;
 
 @Injectable()
 export class FavoriteService {
-    constructor(private prisma: PrismaService) { }
+    private readonly logger = new Logger(FavoriteService.name);
+
+    constructor(
+        private prisma: PrismaService,
+        private redis: RedisService,
+    ) {}
 
     async findByUser(userId: number) {
-        return this.prisma.favorite.findMany({
+        const cacheKey = favoritesKey(userId);
+
+        // 1. Thử lấy từ cache trước
+        const cached = await this.redis.get(cacheKey);
+        if (cached) {
+            this.logger.debug(`Cache HIT: ${cacheKey}`);
+            return cached;
+        }
+
+        // 2. Cache miss → query DB
+        this.logger.debug(`Cache MISS: ${cacheKey}`);
+        const data = await this.prisma.favorite.findMany({
             where: { userId },
             include: {
                 house: {
@@ -17,6 +38,10 @@ export class FavoriteService {
                 },
             },
         });
+
+        // 3. Lưu vào cache
+        await this.redis.set(cacheKey, data, FAVORITES_TTL);
+        return data;
     }
 
     async addHouse(userId: number, houseId: number) {
@@ -31,6 +56,9 @@ export class FavoriteService {
         const favorite = await this.prisma.favorite.create({
             data: { userId, houseId },
         });
+
+        // Invalidate cache sau khi thay đổi
+        await this.invalidateCache(userId);
 
         return { message: 'Added to favorites', data: favorite };
     }
@@ -48,6 +76,9 @@ export class FavoriteService {
             data: { userId, landId },
         });
 
+        // Invalidate cache sau khi thay đổi
+        await this.invalidateCache(userId);
+
         return { message: 'Added to favorites', data: favorite };
     }
 
@@ -56,6 +87,10 @@ export class FavoriteService {
         if (!fav) throw new NotFoundException('Favorite not found');
 
         await this.prisma.favorite.delete({ where: { id: fav.id } });
+
+        // Invalidate cache sau khi thay đổi
+        await this.invalidateCache(userId);
+
         return { message: 'Removed from favorites' };
     }
 
@@ -64,6 +99,16 @@ export class FavoriteService {
         if (!fav) throw new NotFoundException('Favorite not found');
 
         await this.prisma.favorite.delete({ where: { id: fav.id } });
+
+        // Invalidate cache sau khi thay đổi
+        await this.invalidateCache(userId);
+
         return { message: 'Removed from favorites' };
+    }
+
+    private async invalidateCache(userId: number): Promise<void> {
+        const cacheKey = favoritesKey(userId);
+        await this.redis.del(cacheKey);
+        this.logger.debug(`Cache INVALIDATED: ${cacheKey}`);
     }
 }
