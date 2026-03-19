@@ -229,6 +229,7 @@ export interface RegisterRequest {
     fullName?: string;
     phone?: string;
     email?: string;
+    address?: string;
 }
 
 export interface AuthResponse {

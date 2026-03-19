@@ -3,11 +3,11 @@ import { IsNotEmpty, IsString, IsOptional, IsEmail } from 'class-validator';
 export class RegisterDto {
     @IsNotEmpty()
     @IsString()
-    username: string;
+    username!: string;
 
     @IsNotEmpty()
     @IsString()
-    password: string;
+    password!: string;
 
     @IsOptional()
     @IsString()
@@ -19,7 +19,7 @@ export class RegisterDto {
 
     @IsNotEmpty()
     @IsEmail()
-    email: string;
+    email!: string;
 
     @IsOptional()
     @IsString()
@@ -29,5 +29,5 @@ export class RegisterDto {
 export class ConfirmRegisterDto extends RegisterDto {
     @IsNotEmpty()
     @IsString()
-    otp: string;
+    otp!: string;
 }

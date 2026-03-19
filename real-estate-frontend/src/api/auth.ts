@@ -25,4 +25,11 @@ export const authApi = {
 
     logout: (refreshToken: string) =>
         apiClient.post('/logout', { refreshToken }),
+    getProfile: () => apiClient.get('/profile'),
+    
+    updateProfile: (data: { fullName?: string; phone?: string; address?: string }) => 
+        apiClient.put('/profile', data),
+    
+    changePassword: (data: { oldPassword: string; newPassword: string }) => 
+        apiClient.put('/profile/change-password', data),
 };

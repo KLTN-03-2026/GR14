@@ -3,19 +3,19 @@ import { IsNotEmpty, IsString, IsEmail } from 'class-validator';
 export class ForgotPasswordDto {
     @IsNotEmpty()
     @IsEmail()
-    email: string;
+    email!: string;
 }
 
 export class ResetPasswordDto {
     @IsNotEmpty()
     @IsEmail()
-    email: string;
+    email!: string;
 
     @IsNotEmpty()
     @IsString()
-    otp: string;
+    otp!: string;
 
     @IsNotEmpty()
     @IsString()
-    newPassword: string;
+    newPassword!: string;
 }

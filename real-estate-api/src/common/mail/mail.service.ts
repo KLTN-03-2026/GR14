@@ -27,6 +27,27 @@ export class MailService {
         });
     }
 
+    // --- HÀM MỚI BỔ SUNG: TEMPLATE XÁC NHẬN OTP ---
+    getOtpEmailHtml(fullName: string, otp: string): string {
+        return `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;border:1px solid #e8e8e8;border-radius:8px;">
+        <h2 style="color:#254b86;text-align:center;">🔒 Mã Xác Thực OTP</h2>
+        <p>Kính gửi <strong>${fullName}</strong>,</p>
+        <p>Để hoàn tất quá trình xác thực, vui lòng sử dụng mã OTP dưới đây:</p>
+        
+        <div style="text-align:center;margin:30px 0;">
+            <span style="font-size:32px;font-weight:bold;letter-spacing:6px;color:#254b86;background-color:#f0f5ff;padding:16px 32px;border-radius:8px;border:1px dashed #254b86;">
+                ${otp}
+            </span>
+        </div>
+        
+        <p>Mã OTP này có hiệu lực trong vòng <strong>5 phút</strong>. Vui lòng không chia sẻ mã này với bất kỳ ai để bảo vệ tài khoản của bạn.</p>
+        <p style="color:#888;font-size:13px;margin-top:24px;border-top:1px solid #eee;padding-top:12px;">Trân trọng,<br/>Đội ngũ BĐS</p>
+      </div>
+    `;
+    }
+
+    // --- CÁC HÀM CŨ CỦA BẠN GIỮ NGUYÊN ---
     getApprovalEmailHtml(fullName: string, appointmentDate: string, propertyTitle?: string): string {
         return `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;border:1px solid #e8e8e8;border-radius:8px;">

@@ -1,212 +1,164 @@
-import { useState } from 'react';
-import { Form, Input, Button, Card, Typography, message, Divider, Steps } from 'antd';
-import { UserOutlined, LockOutlined, MailOutlined, PhoneOutlined, SafetyOutlined } from '@ant-design/icons';
-import { Link, useNavigate } from 'react-router-dom';
-import { authApi } from '@/api';
+import PublicHeader from "@/components/layouts/PublicHeader";
+import PublicFooter from "@/components/layouts/PublicFooter";
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { message } from "antd";
 
-const { Title, Text } = Typography;
+// Import authApi (bạn hãy điều chỉnh lại đường dẫn cho khớp với cấu trúc thư mục thực tế)
+import { authApi } from "@/api/auth"; 
 
-const RegisterPage: React.FC = () => {
-    const [loading, setLoading] = useState(false);
-    const [step, setStep] = useState(0); // 0: form, 1: OTP
-    const [formData, setFormData] = useState<Record<string, string>>({});
-    const [otp, setOtp] = useState('');
-    const navigate = useNavigate();
-    const [form] = Form.useForm();
+import userIcon from "../../assets/user.png";
+import addressIcon from "../../assets/location (1).png";
+import lockIcon from "../../assets/unlock.png";
+import mailIcon from "../../assets/email.png";
+import phoneIcon from "../../assets/phone-call.png";
 
-    const onFinish = async (values: {
-        username: string;
-        password: string;
-        fullName?: string;
-        email?: string;
-        phone?: string;
-    }) => {
-        setLoading(true);
-        try {
-            await authApi.register(values);
-            setFormData(values as Record<string, string>);
-            setStep(1);
-            message.success('Mã OTP đã được gửi đến email của bạn!');
-        } catch (error: unknown) {
-            const err = error as { response?: { data?: { message?: string } } };
-            message.error(err.response?.data?.message || 'Đăng ký thất bại');
-        } finally {
-            setLoading(false);
-        }
-    };
+const buildingImg = "https://images.unsplash.com/photo-1722421492323-eaf9c401befe?q=80&w=802&auto=format&fit=crop";
+const eyeOpen = "https://cdn-icons-png.flaticon.com/512/159/159604.png";
+const eyeClose = "https://cdn-icons-png.flaticon.com/512/565/565655.png";
 
-    const onConfirmOtp = async () => {
-        if (!otp || otp.length < 4) {
-            message.warning('Vui lòng nhập mã OTP');
-            return;
-        }
-        setLoading(true);
-        try {
-            await authApi.confirmRegister({ ...formData, otp } as any);
-            message.success('Đăng ký thành công! Vui lòng đăng nhập.');
-            navigate('/login');
-        } catch (error: unknown) {
-            const err = error as { response?: { data?: { message?: string } } };
-            message.error(err.response?.data?.message || 'Xác nhận OTP thất bại');
-        } finally {
-            setLoading(false);
-        }
-    };
+const RegisterPage = () => {
+  const navigate = useNavigate();
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-    const handleResendOtp = async () => {
-        setLoading(true);
-        try {
-            await authApi.register(formData as any);
-            message.success('Đã gửi lại mã OTP!');
-        } catch (error: unknown) {
-            const err = error as { response?: { data?: { message?: string } } };
-            message.error(err.response?.data?.message || 'Gửi lại OTP thất bại');
-        } finally {
-            setLoading(false);
-        }
-    };
+  const [formData, setFormData] = useState({
+    username: "",
+    password: "",
+    fullName: "",
+    email: "",
+    phone: "",
+    address: "",
+  });
 
-    return (
-        <div
-            style={{
-                minHeight: '100vh',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                padding: 24,
-            }}
-        >
-            <Card style={{ width: 420, borderRadius: 12 }}>
-                <div style={{ textAlign: 'center', marginBottom: 24 }}>
-                    <Title level={2} style={{ marginBottom: 8 }}>
-                        🏠 Real Estate
-                    </Title>
-                    <Text type="secondary">Tạo tài khoản mới</Text>
-                </div>
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value,
+    });
+  };
 
-                <Steps
-                    current={step}
-                    size="small"
-                    style={{ marginBottom: 24 }}
-                    items={[
-                        { title: 'Thông tin' },
-                        { title: 'Xác nhận OTP' },
-                    ]}
-                />
+  const validate = () => {
+    if (!formData.username.trim()) {
+      message.error("Vui lòng nhập tên tài khoản");
+      return false;
+    }
+    if (formData.password.length < 6) {
+      message.error("Mật khẩu phải ít nhất 6 ký tự");
+      return false;
+    }
+    if (!formData.email.includes("@")) {
+      message.error("Email không hợp lệ");
+      return false;
+    }
+    if (!/^[0-9]{9,11}$/.test(formData.phone)) {
+      message.error("Số điện thoại không hợp lệ");
+      return false;
+    }
+    return true;
+  };
 
-                {step === 0 ? (
-                    <>
-                        <Form form={form} layout="vertical" onFinish={onFinish} autoComplete="off" size="large">
-                            <Form.Item
-                                name="username"
-                                rules={[{ required: true, message: 'Vui lòng nhập tên đăng nhập' }]}
-                            >
-                                <Input prefix={<UserOutlined />} placeholder="Tên đăng nhập" />
-                            </Form.Item>
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validate()) return;
 
-                            <Form.Item
-                                name="fullName"
-                                rules={[{ required: true, message: 'Vui lòng nhập họ tên' }]}
-                            >
-                                <Input prefix={<UserOutlined />} placeholder="Họ và tên" />
-                            </Form.Item>
+    try {
+      setLoading(true);
 
-                            <Form.Item
-                                name="email"
-                                rules={[
-                                    { required: true, message: 'Vui lòng nhập email' },
-                                    { type: 'email', message: 'Email không hợp lệ' },
-                                ]}
-                            >
-                                <Input prefix={<MailOutlined />} placeholder="Email" />
-                            </Form.Item>
+      await authApi.register({
+        username: formData.username,
+        password: formData.password,
+        fullName: formData.fullName,
+        email: formData.email,
+        phone: formData.phone,
+        address: formData.address,
+      });
 
-                            <Form.Item name="phone">
-                                <Input prefix={<PhoneOutlined />} placeholder="Số điện thoại (không bắt buộc)" />
-                            </Form.Item>
+      message.success("Đã gửi OTP về email!");
+      navigate("/otp", { state: formData });
 
-                            <Form.Item
-                                name="password"
-                                rules={[
-                                    { required: true, message: 'Vui lòng nhập mật khẩu' },
-                                    { min: 6, message: 'Mật khẩu phải có ít nhất 6 ký tự' },
-                                ]}
-                            >
-                                <Input.Password prefix={<LockOutlined />} placeholder="Mật khẩu" />
-                            </Form.Item>
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || "Đăng ký thất bại");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-                            <Form.Item
-                                name="confirmPassword"
-                                dependencies={['password']}
-                                rules={[
-                                    { required: true, message: 'Vui lòng xác nhận mật khẩu' },
-                                    ({ getFieldValue }) => ({
-                                        validator(_, value) {
-                                            if (!value || getFieldValue('password') === value) {
-                                                return Promise.resolve();
-                                            }
-                                            return Promise.reject(new Error('Mật khẩu không khớp'));
-                                        },
-                                    }),
-                                ]}
-                            >
-                                <Input.Password prefix={<LockOutlined />} placeholder="Xác nhận mật khẩu" />
-                            </Form.Item>
+  return (
+    <div className="flex flex-col min-h-screen bg-white">
+      <PublicHeader />
+      <main className="flex-1 flex items-center justify-center py-16 bg-gray-50">
+        <div className="w-full max-w-[1100px] flex items-stretch justify-center gap-10 px-4">
+          <div className="hidden md:block w-1/2 rounded-[10px] overflow-hidden shadow-lg border border-[#e0e0e0]">
+            <img src={buildingImg} className="w-full h-full object-cover" alt="Building" />
+          </div>
 
-                            <Form.Item>
-                                <Button type="primary" htmlType="submit" block loading={loading}>
-                                    Đăng ký
-                                </Button>
-                            </Form.Item>
-                        </Form>
-                    </>
-                ) : (
-                    <>
-                        <div style={{ textAlign: 'center', marginBottom: 24 }}>
-                            <SafetyOutlined style={{ fontSize: 48, color: '#1677ff', marginBottom: 16 }} />
-                            <div>
-                                <Text>Mã OTP đã được gửi đến email</Text>
-                            </div>
-                            <Text strong>{formData.email}</Text>
-                        </div>
+          <div className="w-full md:w-1/2 max-w-[520px] border border-[#8a8989] rounded-[10px] p-8 bg-white flex flex-col">
+            <h1 className="text-[32px] font-bold text-center mb-2">Đăng Ký</h1>
+            <p className="text-center text-[#636366] mb-6">Vui lòng tạo tài khoản của bạn để tiếp tục.</p>
 
-                        <Input
-                            size="large"
-                            placeholder="Nhập mã OTP"
-                            prefix={<SafetyOutlined />}
-                            value={otp}
-                            onChange={(e) => setOtp(e.target.value)}
-                            maxLength={6}
-                            style={{ marginBottom: 16, textAlign: 'center', fontSize: 18, letterSpacing: 8 }}
-                        />
+            <div className="flex items-center mb-8">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 bg-[#46a5f0] text-white rounded-full flex items-center justify-center text-sm font-semibold">1</div>
+                <span className="text-sm font-medium">Thông tin</span>
+              </div>
+              <div className="flex-1 border-t border-gray-300 mx-4"></div>
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 bg-gray-200 rounded-full flex items-center justify-center text-sm">2</div>
+                <span className="text-sm text-gray-400">Xác nhận OTP</span>
+              </div>
+            </div>
 
-                        <Button type="primary" block size="large" loading={loading} onClick={onConfirmOtp}
-                            style={{ marginBottom: 12 }}>
-                            Xác nhận
-                        </Button>
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
 
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <Button type="link" size="small" onClick={() => { setStep(0); setOtp(''); }}>
-                                ← Quay lại
-                            </Button>
-                            <Button type="link" size="small" loading={loading} onClick={handleResendOtp}>
-                                Gửi lại OTP
-                            </Button>
-                        </div>
-                    </>
-                )}
+              <div className="flex items-center border border-[#e0e0e0] rounded-[10px] px-4 h-12">
+                <img src={userIcon} className="w-5 h-5 opacity-70" alt="icon" />
+                <input name="username" placeholder="Tên tài khoản" value={formData.username} onChange={handleChange} className="flex-1 ml-3 outline-none" />
+              </div>
 
-                <Divider>hoặc</Divider>
+              <div className="flex items-center border border-[#e0e0e0] rounded-[10px] px-4 h-12">
+                <img src={lockIcon} className="w-5 h-5 opacity-70" alt="icon" />
+                <input type={showPassword ? "text" : "password"} name="password" placeholder="Mật khẩu" value={formData.password} onChange={handleChange} className="flex-1 ml-3 outline-none" />
+                <img src={showPassword ? eyeOpen : eyeClose} className="w-5 h-5 cursor-pointer" onClick={() => setShowPassword(!showPassword)} alt="toggle password" />
+              </div>
 
-                <div style={{ textAlign: 'center' }}>
-                    <Text>
-                        Đã có tài khoản? <Link to="/login">Đăng nhập</Link>
-                    </Text>
-                </div>
-            </Card>
+              <div className="flex items-center border border-[#e0e0e0] rounded-[10px] px-4 h-12">
+                <img src={userIcon} className="w-5 h-5 opacity-70" alt="icon" />
+                <input name="fullName" placeholder="Họ và tên" value={formData.fullName} onChange={handleChange} className="flex-1 ml-3 outline-none" />
+              </div>
+
+              <div className="flex items-center border border-[#e0e0e0] rounded-[10px] px-4 h-12">
+                <img src={mailIcon} className="w-5 h-5 opacity-70" alt="icon" />
+                <input name="email" placeholder="Email" value={formData.email} onChange={handleChange} className="flex-1 ml-3 outline-none" />
+              </div>
+
+              <div className="flex items-center border border-[#e0e0e0] rounded-[10px] px-4 h-12">
+                <img src={phoneIcon} className="w-5 h-5 opacity-70" alt="icon" />
+                <input name="phone" placeholder="Số điện thoại" value={formData.phone} onChange={handleChange} className="flex-1 ml-3 outline-none" />
+              </div>
+
+              <div className="flex items-center border border-[#e0e0e0] rounded-[10px] px-4 h-12">
+                <img src={addressIcon} className="w-5 h-5 opacity-70" alt="icon" />
+                <input name="address" placeholder="Địa chỉ" value={formData.address} onChange={handleChange} className="flex-1 ml-3 outline-none" />
+              </div>
+
+              <button type="submit" disabled={loading} className="mt-4 h-12 bg-[#254b86] text-white font-bold rounded-lg hover:bg-[#1e3d6b]">
+                {loading ? "Đang xử lý..." : "Đăng Ký"}
+              </button>
+            </form>
+
+            <p className="text-center text-[#636366] mt-6">
+              Bạn đã có tài khoản?{" "}
+              <Link to="/login" className="text-[#254b86] font-bold underline">
+                Đăng Nhập Ngay
+              </Link>
+            </p>
+          </div>
         </div>
-    );
+      </main>
+      <PublicFooter />
+    </div>
+  );
 };
 
 export default RegisterPage;

@@ -9,12 +9,14 @@ import HouseDetailPage from '@/pages/public/HouseDetailPage';
 import LandListPage from '@/pages/public/LandListPage';
 import LandDetailPage from '@/pages/public/LandDetailPage';
 import MyPostsPage from '@/pages/public/MyPostsPage';
+import FavoritesPage from '@/pages/public/FavoritesPage';
 
 // Auth pages
 import LoginPage from '@/pages/auth/LoginPage';
 import RegisterPage from '@/pages/auth/RegisterPage';
 import ForgotPasswordPage from '@/pages/auth/ForgotPasswordPage';
-
+import ConfirmOTP from '@/pages/auth/ConfirmOTP';
+import PublicProfilePage from '@/pages/auth/ProfilePage';
 // Admin pages
 import DashboardPage from '@/pages/admin/DashboardPage';
 import HouseManagementPage from '@/pages/admin/HouseManagementPage';
@@ -34,6 +36,7 @@ import ProfilePage from '@/pages/admin/ProfilePage';
 import PaymentHistoryPage from '@/pages/admin/PaymentHistoryPage';
 import PaymentResultPage from '@/pages/public/PaymentResultPage';
 
+
 const router = createBrowserRouter([
     // Auth routes
     {
@@ -45,9 +48,21 @@ const router = createBrowserRouter([
         element: <RegisterPage />,
     },
     {
+        path: '/otp',                      
+        element: <ConfirmOTP />,           
+    },
+    {
         path: '/forgot-password',
         element: <ForgotPasswordPage />,
     },
+    { 
+                path: 'profile', 
+                element: (
+                    <ProtectedRoute>
+                        <PublicProfilePage />
+                    </ProtectedRoute>
+                ) 
+            },
 
     // Public routes
     {
@@ -59,6 +74,14 @@ const router = createBrowserRouter([
             { path: 'houses/:id', element: <HouseDetailPage /> },
             { path: 'lands', element: <LandListPage /> },
             { path: 'lands/:id', element: <LandDetailPage /> },
+            {
+                path: 'favorites',
+                element: (
+                 
+                        <FavoritesPage />
+                  
+                ),
+            },
             {
                 path: 'my-posts',
                 element: (

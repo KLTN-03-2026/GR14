@@ -4,15 +4,15 @@ import { PartialType } from '@nestjs/mapped-types';
 export class CreateEmployeeDto {
     @IsNotEmpty()
     @IsString()
-    code: string;
+    code!: string;
 
     @IsNotEmpty()
     @IsString()
-    username: string;
+    username!: string;
 
     @IsNotEmpty()
     @IsString()
-    password: string;
+    password!: string;
 
     @IsOptional()
     @IsString()
