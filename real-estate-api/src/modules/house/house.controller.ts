@@ -1,7 +1,7 @@
 import {
     Controller, Get, Post, Put, Delete,
     Param, Body, Query, UseGuards, ParseIntPipe,
-    UploadedFiles, UseInterceptors, Req
+    UploadedFiles, UseInterceptors,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { FilesInterceptor } from '@nestjs/platform-express';
@@ -15,15 +15,18 @@ export class HouseController {
     constructor(private readonly houseService: HouseService) { }
 
     @Get()
-    findAll(@Query('page') page = 1, @Query('limit') limit = 10, @Query('search') search?: string) {
+    findAll(
+        @Query('page') page = 1,
+        @Query('limit') limit = 10,
+        @Query('search') search?: string,
+    ) {
         if (search) return this.houseService.search(search, +page, +limit);
         return this.houseService.findAll(+page, +limit);
     }
 
-    @Get('my-houses')
-    @UseGuards(AuthGuard('jwt'))
-    findMyHouses(@Req() req: any) {
-        return this.houseService.findByUser(req.user.id);
+    @Get('search')
+    search(@Query('q') query: string, @Query('page') page = 1, @Query('limit') limit = 10) {
+        return this.houseService.search(query, +page, +limit);
     }
 
     @Get(':id')
@@ -35,7 +38,10 @@ export class HouseController {
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @Roles('ADMIN', 'EMPLOYEE')
     @UseInterceptors(FilesInterceptor('images', 10))
-    create(@Body() dto: CreateHouseDto, @UploadedFiles() files: Express.Multer.File[]) {
+    create(
+        @Body() dto: CreateHouseDto,
+        @UploadedFiles() files: Express.Multer.File[],
+    ) {
         return this.houseService.create(dto, files);
     }
 
@@ -43,7 +49,11 @@ export class HouseController {
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @Roles('ADMIN', 'EMPLOYEE')
     @UseInterceptors(FilesInterceptor('images', 10))
-    update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateHouseDto, @UploadedFiles() files: Express.Multer.File[]) {
+    update(
+        @Param('id', ParseIntPipe) id: number,
+        @Body() dto: UpdateHouseDto,
+        @UploadedFiles() files: Express.Multer.File[],
+    ) {
         return this.houseService.update(id, dto, files);
     }
 

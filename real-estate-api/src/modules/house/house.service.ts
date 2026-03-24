@@ -5,15 +5,14 @@ import { RedisService } from '../../common/redis/redis.service';
 import { CreateHouseDto, UpdateHouseDto } from './dto/house.dto';
 import { validateFieldsNoSpecialChars } from '../../common/utils/validators';
 
-const HOUSE_LIST_TTL = 600;
-const HOUSE_DETAIL_TTL = 900;
-const HOUSE_SEARCH_TTL = 300;
-const HOUSE_USER_TTL = 600;
+// Cache TTL (seconds)
+const HOUSE_LIST_TTL = 600;   // 10 minutes
+const HOUSE_DETAIL_TTL = 900;  // 15 minutes
+const HOUSE_SEARCH_TTL = 300;   // 5 minutes
 
 const houseListKey = (page: number, limit: number) => `houses:list:${page}:${limit}`;
 const houseDetailKey = (id: number) => `house:${id}`;
 const houseSearchKey = (query: string, page: number, limit: number) => `houses:search:${query}:${page}:${limit}`;
-const houseUserKey = (userId: number) => `houses:user:${userId}`;
 
 @Injectable()
 export class HouseService {
@@ -27,9 +26,15 @@ export class HouseService {
 
     async findAll(page = 1, limit = 10) {
         const cacheKey = houseListKey(page, limit);
-        const cached = await this.redis.get(cacheKey).catch(() => null);
-        if (cached) return cached;
 
+        // Try cache first
+        const cached = await this.redis.get(cacheKey).catch(() => null);
+        if (cached) {
+            this.logger.debug(`Cache HIT: ${cacheKey}`);
+            return cached;
+        }
+
+        this.logger.debug(`Cache MISS: ${cacheKey}`);
         const skip = (page - 1) * limit;
         const [houses, total] = await Promise.all([
             this.prisma.house.findMany({
@@ -54,36 +59,25 @@ export class HouseService {
             totalItems: total,
         };
 
-        await this.redis.set(cacheKey, result, HOUSE_LIST_TTL).catch(() => { });
-        return result;
-    }
-
-    async findByUser(userId: number) {
-        const cacheKey = houseUserKey(userId);
-        const cached = await this.redis.get(cacheKey).catch(() => null);
-        if (cached) return cached;
-
-        const houses = await this.prisma.house.findMany({
-            where: { employee: { userId: userId } },
-            include: {
-                category: true,
-                images: { select: { id: true, url: true } },
-                employee: {
-                    include: { user: { select: { id: true, fullName: true } } }
-                }
-            },
-            orderBy: { createdAt: 'desc' }
+        // Set cache
+        await this.redis.set(cacheKey, result, HOUSE_LIST_TTL).catch(() => {
+            this.logger.warn(`Failed to cache ${cacheKey}`);
         });
 
-        await this.redis.set(cacheKey, houses, HOUSE_USER_TTL).catch(() => { });
-        return houses;
+        return result;
     }
 
     async findById(id: number) {
         const cacheKey = houseDetailKey(id);
-        const cached = await this.redis.get(cacheKey).catch(() => null);
-        if (cached) return cached;
 
+        // Try cache first
+        const cached = await this.redis.get(cacheKey).catch(() => null);
+        if (cached) {
+            this.logger.debug(`Cache HIT: ${cacheKey}`);
+            return cached;
+        }
+
+        this.logger.debug(`Cache MISS: ${cacheKey}`);
         const house = await this.prisma.house.findUnique({
             where: { id },
             include: {
@@ -96,13 +90,19 @@ export class HouseService {
         });
         if (!house) throw new NotFoundException('House not found');
 
-        await this.redis.set(cacheKey, house, HOUSE_DETAIL_TTL).catch(() => { });
+        // Set cache
+        await this.redis.set(cacheKey, house, HOUSE_DETAIL_TTL).catch(() => {
+            this.logger.warn(`Failed to cache ${cacheKey}`);
+        });
+
         return house;
     }
 
     async create(dto: CreateHouseDto, files?: Express.Multer.File[]) {
         const fieldsToCheck = [dto.code, dto.title, dto.city, dto.district, dto.ward, dto.street, dto.houseNumber, dto.direction];
-        if (validateFieldsNoSpecialChars(fieldsToCheck)) throw new BadRequestException('Fields contain special characters');
+        if (validateFieldsNoSpecialChars(fieldsToCheck)) {
+            throw new BadRequestException('Fields contain special characters');
+        }
 
         const existing = await this.prisma.house.findUnique({ where: { code: dto.code } });
         if (existing) throw new BadRequestException('House code already exists');
@@ -127,7 +127,6 @@ export class HouseService {
                 categoryId: dto.categoryId ? parseInt(dto.categoryId as any) : null,
                 employeeId: dto.employeeId ? parseInt(dto.employeeId as any) : null,
             },
-            include: { employee: true }
         });
 
         if (files?.length) {
@@ -141,16 +140,28 @@ export class HouseService {
             });
         }
 
-        await this.invalidateHouseCache(house.employee?.userId);
-        return { message: 'House created successfully', data: await this.findById(house.id) };
+        // Invalidate cache
+        await this.invalidateHouseCache();
+
+        return {
+            message: 'House created successfully',
+            data: await this.findById(house.id),
+        };
     }
 
     async update(id: number, dto: UpdateHouseDto, files?: Express.Multer.File[]) {
-        const house = await this.prisma.house.findUnique({ 
-            where: { id },
-            include: { employee: true }
-        });
+        const house = await this.prisma.house.findUnique({ where: { id } });
         if (!house) throw new NotFoundException('House not found');
+
+        if (dto.code) {
+            const existing = await this.prisma.house.findUnique({ where: { code: dto.code } });
+            if (existing && existing.id !== id) throw new BadRequestException('House code already exists');
+        }
+
+        const fieldsToCheck = [dto.code, dto.title, dto.city, dto.district, dto.ward, dto.street, dto.houseNumber, dto.direction];
+        if (validateFieldsNoSpecialChars(fieldsToCheck)) {
+            throw new BadRequestException('Fields contain special characters');
+        }
 
         await this.prisma.house.update({
             where: { id },
@@ -161,35 +172,67 @@ export class HouseService {
                 ...(dto.district !== undefined && { district: dto.district }),
                 ...(dto.ward !== undefined && { ward: dto.ward }),
                 ...(dto.street !== undefined && { street: dto.street }),
+                ...(dto.houseNumber !== undefined && { houseNumber: dto.houseNumber }),
+                ...(dto.description !== undefined && { description: dto.description }),
                 ...(dto.price !== undefined && { price: dto.price }),
+                ...(dto.area !== undefined && { area: parseFloat(dto.area as any) }),
+                ...(dto.direction !== undefined && { direction: dto.direction }),
+                ...(dto.floors !== undefined && { floors: parseInt(dto.floors as any) }),
+                ...(dto.bedrooms !== undefined && { bedrooms: parseInt(dto.bedrooms as any) }),
+                ...(dto.bathrooms !== undefined && { bathrooms: parseInt(dto.bathrooms as any) }),
                 ...(dto.status !== undefined && { status: dto.status }),
+                ...(dto.categoryId !== undefined && { categoryId: dto.categoryId ? parseInt(dto.categoryId as any) : null }),
+                ...(dto.employeeId !== undefined && { employeeId: dto.employeeId ? parseInt(dto.employeeId as any) : null }),
             },
         });
 
-        if (files?.length) {
-            const uploads = await this.cloudinaryService.uploadImages(files);
-            await this.prisma.houseImage.createMany({
-                data: uploads.map((upload, index) => ({
-                    url: upload.secure_url,
+        if (files?.length || dto.keepImageIds !== undefined) {
+            // Parse danh sách ID ảnh cần giữ
+            const keepIds: number[] = dto.keepImageIds
+                ? (Array.isArray(dto.keepImageIds) ? dto.keepImageIds : [dto.keepImageIds])
+                    .map(Number).filter((n) => !isNaN(n))
+                : [];
+
+            // Xóa ảnh không nằm trong keepIds
+            await this.prisma.houseImage.deleteMany({
+                where: {
                     houseId: id,
-                    position: index + 1,
-                })),
+                    ...(keepIds.length > 0 ? { id: { notIn: keepIds } } : {}),
+                },
             });
+
+            // Upload và thêm ảnh mới
+            if (files?.length) {
+                const existingCount = await this.prisma.houseImage.count({ where: { houseId: id } });
+                const uploads = await this.cloudinaryService.uploadImages(files);
+                await this.prisma.houseImage.createMany({
+                    data: uploads.map((upload, index) => ({
+                        url: upload.secure_url,
+                        houseId: id,
+                        position: existingCount + index + 1,
+                    })),
+                });
+            }
         }
 
-        await this.invalidateHouseCache(house.employee?.userId);
+        // Invalidate cache
+        await this.invalidateHouseCache();
         await this.redis.del(houseDetailKey(id)).catch(() => { });
 
-        return { message: 'House updated successfully', data: await this.findById(id) };
+        return {
+            message: 'House updated successfully',
+            data: await this.findById(id),
+        };
     }
 
     async delete(id: number) {
         const house = await this.prisma.house.findUnique({
             where: { id },
-            include: { images: true, employee: true },
+            include: { images: true },
         });
         if (!house) throw new NotFoundException('House not found');
 
+        // Delete cloudinary images
         for (const img of house.images) {
             const publicId = img.url.split('/').pop()?.split('.')[0];
             if (publicId) await this.cloudinaryService.deleteImage(publicId);
@@ -198,7 +241,8 @@ export class HouseService {
         await this.prisma.houseImage.deleteMany({ where: { houseId: id } });
         await this.prisma.house.delete({ where: { id } });
 
-        await this.invalidateHouseCache(house.employee?.userId);
+        // Invalidate cache
+        await this.invalidateHouseCache();
         await this.redis.del(houseDetailKey(id)).catch(() => { });
 
         return { message: 'House deleted successfully' };
@@ -206,38 +250,61 @@ export class HouseService {
 
     async search(query: string, page = 1, limit = 10) {
         const cacheKey = houseSearchKey(query, page, limit);
-        const cached = await this.redis.get(cacheKey).catch(() => null);
-        if (cached) return cached;
 
+        // Try cache first
+        const cached = await this.redis.get(cacheKey).catch(() => null);
+        if (cached) {
+            this.logger.debug(`Cache HIT: ${cacheKey}`);
+            return cached;
+        }
+
+        this.logger.debug(`Cache MISS: ${cacheKey}`);
         const skip = (page - 1) * limit;
         const where = {
             OR: [
                 { title: { contains: query } },
                 { city: { contains: query } },
                 { district: { contains: query } },
+                { ward: { contains: query } },
+                { description: { contains: query } },
             ],
         };
 
         const [houses, total] = await Promise.all([
             this.prisma.house.findMany({
-                where, skip, take: limit,
-                include: { category: true, images: { select: { url: true } } },
+                where,
+                skip,
+                take: limit,
+                include: {
+                    category: true,
+                    images: { select: { url: true } },
+                },
             }),
             this.prisma.house.count({ where }),
         ]);
 
-        const result = { data: houses, currentPage: page, totalPages: Math.ceil(total / limit), totalItems: total };
-        await this.redis.set(cacheKey, result, HOUSE_SEARCH_TTL).catch(() => { });
+        const result = {
+            data: houses,
+            currentPage: page,
+            totalPages: Math.ceil(total / limit),
+            totalItems: total,
+        };
+
+        // Set cache
+        await this.redis.set(cacheKey, result, HOUSE_SEARCH_TTL).catch(() => {
+            this.logger.warn(`Failed to cache ${cacheKey}`);
+        });
+
         return result;
     }
 
-    private async invalidateHouseCache(userId?: number): Promise<void> {
+    private async invalidateHouseCache(): Promise<void> {
         try {
             await this.redis.delByPattern('houses:list:*');
             await this.redis.delByPattern('houses:search:*');
-            if (userId) await this.redis.del(houseUserKey(userId));
+            this.logger.debug('House cache invalidated');
         } catch (error) {
-            this.logger.warn('Failed to invalidate cache', error);
+            this.logger.warn('Failed to invalidate house cache:', error);
         }
     }
 }
