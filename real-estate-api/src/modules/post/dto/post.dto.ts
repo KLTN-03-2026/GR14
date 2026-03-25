@@ -1,4 +1,5 @@
 import { IsNotEmpty, IsString, IsOptional } from 'class-validator';
+import { PartialType } from '@nestjs/mapped-types';
 
 export class CreatePostDto {
     @IsNotEmpty()
@@ -26,12 +27,17 @@ export class CreatePostDto {
     description: string;
 
     @IsNotEmpty()
-    price: any;
+    @IsString()           // ← đổi thành IsString
+    price: string;        // ← đổi thành string
 
     @IsNotEmpty()
-    area: any;
+    @IsString()           // ← đổi thành IsString
+    area: string;         // ← đổi thành string
 
     @IsOptional()
     @IsString()
     direction?: string;
 }
+
+// Update DTO
+export class UpdatePostDto extends PartialType(CreatePostDto) {}

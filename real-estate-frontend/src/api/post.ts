@@ -1,15 +1,13 @@
 import apiClient from './client';
 
 export const postApi = {
-    getApproved: (params?: Record<string, unknown>) =>
+    getApproved: (params?: { page?: number; limit?: number }) =>
         apiClient.get('/posts/approved', { params }),
 
     getPending: () =>
         apiClient.get('/posts/pending'),
-
     getAll: () =>
         apiClient.get('/posts/all'),
-
     getMyPosts: () =>
         apiClient.get('/posts/my-posts'),
 
@@ -18,7 +16,12 @@ export const postApi = {
 
     create: (data: FormData) =>
         apiClient.post('/posts', data, {
-            headers: { 'Content-Type': 'multipart/form-data' },
+            headers: { 'Content-Type': 'multipart/form-data' }
+        }),
+
+    update: (id: number, data: FormData) =>
+        apiClient.put(`/posts/${id}`, data, {
+            headers: { 'Content-Type': 'multipart/form-data' }
         }),
 
     approve: (id: number) =>

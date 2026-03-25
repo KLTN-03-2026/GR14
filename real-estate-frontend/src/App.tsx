@@ -1,5 +1,5 @@
 import { RouterProvider } from 'react-router-dom';
-import { ConfigProvider } from 'antd';
+import { ConfigProvider, App as AntdApp } from 'antd';
 import viVN from 'antd/locale/vi_VN';
 import router from './routes';
 import { GoogleOAuthProvider } from '@react-oauth/google';
@@ -18,7 +18,9 @@ function App() {
           },
         }}
       >
-        <RouterProvider router={router} />
+        <AntdApp>
+          <RouterProvider router={router} />
+        </AntdApp>
       </ConfigProvider>
     </GoogleOAuthProvider>
   );
