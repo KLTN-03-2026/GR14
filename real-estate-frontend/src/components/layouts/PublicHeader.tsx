@@ -3,12 +3,16 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Dropdown, type MenuProps } from 'antd';
 import { useAuthStore } from '@/stores/authStore';
 import group from "../../assets/logo.png";
+
+<img className="w-[45px] h-8" alt="Black'S City Logo" src={group} />
+import { Dropdown, type MenuProps } from 'antd';
+import { useAuthStore } from '@/stores/authStore';
 const navigationItems = [
   { label: "Trang Chủ", href: "/" },
   { label: "Nhà Đất", href: "/houses" },
   { label: "Đất Đai", href: "/lands" },
-  { label: "Tin Tức", href: "/news" },
-  { label: "Đăng Bài Viết", href: "/posts" },
+  { label: "Bài Viết", href: "/posts" },
+  { label: "Đăng Bài Viết", href: "/news" },
   { label: "Về Chúng Tôi", href: "/about" },
   { label: "Liên Hệ", href: "/contact" },
 ];

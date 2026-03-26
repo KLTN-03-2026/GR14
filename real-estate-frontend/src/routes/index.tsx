@@ -9,6 +9,8 @@ import HouseDetailPage from '@/pages/public/HouseDetailPage';
 import LandListPage from '@/pages/public/LandListPage';
 import LandDetailPage from '@/pages/public/LandDetailPage';
 import MyPostsPage from '@/pages/public/MyPostsPage';
+import NewsPage from '@/pages/public/NewsPage';
+import NewsDetailPage from '@/pages/public/NewsDetailPage';
 import FavoritesPage from '@/pages/public/FavoritesPage';
 import AboutMe from '@/pages/public/AboutMe';
 
@@ -49,21 +51,21 @@ const router = createBrowserRouter([
         element: <RegisterPage />,
     },
     {
-        path: '/otp',                      
-        element: <ConfirmOTP />,           
+        path: '/otp',
+        element: <ConfirmOTP />,
     },
     {
         path: '/forgot-password',
         element: <ForgotPasswordPage />,
     },
-    { 
-                path: 'profile', 
-                element: (
-                    <ProtectedRoute>
-                        <PublicProfilePage />
-                    </ProtectedRoute>
-                ) 
-            },
+    {
+        path: 'profile',
+        element: (
+            <ProtectedRoute>
+                <PublicProfilePage />
+            </ProtectedRoute>
+        )
+    },
 
     // Public routes
     {
@@ -75,13 +77,15 @@ const router = createBrowserRouter([
             { path: 'houses/:id', element: <HouseDetailPage /> },
             { path: 'lands', element: <LandListPage /> },
             { path: 'lands/:id', element: <LandDetailPage /> },
+            { path: 'posts', element: <NewsPage /> },
+            { path: '/posts/:id', element: <NewsDetailPage /> },
             { path: 'about', element: <AboutMe /> },
             {
                 path: 'favorites',
                 element: (
-                 
-                        <FavoritesPage />
-                  
+
+                    <FavoritesPage />
+
                 ),
             },
             {
