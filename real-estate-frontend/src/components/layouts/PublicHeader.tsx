@@ -1,8 +1,7 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import group from "../../assets/logo.png"; 
+import group from "../../assets/logo.png";
 
-<img className="w-[45px] h-8" alt="Black'S City Logo" src={group} />
 const navigationItems = [
   { label: "Trang Chủ", href: "/" },
   { label: "Nhà Đất", href: "/houses" },

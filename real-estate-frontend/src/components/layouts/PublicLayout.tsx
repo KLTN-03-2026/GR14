@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import PublicHeader from './PublicHeader';
 import PublicFooter from './PublicFooter';
+import { ChatbotWidget } from '@/components/common';
 
 const PublicLayout: React.FC = () => {
     return (
@@ -9,6 +10,7 @@ const PublicLayout: React.FC = () => {
             <main style={{ flex: 1 }}>
                 <Outlet />
             </main>
+            <ChatbotWidget />
             <PublicFooter />
         </div>
     );

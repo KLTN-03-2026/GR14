@@ -14,7 +14,7 @@ export const authApi = {
         apiClient.post<AuthResponse>('/login-google', { idToken }),
 
     refreshToken: (refreshToken: string) =>
-        apiClient.post<{ data: AuthResponse }>('/refresh-token', { refreshToken }),
+        apiClient.post<{ accessToken: string; refreshToken?: string }>('/refresh-token', { refreshToken }),
 
     forgotPassword: (data: ForgotPasswordRequest) =>
         apiClient.post('/forgot-password', data),

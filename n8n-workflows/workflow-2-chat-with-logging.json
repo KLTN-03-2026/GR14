@@ -1,0 +1,103 @@
+{
+  "name": "RAG Chatbot - Chat with Logging",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "chat-log",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook_trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://real-estate-backend:5000/api/ai/chat",
+        "sendBody": true,
+        "bodyParametersJson": "={\n  \"question\": $json.body.question,\n  \"sessionId\": $json.body.sessionId\n}"
+      },
+      "id": "call_chat_api",
+      "name": "Call Chat API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://real-estate-backend:5000/api/chat-logs",
+        "sendBody": true,
+        "bodyParametersJson": "={\n  \"question\": $json.body.question,\n  \"answer\": $json.answer,\n  \"sessionId\": $json.body.sessionId,\n  \"confidence\": $json.confidence,\n  \"timestamp\": new Date().toISOString()\n}"
+      },
+      "id": "log_chat",
+      "name": "Log Chat to Database",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        750,
+        300
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "responseBody": "={\n  \"ok\": $json.ok ?? true,\n  \"answer\": $json.answer,\n  \"structured\": $json.structured,\n  \"confidence\": $json.confidence,\n  \"sessionId\": $json.sessionId,\n  \"sources\": $json.sources,\n  \"relatedSources\": $json.relatedSources\n}"
+      },
+      "id": "respond_webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "webhook_trigger": {
+      "main": [
+        [
+          {
+            "node": "call_chat_api",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "call_chat_api": {
+      "main": [
+        [
+          {
+            "node": "log_chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "log_chat": {
+      "main": [
+        [
+          {
+            "node": "respond_webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {}
+}
