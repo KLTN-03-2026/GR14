@@ -17,6 +17,7 @@
     "autoprefixer": "^10.4.27",
     "axios": "^1.13.5",
     "dayjs": "^1.11.19",
+    "lines-and-columns": "^1.2.4",
     "postcss": "^8.5.8",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

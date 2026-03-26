@@ -33,18 +33,18 @@ apiClient.interceptors.response.use(
             originalRequest._retry = true;
 
             try {
-                const refreshToken = useAuthStore.getState().refreshToken;
-                if (!refreshToken) {
+                const currentRefreshToken = useAuthStore.getState().refreshToken;
+                if (!currentRefreshToken) {
                     useAuthStore.getState().logout();
                     return Promise.reject(error);
                 }
 
-                const response = await axios.post(`${API_BASE_URL}/refresh-token`, {
-                    refreshToken,
+                const response = await axios.post<{ accessToken: string; refreshToken?: string }>(`${API_BASE_URL}/refresh-token`, {
+                    refreshToken: currentRefreshToken,
                 });
 
-                const { accessToken, refreshToken: newRefreshToken } = response.data;
-                useAuthStore.getState().setTokens(accessToken, newRefreshToken);
+                const { accessToken, refreshToken: rotatedRefreshToken } = response.data;
+                useAuthStore.getState().setTokens(accessToken, rotatedRefreshToken ?? currentRefreshToken);
 
                 originalRequest.headers.Authorization = `Bearer ${accessToken}`;
                 return apiClient(originalRequest);

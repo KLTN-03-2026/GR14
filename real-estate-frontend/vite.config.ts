@@ -24,6 +24,14 @@ export default defineConfig({
         target: 'http://localhost:5000',
         changeOrigin: true,
       },
+      '/webhook': {
+        target: 'http://localhost:5678',
+        changeOrigin: true,
+      },
+      '/webhook-test': {
+        target: 'http://localhost:5678',
+        changeOrigin: true,
+      },
     },
   },
 })

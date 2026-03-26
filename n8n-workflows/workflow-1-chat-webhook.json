@@ -1,0 +1,78 @@
+{
+  "name": "RAG Chatbot - Chat via Webhook",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "chat",
+        "responseMode": "lastNode",
+        "httpMethod": "POST",
+        "options": {}
+      },
+      "id": "webhook_trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "{{$flow.webhookId}}"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://real-estate-backend:5000/api/ai/chat",
+        "sendBody": true,
+        "bodyParametersJson": "={\n  \"question\": $json.body.question,\n  \"sessionId\": $json.body.sessionId\n}"
+      },
+      "id": "http_nes_tjs",
+      "name": "Call NestJS Chat API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        500,
+        300
+      ],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "responseBody": "={\n  \"ok\": $json.ok,\n  \"answer\": $json.answer,\n  \"structured\": $json.structured,\n  \"confidence\": $json.confidence,\n  \"sessionId\": $json.sessionId,\n  \"sources\": $json.sources,\n  \"relatedSources\": $json.relatedSources\n}"
+      },
+      "id": "respond_webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        750,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "webhook_trigger": {
+      "main": [
+        [
+          {
+            "node": "http_nes_tjs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "http_nes_tjs": {
+      "main": [
+        [
+          {
+            "node": "respond_webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {}
+}
