@@ -125,16 +125,4 @@ export class MailService {
       </div>
     `;
   }
-  getOtpEmailHtml(fullName: string, otp: string): string {
-    return `
-      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;border:1px solid #e8e8e8;border-radius:8px;">
-        <h2 style="color:#1677ff;">🔐 Mã xác thực OTP</h2>
-        <p>Kính gửi <strong>${fullName}</strong>,</p>
-        <p>Mã OTP của bạn là:</p>
-        <h1 style="color:#000;letter-spacing:4px;">${otp}</h1>
-        <p>Mã này sẽ hết hạn sau vài phút. Vui lòng không chia sẻ với bất kỳ ai.</p>
-        <p style="color:#888;font-size:13px;">Trân trọng,<br/>Đội ngũ BĐS</p>
-      </div>
-    `;
-  }
 }
