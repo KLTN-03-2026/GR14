@@ -3,6 +3,7 @@
 @tailwind utilities;
 
 @layer base {
+
   button,
   input,
   select,
@@ -86,13 +87,13 @@ body {
   --p-font-weight: 400;
   --p-letter-spacing: 0px;
   --p-line-height: 160%;
-  
+
   --variable-collection-general-300: rgba(224, 224, 224, 1);
   --variable-collection-general-700: rgba(99, 99, 102, 1);
   --variable-collection-general-900: rgba(28, 28, 27, 1);
   --variable-collection-general-white: rgba(255, 255, 255, 1);
   --variable-collection-primary-800: rgba(37, 75, 134, 1);
-  
+
   --animate-spin: spin 1s linear infinite;
 }
 
@@ -131,10 +132,12 @@ body {
     opacity: 0;
     animation-timing-function: cubic-bezier(0.74, 0.25, 0.76, 1);
   }
+
   10% {
     opacity: 0.7;
     animation-timing-function: cubic-bezier(0.12, 0.01, 0.08, 0.99);
   }
+
   to {
     opacity: 0.4;
   }
@@ -145,6 +148,7 @@ body {
     opacity: 0;
     transform: translateY(-10px);
   }
+
   to {
     opacity: 1;
     transform: none;
@@ -156,6 +160,7 @@ body {
     opacity: 0;
     transform: translateY(20px);
   }
+
   to {
     opacity: 1;
     transform: none;
@@ -163,11 +168,13 @@ body {
 }
 
 @keyframes shimmer {
+
   0%,
   90%,
   to {
     background-position: calc(-100% - var(--shimmer-width)) 0;
   }
+
   30%,
   60% {
     background-position: calc(100% + var(--shimmer-width)) 0;
@@ -178,6 +185,7 @@ body {
   0% {
     transform: translate(0);
   }
+
   to {
     transform: translateX(calc(-100% - var(--gap)));
   }
@@ -187,7 +195,61 @@ body {
   0% {
     transform: translateY(0);
   }
+
   to {
     transform: translateY(calc(-100% - var(--gap)));
   }
+}
+
+/* ===== RANGE SLIDER (GIÁ BÁN) ===== */
+input[type="range"] {
+  -webkit-appearance: none;
+  height: 4px;
+  background: #ddd;
+  border-radius: 999px;
+  outline: none;
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  background: transparent;
+  pointer-events: none;
+  /* QUAN TRỌNG */
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  pointer-events: auto;
+  /* chỉ thumb click được */
+  width: 16px;
+  height: 16px;
+  background: #ff6a00;
+  border-radius: 50%;
+  cursor: pointer;
+  position: relative;
+  z-index: 50;
+}
+
+input[type="range"]::-moz-range-thumb {
+  pointer-events: auto;
+  width: 16px;
+  height: 16px;
+  background: #ff6a00;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+/* ===== TEXT CLAMP ===== */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.range-track {
+  position: absolute;
+  height: 4px;
+  background: #ff6a00;
+  border-radius: 999px;
 }

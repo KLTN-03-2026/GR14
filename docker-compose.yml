@@ -93,6 +93,13 @@ services:
       MOMO_NOTIFY_URL: ${MOMO_NOTIFY_URL}
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
       REDIS_URL: redis://redis:6379
+      OLLAMA_URL: ${OLLAMA_URL:-http://real-estate-ollama:11434}
+      QDRANT_URL: ${QDRANT_URL:-http://real-estate-qdrant:6333}
+      RAG_COLLECTION: ${RAG_COLLECTION:-real_estate_rag}
+      CHAT_MODEL: ${CHAT_MODEL:-qwen2.5:7b}
+      EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
+      RAG_TOP_K: ${RAG_TOP_K:-5}
+      RAG_MIN_SCORE: ${RAG_MIN_SCORE:-0.2}
     volumes:
       - ./real-estate-api/src:/app/src
       - ./real-estate-api/prisma:/app/prisma
@@ -115,6 +122,7 @@ services:
       - "${FE_PORT:-3000}:3000"
     environment:
       VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:5000/api}
+    command: sh -lc "npm install; npm run dev -- --host"
     volumes:
       - ./real-estate-frontend:/app
       - /app/node_modules

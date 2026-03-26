@@ -1,0 +1,56 @@
+{
+  "name": "RAG Chatbot - Auto Index Scheduler",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerAtStartup": false,
+        "triggerAtEnd": false,
+        "mode": "custom",
+        "cronExpression": "0 2 * * *"
+      },
+      "id": "cron_trigger",
+      "name": "Trigger Every Day",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://real-estate-backend:5000/api/ai/index",
+        "sendBody": false
+      },
+      "id": "trigger_index",
+      "name": "Trigger Index Operation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        500,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "cron_trigger": {
+      "main": [
+        [
+          {
+            "node": "trigger_index",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "trigger_index": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": true,
+  "settings": {}
+}

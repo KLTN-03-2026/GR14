@@ -1,21 +1,25 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Dropdown, type MenuProps } from 'antd';
-import { useAuthStore } from '@/stores/authStore'; 
+import { useAuthStore } from '@/stores/authStore';
 import group from "../../assets/logo.png";
+
+<img className="w-[45px] h-8" alt="Black'S City Logo" src={group} />
+import { Dropdown, type MenuProps } from 'antd';
+import { useAuthStore } from '@/stores/authStore';
 const navigationItems = [
   { label: "Trang Chủ", href: "/" },
   { label: "Nhà Đất", href: "/houses" },
   { label: "Đất Đai", href: "/lands" },
-  { label: "Tin Tức", href: "/news" },
-  { label: "Đăng Bài Viết", href: "/posts" },
+  { label: "Bài Viết", href: "/posts" },
+  { label: "Đăng Bài Viết", href: "/news" },
   { label: "Về Chúng Tôi", href: "/about" },
   { label: "Liên Hệ", href: "/contact" },
 ];
 
 const PublicHeader: React.FC = () => {
   const navigate = useNavigate();
-  
+
 
   const { user, isAuthenticated, logout } = useAuthStore();
 
@@ -26,18 +30,18 @@ const PublicHeader: React.FC = () => {
   };
 
 
- const userMenu: MenuProps['items'] = [
+  const userMenu: MenuProps['items'] = [
     {
       key: '1',
       label: <Link to="/profile">Thông tin tài khoản</Link>,
     },
     {
-      key: 'favorites', 
-      label: <Link to="/favorites">Danh sách yêu thích</Link>, 
+      key: 'favorites',
+      label: <Link to="/favorites">Danh sách yêu thích</Link>,
     },
     {
-      key: 'my-posts', 
-      label: <Link to="/my-posts">Bài viết của tôi</Link>, 
+      key: 'my-posts',
+      label: <Link to="/my-posts">Bài viết của tôi</Link>,
     },
     {
       type: 'divider',
