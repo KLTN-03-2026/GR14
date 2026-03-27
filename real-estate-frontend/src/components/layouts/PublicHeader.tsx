@@ -4,9 +4,6 @@ import { Dropdown, type MenuProps } from 'antd';
 import { useAuthStore } from '@/stores/authStore';
 import group from "../../assets/logo.png";
 
-<img className="w-[45px] h-8" alt="Black'S City Logo" src={group} />
-import { Dropdown, type MenuProps } from 'antd';
-import { useAuthStore } from '@/stores/authStore';
 const navigationItems = [
   { label: "Trang Chủ", href: "/" },
   { label: "Nhà Đất", href: "/houses" },

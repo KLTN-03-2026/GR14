@@ -34,12 +34,12 @@ export class AuthService {
             where: { username },
         });
         if (!user) {
-            throw new UnauthorizedException('Invalid username or password');
+            throw new UnauthorizedException('Tên đăng nhập hoặc mật khẩu không đúng');
         }
 
         const isValid = await bcrypt.compare(password, user.password);
         if (!isValid) {
-            throw new UnauthorizedException('Invalid username or password');
+            throw new UnauthorizedException('Tên đăng nhập hoặc mật khẩu không đúng');
         }
 
         const userRoles = await this.prisma.userRole.findMany({
@@ -100,12 +100,12 @@ export class AuthService {
     }
 
     async refreshToken(refreshToken: string) {
-        if (!refreshToken) throw new UnauthorizedException('Missing refresh token');
+        if (!refreshToken) throw new UnauthorizedException('Thiếu refresh token');
 
         const savedToken = await this.prisma.refreshToken.findFirst({
             where: { token: refreshToken, revoked: false },
         });
-        if (!savedToken) throw new UnauthorizedException('Invalid refresh token');
+        if (!savedToken) throw new UnauthorizedException('Refresh token không hợp lệ');
 
         try {
             const decoded = this.jwtService.verify(refreshToken, {
@@ -121,12 +121,12 @@ export class AuthService {
             const newAccessToken = this.jwtService.sign({ id: decoded.id, roles });
             return { accessToken: newAccessToken };
         } catch {
-            throw new UnauthorizedException('Invalid or expired refresh token');
+            throw new UnauthorizedException('Refresh token không hợp lệ hoặc đã hết hạn');
         }
     }
 
     async logout(refreshToken: string) {
-        if (!refreshToken) throw new BadRequestException('Missing refresh token');
+        if (!refreshToken) throw new BadRequestException('Thiếu refresh token');
 
         const token = await this.prisma.refreshToken.findFirst({ where: { token: refreshToken } });
         if (token) {
@@ -135,23 +135,23 @@ export class AuthService {
                 data: { revoked: true },
             });
         }
-        return { message: 'Logout successful' };
+        return { message: 'Đăng xuất thành công' };
     }
 
     async register(dto: RegisterDto) {
         const { username, password, fullName, phone, email, address } = dto;
 
         const existUser = await this.prisma.user.findUnique({ where: { username } });
-        if (existUser) throw new BadRequestException('Username already exists');
+        if (existUser) throw new BadRequestException('Tên đăng nhập đã tồn tại');
 
         if (email) {
             const existEmail = await this.prisma.user.findUnique({ where: { email } });
-            if (existEmail) throw new BadRequestException('Email already registered');
+            if (existEmail) throw new BadRequestException('Email đã được đăng ký');
         }
 
         if (phone) {
             const existPhone = await this.prisma.user.findUnique({ where: { phone } });
-            if (existPhone) throw new BadRequestException('Phone number already registered');
+            if (existPhone) throw new BadRequestException('Số điện thoại đã được đăng ký');
         }
 
         const otp = generateOTP();
@@ -165,11 +165,11 @@ export class AuthService {
             <p>Your OTP code is: <strong>${otp}</strong></p>
             <p>This code expires in 5 minutes.</p>
         `;
-        
+
         this.mailProducer.sendMail(email, 'Registration OTP Verification', html);
 
         return {
-            message: 'OTP sent to your email. Please verify to complete registration.',
+            message: 'Mã OTP đã được gửi đến email. Vui lòng xác thực để hoàn tất đăng ký.',
             tempData: { username, password, fullName, phone, email, address },
         };
     }
@@ -180,10 +180,10 @@ export class AuthService {
         const record = await this.prisma.passwordReset.findFirst({
             where: { email, otp, type: 'register' },
         });
-        if (!record) throw new BadRequestException('Invalid or expired OTP');
+        if (!record) throw new BadRequestException('OTP không hợp lệ hoặc đã hết hạn');
         if (record.expireAt < new Date()) {
             await this.prisma.passwordReset.deleteMany({ where: { email, type: 'register' } });
-            throw new BadRequestException('OTP has expired');
+            throw new BadRequestException('OTP đã hết hạn');
         }
 
         const hashPass = await bcrypt.hash(password, 10);
@@ -203,14 +203,14 @@ export class AuthService {
 
         await this.prisma.passwordReset.deleteMany({ where: { email, type: 'register' } });
 
-        return { message: 'Registration successful' };
+        return { message: 'Đăng ký thành công' };
     }
 
     async forgotPassword(dto: ForgotPasswordDto) {
         const { email } = dto;
 
         const user = await this.prisma.user.findUnique({ where: { email } });
-        if (!user) throw new BadRequestException('Email not registered');
+        if (!user) throw new BadRequestException('Email chưa được đăng ký');
 
         const otp = generateOTP();
         const expireAt = new Date(Date.now() + 5 * 60 * 1000);
@@ -223,10 +223,10 @@ export class AuthService {
             <p>Your OTP code is: <strong>${otp}</strong></p>
             <p>This code expires in 5 minutes.</p>
         `;
-        
+
         this.mailProducer.sendMail(email, 'Password Reset OTP', html);
 
-        return { message: 'OTP sent to your email' };
+        return { message: 'Mã OTP đã được gửi đến email' };
     }
 
     async resetPassword(dto: ResetPasswordDto) {
@@ -235,122 +235,122 @@ export class AuthService {
         const record = await this.prisma.passwordReset.findFirst({
             where: { email, otp, type: 'reset' },
         });
-        if (!record) throw new BadRequestException('Invalid OTP');
+        if (!record) throw new BadRequestException('OTP không hợp lệ');
         if (record.expireAt < new Date()) {
             await this.prisma.passwordReset.deleteMany({ where: { email, type: 'reset' } });
-            throw new BadRequestException('OTP has expired');
+            throw new BadRequestException('OTP đã hết hạn');
         }
 
         const hashPass = await bcrypt.hash(newPassword, 10);
         await this.prisma.user.update({ where: { email }, data: { password: hashPass } });
         await this.prisma.passwordReset.deleteMany({ where: { email, type: 'reset' } });
 
-        return { message: 'Password reset successful' };
+        return { message: 'Đặt lại mật khẩu thành công' };
     }
 
     async loginGoogle(idToken: string) {
-    if (!idToken) throw new BadRequestException('Missing Google ID Token');
+        if (!idToken) throw new BadRequestException('Thiếu Google ID Token');
 
-    const ticket = await this.googleClient.verifyIdToken({
-        idToken,
-        audience: this.configService.get('GOOGLE_CLIENT_ID'),
-    });
+        const ticket = await this.googleClient.verifyIdToken({
+            idToken,
+            audience: this.configService.get('GOOGLE_CLIENT_ID'),
+        });
 
-    const payload = ticket.getPayload();
-    if (!payload) throw new BadRequestException('Invalid Google token payload');
+        const payload = ticket.getPayload();
+        if (!payload) throw new BadRequestException('Dữ liệu token Google không hợp lệ');
 
-    const { email, name } = payload;
-    if (!email) throw new BadRequestException('Google account has no email');
+        const { email, name } = payload;
+        if (!email) throw new BadRequestException('Tài khoản Google không có email');
 
-    let user = await this.prisma.user.findUnique({ where: { email } });
+        let user = await this.prisma.user.findUnique({ where: { email } });
 
-    if (!user) {
-        const hashPass = await bcrypt.hash('google_oauth_user', 10);
+        if (!user) {
+            const hashPass = await bcrypt.hash('google_oauth_user', 10);
 
-        for (let i = 0; i < 5; i++) {
-            const pseudoPhone = `G${Math.floor(Math.random() * 10 ** 14).toString().padStart(14, '0')}`;
+            for (let i = 0; i < 5; i++) {
+                const pseudoPhone = `G${Math.floor(Math.random() * 10 ** 14).toString().padStart(14, '0')}`;
 
-            try {
-                user = await this.prisma.user.create({
-                    data: {
-                        username: email,
-                        email,
-                        phone: pseudoPhone,
-                        password: hashPass,
-                        fullName: name || email.split('@')[0],
-                        status: 1
-                    },
-                });
-                break;
-            } catch (error) {
-                const isUniquePhoneConflict =
-                    error instanceof Prisma.PrismaClientKnownRequestError &&
-                    error.code === 'P2002' &&
-                    String(error.meta?.target || '').includes('users_phone_key');
+                try {
+                    user = await this.prisma.user.create({
+                        data: {
+                            username: email,
+                            email,
+                            phone: pseudoPhone,
+                            password: hashPass,
+                            fullName: name || email.split('@')[0],
+                            status: 1
+                        },
+                    });
+                    break;
+                } catch (error) {
+                    const isUniquePhoneConflict =
+                        error instanceof Prisma.PrismaClientKnownRequestError &&
+                        error.code === 'P2002' &&
+                        String(error.meta?.target || '').includes('users_phone_key');
 
-                if (!isUniquePhoneConflict || i === 4) {
-                    throw error;
+                    if (!isUniquePhoneConflict || i === 4) {
+                        throw error;
+                    }
                 }
+            }
+
+            if (!user) throw new BadRequestException('Không thể tạo tài khoản Google');
+        }
+
+        const customerRole = await this.prisma.role.findUnique({ where: { code: 'CUSTOMER' } });
+        if (customerRole) {
+            const existedRole = await this.prisma.userRole.findFirst({
+                where: { userId: user.id, roleId: customerRole.id },
+            });
+            if (!existedRole) {
+                await this.prisma.userRole.create({ data: { userId: user.id, roleId: customerRole.id } });
             }
         }
 
-        if (!user) throw new BadRequestException('Không thể tạo tài khoản Google');
-    }
-
-    const customerRole = await this.prisma.role.findUnique({ where: { code: 'CUSTOMER' } });
-    if (customerRole) {
-        const existedRole = await this.prisma.userRole.findFirst({
-            where: { userId: user.id, roleId: customerRole.id },
+        await this.prisma.customer.upsert({
+            where: { userId: user.id },
+            create: { userId: user.id, code: `KH${user.id.toString().padStart(3, '0')}` },
+            update: {},
         });
-        if (!existedRole) {
-            await this.prisma.userRole.create({ data: { userId: user.id, roleId: customerRole.id } });
-        }
+
+        const userRoles = await this.prisma.userRole.findMany({
+            where: { userId: user.id },
+            include: { role: { select: { code: true } } },
+        });
+        const roles = userRoles.map((ur) => ur.role.code);
+
+        const accessToken = this.jwtService.sign({ id: user.id, username: user.username, roles });
+
+        const refreshToken = this.jwtService.sign(
+            { id: user.id },
+            {
+                secret: this.configService.get('JWT_REFRESH_SECRET'),
+                expiresIn: this.configService.get('JWT_REFRESH_EXPIRES') || '7d',
+            },
+        );
+
+        const refreshExpiresMs = ms((this.configService.get('JWT_REFRESH_EXPIRES') || '7d') as ms.StringValue);
+        await this.prisma.refreshToken.create({
+            data: {
+                token: refreshToken,
+                userId: user.id,
+                expiresAt: new Date(Date.now() + refreshExpiresMs),
+                revoked: false,
+            },
+        });
+
+        return {
+            user: {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                fullName: user.fullName,
+                phone: user.phone,
+                address: user.address || null,
+                roles,
+            },
+            accessToken,
+            refreshToken,
+        };
     }
-
-    await this.prisma.customer.upsert({
-        where: { userId: user.id },
-        create: { userId: user.id, code: `KH${user.id.toString().padStart(3, '0')}` },
-        update: {},
-    });
-
-    const userRoles = await this.prisma.userRole.findMany({
-        where: { userId: user.id },
-        include: { role: { select: { code: true } } },
-    });
-    const roles = userRoles.map((ur) => ur.role.code);
-
-    const accessToken = this.jwtService.sign({ id: user.id, username: user.username, roles });
-
-    const refreshToken = this.jwtService.sign(
-        { id: user.id },
-        {
-            secret: this.configService.get('JWT_REFRESH_SECRET'),
-            expiresIn: this.configService.get('JWT_REFRESH_EXPIRES') || '7d',
-        },
-    );
-
-    const refreshExpiresMs = ms((this.configService.get('JWT_REFRESH_EXPIRES') || '7d') as ms.StringValue);
-    await this.prisma.refreshToken.create({
-        data: {
-            token: refreshToken,
-            userId: user.id,
-            expiresAt: new Date(Date.now() + refreshExpiresMs),
-            revoked: false,
-        },
-    });
-
-    return {
-        user: {
-            id: user.id,
-            username: user.username,
-            email: user.email,
-            fullName: user.fullName,
-            phone: user.phone,
-            address: user.address || null,
-            roles,
-        },
-        accessToken,
-        refreshToken,
-    };
-}
 }

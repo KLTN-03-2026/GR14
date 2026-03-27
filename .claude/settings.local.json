@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find d:/real-estate/real-estate-frontend/src -name *.ts -not -name *.tsx)"
+    ]
+  }
+}

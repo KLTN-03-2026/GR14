@@ -86,7 +86,7 @@ export class PostService {
                 isVip: !!vip,
                 vipPackageName: vip?.package?.name || null,
                 vipPriorityLevel: vip?.package?.priorityLevel || null,
-                vipSubscriptions: undefined, 
+                vipSubscriptions: undefined,
             };
         });
 
@@ -101,6 +101,16 @@ export class PostService {
     async findPending() {
         return this.prisma.post.findMany({
             where: { status: 1 },
+            include: {
+                user: { select: { id: true, username: true, fullName: true, phone: true } },
+                images: { select: { id: true, url: true, position: true }, orderBy: { position: 'asc' } },
+            },
+            orderBy: { postedAt: 'desc' },
+        });
+    }
+
+    async findAll() {
+        return this.prisma.post.findMany({
             include: {
                 user: { select: { id: true, username: true, fullName: true, phone: true } },
                 images: { select: { id: true, url: true, position: true }, orderBy: { position: 'asc' } },
