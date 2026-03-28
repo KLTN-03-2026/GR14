@@ -148,22 +148,6 @@ const HomePage: React.FC = () => {
                 {/* Header */}
                 <div className="flex justify-between items-center mb-6">
                     <Title level={2}>Bất động sản theo khu vực</Title>
-
-                    <div className="flex gap-2">
-                        <button className="px-4 py-1 rounded-full bg-black text-white text-sm">
-                            Mua bán
-                        </button>
-                        <button className="px-4 py-1 rounded-full bg-gray-200 text-sm">
-                            Cho thuê
-                        </button>
-                    </div>
-                </div>
-
-                {/* Tabs */}
-                <div className="flex gap-6 mb-4 text-gray-600 text-sm">
-                    <span className="border-b-2 border-black pb-1">Căn hộ/Chung cư</span>
-                    <span>Nhà ở</span>
-                    <span>Đất</span>
                 </div>
 
                 {/* Grid */}

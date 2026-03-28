@@ -1,7 +1,4 @@
 import { useNavigate } from "react-router-dom";
-import { FiHeart } from "react-icons/fi";
-import { FaHeart } from "react-icons/fa";
-
 interface Post {
     id: number;
     title: string;
@@ -44,7 +41,7 @@ const formatDateTime = (d?: string | null) => {
     return date.toLocaleDateString("vi-VN");
 };
 
-const NewsCard = ({ post, isFavorite, onToggleFavorite }: Props) => {
+const NewsCard = ({ post }: Props) => {
     const navigate = useNavigate();
 
     return (
@@ -56,21 +53,7 @@ const NewsCard = ({ post, isFavorite, onToggleFavorite }: Props) => {
                     : "bg-white shadow hover:shadow-md"
                 }`}
         >
-            {/* FAVORITE */}
-            <div className="absolute top-2 right-2 z-10">
-                <button
-                    onClick={(e) => {
-                        e.stopPropagation(); // tránh click vào card
-                        onToggleFavorite?.();
-                    }}
-                >
-                    {isFavorite ? (
-                        <FaHeart className="text-red-500 text-lg" />
-                    ) : (
-                        <FiHeart className="text-gray-400 text-lg" />
-                    )}
-                </button>
-            </div>
+
 
             {/* IMAGE */}
             <div className="relative w-[240px] h-[160px]">
