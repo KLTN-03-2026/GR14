@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Row, Col, Typography, Button, Card, Tag } from 'antd';
 import { BankOutlined, EnvironmentOutlined, ReadOutlined, RobotOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { houseApi, landApi, recommendationApi } from '@/api';
+import { featuredApi, recommendationApi } from '@/api';
 import { PropertyCard } from '@/components/common';
 import { useAuthStore } from '@/stores/authStore';
 import { formatCurrency, formatArea, getFullAddress } from '@/utils';
@@ -32,17 +32,15 @@ const HomePage: React.FC = () => {
         if (!isAuthenticated) return;
         recommendationApi.getAIRecommendations(8)
             .then(res => setAiRecs(res.data?.data || res.data || []))
-            .catch(() => {});
+            .catch(() => { });
     }, [isAuthenticated]);
 
     const loadData = async () => {
         try {
-            const [housesRes, landsRes] = await Promise.all([
-                houseApi.getAll({ limit: 8 }),
-                landApi.getAll({ limit: 8 }),
-            ]);
-            setHouses(housesRes.data.data || housesRes.data);
-            setLands(landsRes.data.data || landsRes.data);
+            const featuredRes = await featuredApi.getAll();
+            const payload = featuredRes.data?.data || featuredRes.data || {};
+            setHouses(payload.houses || []);
+            setLands(payload.lands || []);
         } catch (error) {
             console.error('Error loading data:', error);
         }

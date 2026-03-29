@@ -7,7 +7,7 @@ import group from "../../assets/logo.png";
 <img className="w-[45px] h-8" alt="Black'S City Logo" src={group} />
 const navigationItems = [
   { label: "Trang Chủ", href: "/" },
-  { label: "Nhà Đất", href: "/houses" },
+  { label: "Nhà Ở", href: "/houses" },
   { label: "Đất Đai", href: "/lands" },
   { label: "Bài Viết", href: "/posts" },
   { label: "Đăng Bài Viết", href: "/news" },
