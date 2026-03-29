@@ -4,6 +4,7 @@ import { CloudinaryService } from '../../common/cloudinary/cloudinary.service';
 import { CreatePostDto, UpdatePostDto } from './dto/post.dto';
 import { MailProducerService } from '../../common/mail/mail-producer.service';
 import { MailService } from '../../common/mail/mail.service';
+import { AiService } from '../ai/ai.service';
 
 @Injectable()
 export class PostService {
@@ -12,6 +13,7 @@ export class PostService {
         private cloudinaryService: CloudinaryService,
         private mailProducer: MailProducerService,
         private mailService: MailService,
+        private aiService: AiService,
     ) { }
 
     async create(dto: CreatePostDto, userId: number, files?: Express.Multer.File[]) {
@@ -147,6 +149,9 @@ export class PostService {
             const html = this.mailService.getPostApprovedEmailHtml(post.user.fullName || 'Quý khách', post.title);
             this.mailProducer.sendMail(post.user.email, 'Bài đăng đã được duyệt', html);
         }
+
+        // Trigger Qdrant indexing (fire-and-forget)
+        this.aiService.indexOne('post', id).catch(() => { });
 
         return { message: 'Đã duyệt bài đăng', data: updated };
     }

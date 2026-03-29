@@ -4,6 +4,7 @@ import { CloudinaryService } from '../../common/cloudinary/cloudinary.service';
 import { RedisService } from '../../common/redis/redis.service';
 import { CreateLandDto, UpdateLandDto } from './dto/land.dto';
 import { validateFieldsNoSpecialChars } from '../../common/utils/validators';
+import { AiService } from '../ai/ai.service';
 
 // Cache TTL (seconds)
 const LAND_LIST_TTL = 600;   // 10 minutes
@@ -22,6 +23,7 @@ export class LandService {
         private prisma: PrismaService,
         private cloudinaryService: CloudinaryService,
         private redis: RedisService,
+        private aiService: AiService,
     ) { }
 
     async findAll(page = 1, limit = 10) {
@@ -144,10 +146,15 @@ export class LandService {
         // Invalidate cache
         await this.invalidateLandCache();
 
-        return {
+        const result = {
             message: 'Land created successfully',
             data: await this.findById(land.id),
         };
+
+        // Trigger Qdrant indexing (fire-and-forget)
+        this.aiService.indexOne('land', land.id).catch(() => { });
+
+        return result;
     }
 
     async update(id: number, dto: UpdateLandDto, files?: Express.Multer.File[]) {
@@ -221,10 +228,15 @@ export class LandService {
         await this.invalidateLandCache();
         await this.redis.del(landDetailKey(id)).catch(() => { });
 
-        return {
+        const result = {
             message: 'Land updated successfully',
             data: await this.findById(id),
         };
+
+        // Trigger Qdrant indexing (fire-and-forget)
+        this.aiService.indexOne('land', id).catch(() => { });
+
+        return result;
     }
 
     async delete(id: number) {

@@ -198,6 +198,40 @@ export interface Favorite {
     land?: Land;
 }
 
+// ==================== RECOMMENDATION ====================
+
+export interface RecommendedHouse extends House {
+    recommendationScore: number;
+    recommendationReason: string;
+}
+
+export interface RecommendedLand extends Land {
+    recommendationScore: number;
+    recommendationReason: string;
+}
+
+export interface AIRecommendation {
+    id: number;
+    propertyType: 'house' | 'land';
+    title: string;
+    city?: string;
+    district?: string;
+    ward?: string;
+    street?: string;
+    price?: number;
+    area?: number;
+    direction?: string;
+    status: number;
+    createdAt: string;
+    images?: Array<{ id: number; url: string }>;
+    category?: PropertyCategory;
+    employee?: { id: number; user: { id: number; fullName: string; phone: string } };
+    recommendationScore: number;
+    recommendationReason: string;
+    embeddingScore: number;
+    ruleScore: number;
+}
+
 // ==================== API RESPONSE ====================
 
 export interface ApiResponse<T> {
