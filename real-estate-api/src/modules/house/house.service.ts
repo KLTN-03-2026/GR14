@@ -4,6 +4,7 @@ import { CloudinaryService } from '../../common/cloudinary/cloudinary.service';
 import { RedisService } from '../../common/redis/redis.service';
 import { CreateHouseDto, UpdateHouseDto } from './dto/house.dto';
 import { validateFieldsNoSpecialChars } from '../../common/utils/validators';
+import { AiService } from '../ai/ai.service';
 
 // Cache TTL (seconds)
 const HOUSE_LIST_TTL = 600;   // 10 minutes
@@ -22,6 +23,7 @@ export class HouseService {
         private prisma: PrismaService,
         private cloudinaryService: CloudinaryService,
         private redis: RedisService,
+        private aiService: AiService,
     ) { }
 
     async findAll(page = 1, limit = 10) {
@@ -143,10 +145,15 @@ export class HouseService {
         // Invalidate cache
         await this.invalidateHouseCache();
 
-        return {
+        const result = {
             message: 'House created successfully',
             data: await this.findById(house.id),
         };
+
+        // Trigger Qdrant indexing (fire-and-forget)
+        this.aiService.indexOne('house', house.id).catch(() => { });
+
+        return result;
     }
 
     async update(id: number, dto: UpdateHouseDto, files?: Express.Multer.File[]) {
@@ -219,10 +226,15 @@ export class HouseService {
         await this.invalidateHouseCache();
         await this.redis.del(houseDetailKey(id)).catch(() => { });
 
-        return {
+        const result = {
             message: 'House updated successfully',
             data: await this.findById(id),
         };
+
+        // Trigger Qdrant indexing (fire-and-forget)
+        this.aiService.indexOne('house', id).catch(() => { });
+
+        return result;
     }
 
     async delete(id: number) {

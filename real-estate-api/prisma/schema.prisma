@@ -29,6 +29,7 @@ model User {
   refreshTokens   RefreshToken[]
   vipSubscriptions VipSubscription[]
   payments        Payment[]
+  behaviors       UserBehavior[]
 
   @@map("users")
 }
@@ -157,6 +158,7 @@ model House {
   images       HouseImage[]
   appointments Appointment[]
   favorites    Favorite[]
+  behaviors    UserBehavior[]
 
   @@map("houses")
 }
@@ -205,6 +207,7 @@ model Land {
   images       LandImage[]
   appointments Appointment[]     @relation("LandAppointments")
   favorites    Favorite[]        @relation("LandFavorites")
+  behaviors    UserBehavior[]    @relation("LandBehaviors")
 
   @@map("lands")
 }
@@ -286,6 +289,26 @@ model PostImage {
   post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@map("post_images")
+}
+
+// ==================== USER BEHAVIOR (for recommendation) ====================
+
+model UserBehavior {
+  id         Int      @id @default(autoincrement())
+  userId     Int      @map("user_id")
+  houseId    Int?     @map("house_id")
+  landId     Int?     @map("land_id")
+  action     String   @db.VarChar(20) // 'view', 'click', 'save'
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  house House? @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  land  Land?  @relation("LandBehaviors", fields: [landId], references: [id], onDelete: Cascade)
+
+  @@index([userId, action])
+  @@index([houseId])
+  @@index([landId])
+  @@map("user_behaviors")
 }
 
 // ==================== FAVORITE ====================
