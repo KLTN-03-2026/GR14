@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
@@ -64,7 +64,9 @@ export class AuthService {
             },
         );
 
-        const refreshExpiresMs = ms((this.configService.get<string>('JWT_REFRESH_EXPIRES') || '7d') as ms.StringValue);
+        const refreshExpiresConfig = this.configService.get<string>('JWT_REFRESH_EXPIRES') || '7d';
+        const refreshExpiresMs = ms(refreshExpiresConfig as ms.StringValue);
+        
         await this.prisma.refreshToken.create({
             data: {
                 token: refreshToken,
@@ -266,7 +268,6 @@ export class AuthService {
 
         if (!user) {
             const hashPass = await bcrypt.hash('google_oauth_user', 10);
-
             for (let i = 0; i < 5; i++) {
                 const pseudoPhone = `G${Math.floor(Math.random() * 10 ** 14).toString().padStart(14, '0')}`;
 
