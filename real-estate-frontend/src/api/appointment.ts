@@ -10,6 +10,9 @@ export const appointmentApi = {
     getByEmployee: (employeeId: number) =>
         apiClient.get(`/appointments/employee/${employeeId}`),
 
+    getMyAssigned: () =>
+        apiClient.get('/appointments/me/assigned'),
+
     create: (data: Record<string, unknown>) =>
         apiClient.post('/appointments', data),
 

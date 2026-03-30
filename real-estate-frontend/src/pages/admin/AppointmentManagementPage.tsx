@@ -12,12 +12,24 @@ import type { ColumnsType } from 'antd/es/table';
 import { appointmentApi, employeeApi } from '@/api';
 import { formatDateTime } from '@/utils';
 import type { Appointment, Employee } from '@/types';
-import { DEFAULT_PAGE_SIZE, APPOINTMENT_STATUS_LABELS } from '@/constants';
+import {
+    DEFAULT_PAGE_SIZE,
+    APPOINTMENT_STATUS,
+    APPOINTMENT_STATUS_LABELS,
+    APPOINTMENT_ACTUAL_STATUS,
+    APPOINTMENT_ACTUAL_STATUS_LABELS,
+} from '@/constants';
 
 const { Title } = Typography;
 const { TextArea } = Input;
 
 const STATUS_COLOR: Record<number, string> = { 0: 'orange', 1: 'green', 2: 'red' };
+const ACTUAL_STATUS_COLOR: Record<number, string> = {
+    [APPOINTMENT_ACTUAL_STATUS.NOT_MET]: 'gold',
+    [APPOINTMENT_ACTUAL_STATUS.MET]: 'green',
+    [APPOINTMENT_ACTUAL_STATUS.CUSTOMER_NO_SHOW]: 'volcano',
+    [APPOINTMENT_ACTUAL_STATUS.UNABLE_TO_PROCEED]: 'red',
+};
 
 const AppointmentManagementPage: React.FC = () => {
     const navigate = useNavigate();
@@ -173,6 +185,30 @@ const AppointmentManagementPage: React.FC = () => {
                     text={<Tag color={STATUS_COLOR[s]}>{APPOINTMENT_STATUS_LABELS[s]}</Tag>}
                 />
             ),
+        },
+        {
+            title: 'Thực tế',
+            key: 'actualStatus',
+            width: 220,
+            render: (_, r) => {
+                if (r.status !== APPOINTMENT_STATUS.APPROVED) {
+                    return <span style={{ color: '#bbb' }}>Chưa áp dụng</span>;
+                }
+
+                if (r.actualStatus === undefined || r.actualStatus === null) {
+                    return <Tag color="default">Chưa cập nhật</Tag>;
+                }
+
+                const label = APPOINTMENT_ACTUAL_STATUS_LABELS[r.actualStatus] || `Không rõ (${r.actualStatus})`;
+                return (
+                    <div>
+                        <Tag color={ACTUAL_STATUS_COLOR[r.actualStatus] || 'default'}>{label}</Tag>
+                        {r.cancelReason && (
+                            <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{r.cancelReason}</div>
+                        )}
+                    </div>
+                );
+            },
         },
         {
             title: 'Hành động',
