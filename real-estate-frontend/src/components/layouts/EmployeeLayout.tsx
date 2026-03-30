@@ -2,20 +2,12 @@ import { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Menu, Avatar, Dropdown, Button, theme } from 'antd';
 import {
-    HomeOutlined,
-    BankOutlined,
-    EnvironmentOutlined,
-    FileTextOutlined,
     CalendarOutlined,
     UserOutlined,
-    TeamOutlined,
-    AppstoreOutlined,
-    SafetyOutlined,
     MenuFoldOutlined,
     MenuUnfoldOutlined,
     LogoutOutlined,
     SettingOutlined,
-    WalletOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useAuthStore } from '@/stores/authStore';
@@ -24,70 +16,18 @@ const { Header, Sider, Content } = Layout;
 
 const menuItems: MenuProps['items'] = [
     {
-        key: '/admin',
-        icon: <HomeOutlined />,
-        label: 'Dashboard',
-    },
-    {
-        key: '/admin/houses',
-        icon: <BankOutlined />,
-        label: 'Nhà',
-    },
-    {
-        key: '/admin/lands',
-        icon: <EnvironmentOutlined />,
-        label: 'Đất',
-    },
-    {
-        key: '/admin/posts',
-        icon: <FileTextOutlined />,
-        label: 'Bài đăng',
-    },
-    {
-        key: '/admin/appointments',
+        key: '/employee/appointments',
         icon: <CalendarOutlined />,
-        label: 'Lịch hẹn',
+        label: 'Lịch hẹn của tôi',
     },
     {
-        key: '/admin/categories',
-        icon: <AppstoreOutlined />,
-        label: 'Danh mục BĐS',
-    },
-    {
-        key: 'users-group',
-        icon: <TeamOutlined />,
-        label: 'Quản lý người dùng',
-        children: [
-            {
-                key: '/admin/users',
-                icon: <UserOutlined />,
-                label: 'Người dùng',
-            },
-            {
-                key: '/admin/customers',
-                icon: <TeamOutlined />,
-                label: 'Khách hàng',
-            },
-            {
-                key: '/admin/employees',
-                icon: <TeamOutlined />,
-                label: 'Nhân viên',
-            },
-        ],
-    },
-    {
-        key: '/admin/roles',
-        icon: <SafetyOutlined />,
-        label: 'Vai trò',
-    },
-    {
-        key: '/admin/payment-history',
-        icon: <WalletOutlined />,
-        label: 'Lịch sử thanh toán',
+        key: '/employee/profile',
+        icon: <UserOutlined />,
+        label: 'Hồ sơ cá nhân',
     },
 ];
 
-const AdminLayout: React.FC = () => {
+const EmployeeLayout: React.FC = () => {
     const [collapsed, setCollapsed] = useState(false);
     const navigate = useNavigate();
     const location = useLocation();
@@ -110,12 +50,12 @@ const AdminLayout: React.FC = () => {
             key: 'profile',
             icon: <UserOutlined />,
             label: 'Hồ sơ cá nhân',
-            onClick: () => navigate('/admin/profile'),
+            onClick: () => navigate('/employee/profile'),
         },
         {
             key: 'view-user-page',
             icon: <SettingOutlined />,
-            label: 'Xem trang người dùng',
+            label: 'Qua trang người dùng',
             onClick: () => navigate('/'),
         },
         { type: 'divider' },
@@ -150,18 +90,17 @@ const AdminLayout: React.FC = () => {
                         alignItems: 'center',
                         justifyContent: 'center',
                         color: '#fff',
-                        fontSize: collapsed ? 16 : 20,
+                        fontSize: collapsed ? 14 : 18,
                         fontWeight: 'bold',
                         borderBottom: '1px solid rgba(255,255,255,0.1)',
                     }}
                 >
-                    {collapsed ? 'RE' : '🏠 Real Estate'}
+                    {collapsed ? 'NV' : 'Nhân viên BĐS'}
                 </div>
                 <Menu
                     theme="dark"
                     mode="inline"
                     selectedKeys={[location.pathname]}
-                    defaultOpenKeys={['users-group']}
                     items={menuItems}
                     onClick={handleMenuClick}
                 />
@@ -191,7 +130,7 @@ const AdminLayout: React.FC = () => {
                     <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
                         <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
                             <Avatar icon={<UserOutlined />} />
-                            <span>{user?.fullName || user?.username || 'Admin'}</span>
+                            <span>{user?.fullName || user?.username || 'Nhân viên'}</span>
                         </div>
                     </Dropdown>
                 </Header>
@@ -212,4 +151,4 @@ const AdminLayout: React.FC = () => {
     );
 };
 
-export default AdminLayout;
+export default EmployeeLayout;

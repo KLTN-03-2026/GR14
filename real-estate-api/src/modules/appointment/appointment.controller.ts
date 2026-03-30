@@ -91,13 +91,19 @@ export class AppointmentController {
 
     @Get('employee/:id')
     @Roles('ADMIN', 'EMPLOYEE')
-    findByEmployee(@Param('id', ParseIntPipe) id: number) {
-        return this.appointmentService.findByEmployee(id);
+    findByEmployee(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+        return this.appointmentService.findByEmployee(id, req.user);
+    }
+
+    @Get('me/assigned')
+    @Roles('EMPLOYEE')
+    findMyAssignedAppointments(@Req() req: any) {
+        return this.appointmentService.findMyAssignedAppointments(req.user);
     }
 
     @Put(':id/actual-status')
     @Roles('ADMIN', 'EMPLOYEE')
-    updateActualStatus(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateActualStatusDto) {
-        return this.appointmentService.updateActualStatus(id, dto);
+    updateActualStatus(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateActualStatusDto, @Req() req: any) {
+        return this.appointmentService.updateActualStatus(id, dto, req.user);
     }
 }

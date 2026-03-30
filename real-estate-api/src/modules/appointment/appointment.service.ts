@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../../common/mail/mail.service';
 import { MailProducerService } from '../../common/mail/mail-producer.service';
@@ -20,6 +20,11 @@ const appointmentInclude = {
     land: { select: { id: true, title: true, city: true, district: true } },
 };
 
+type AppointmentActor = {
+    id: number;
+    roles?: string[];
+};
+
 @Injectable()
 export class AppointmentService {
     constructor(
@@ -27,6 +32,18 @@ export class AppointmentService {
         private mailService: MailService,          // dùng để lấy HTML template
         private mailProducer: MailProducerService, // dùng để publish lên RabbitMQ
     ) { }
+
+    private isEmployeeRole(actor: AppointmentActor) {
+        return Array.isArray(actor.roles) && actor.roles.includes('EMPLOYEE') && !actor.roles.includes('ADMIN');
+    }
+
+    private async resolveEmployeeIdByUser(userId: number) {
+        const employee = await this.prisma.employee.findUnique({ where: { userId }, select: { id: true } });
+        if (!employee) {
+            throw new BadRequestException('Tài khoản nhân viên không hợp lệ');
+        }
+        return employee.id;
+    }
 
     async findAll(page = 1, limit = 10, search?: string) {
         const skip = (page - 1) * limit;
@@ -204,6 +221,28 @@ export class AppointmentService {
         const appointment = await this.prisma.appointment.findUnique({ where: { id } });
         if (!appointment) throw new NotFoundException('Lịch hẹn không tồn tại');
 
+        const nextAppointmentDate = dto.appointmentDate ? new Date(dto.appointmentDate) : appointment.appointmentDate;
+        const nextEmployeeId = dto.employeeId !== undefined ? (dto.employeeId || null) : appointment.employeeId;
+        const nextStatus = dto.status !== undefined ? dto.status : appointment.status;
+
+        if (nextStatus === 1 && !nextEmployeeId) {
+            throw new BadRequestException('Lịch hẹn đã duyệt phải có nhân viên phụ trách');
+        }
+
+        if (nextStatus === 1 && nextEmployeeId) {
+            const conflict = await this.prisma.appointment.findFirst({
+                where: {
+                    employeeId: nextEmployeeId,
+                    appointmentDate: nextAppointmentDate,
+                    status: 1,
+                    id: { not: id },
+                },
+            });
+            if (conflict) {
+                throw new BadRequestException('Nhân viên đã có lịch hẹn vào thời điểm này');
+            }
+        }
+
         const appointmentFull = await this.prisma.appointment.findUnique({
             where: { id },
             include: {
@@ -216,9 +255,9 @@ export class AppointmentService {
         const updated = await this.prisma.appointment.update({
             where: { id },
             data: {
-                ...(dto.appointmentDate && { appointmentDate: new Date(dto.appointmentDate) }),
-                ...(dto.employeeId !== undefined && { employeeId: dto.employeeId || null }),
-                ...(dto.status !== undefined && { status: dto.status }),
+                ...(dto.appointmentDate && { appointmentDate: nextAppointmentDate }),
+                ...(dto.employeeId !== undefined && { employeeId: nextEmployeeId }),
+                ...(dto.status !== undefined && { status: nextStatus }),
             },
             include: appointmentInclude,
         });
@@ -351,9 +390,19 @@ export class AppointmentService {
         return { message: 'Từ chối lịch hẹn thành công', data: updated };
     }
 
-    async findByEmployee(employeeId: number) {
+    async findByEmployee(employeeId: number, actor: AppointmentActor) {
+        let effectiveEmployeeId = employeeId;
+
+        if (this.isEmployeeRole(actor)) {
+            const selfEmployeeId = await this.resolveEmployeeIdByUser(actor.id);
+            if (selfEmployeeId !== employeeId) {
+                throw new ForbiddenException('Bạn chỉ được xem lịch hẹn của chính mình');
+            }
+            effectiveEmployeeId = selfEmployeeId;
+        }
+
         return this.prisma.appointment.findMany({
-            where: { employeeId, status: 1 },
+            where: { employeeId: effectiveEmployeeId, status: 1 },
             include: {
                 customer: {
                     include: { user: { select: { fullName: true, phone: true } } },
@@ -368,15 +417,38 @@ export class AppointmentService {
         });
     }
 
-    async updateActualStatus(id: number, dto: UpdateActualStatusDto) {
-        const appointment = await this.prisma.appointment.findUnique({ where: { id } });
+    async findMyAssignedAppointments(actor: AppointmentActor) {
+        const employeeId = await this.resolveEmployeeIdByUser(actor.id);
+        return this.findByEmployee(employeeId, { ...actor, roles: ['EMPLOYEE'] });
+    }
+
+    async updateActualStatus(id: number, dto: UpdateActualStatusDto, actor: AppointmentActor) {
+        const appointment = await this.prisma.appointment.findUnique({
+            where: { id },
+            include: { employee: { select: { id: true, userId: true } } },
+        });
         if (!appointment) throw new NotFoundException('Lịch hẹn không tồn tại');
+        if (appointment.status !== 1) {
+            throw new BadRequestException('Chỉ có thể cập nhật trạng thái thực tế cho lịch hẹn đã duyệt');
+        }
+        if (!appointment.employeeId || !appointment.employee) {
+            throw new BadRequestException('Lịch hẹn chưa được phân công nhân viên');
+        }
+
+        if (this.isEmployeeRole(actor)) {
+            const selfEmployeeId = await this.resolveEmployeeIdByUser(actor.id);
+            if (selfEmployeeId !== appointment.employeeId) {
+                throw new ForbiddenException('Bạn chỉ được cập nhật lịch hẹn được phân công cho mình');
+            }
+        }
+
+        const normalizedReason = dto.cancelReason?.trim();
 
         const updated = await this.prisma.appointment.update({
             where: { id },
             data: {
                 actualStatus: dto.actualStatus,
-                cancelReason: dto.cancelReason,
+                cancelReason: dto.actualStatus === 1 ? null : (normalizedReason || null),
             },
         });
 
