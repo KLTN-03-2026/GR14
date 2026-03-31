@@ -9,6 +9,7 @@ import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import { DataTable } from '@/components/ui/Table';
 import ImageLightbox from '@/components/ui/ImageLightbox';
+import Modal from '@/components/ui/Modal';
 import type { Column } from '@/components/ui/Table';
 
 const HouseManagementPage: React.FC = () => {
@@ -21,6 +22,9 @@ const HouseManagementPage: React.FC = () => {
     const [previewOpen, setPreviewOpen] = useState(false);
     const [previewImages, setPreviewImages] = useState<string[]>([]);
     const [previewIndex, setPreviewIndex] = useState(0);
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [deleteTarget, setDeleteTarget] = useState<House | null>(null);
+    const [deleting, setDeleting] = useState(false);
 
     const loadHouses = useCallback(async () => {
         setLoading(true);
@@ -42,13 +46,19 @@ const HouseManagementPage: React.FC = () => {
         loadHouses();
     }, [loadHouses]);
 
-    const handleDelete = async (id: number) => {
+    const handleDelete = async () => {
+        if (!deleteTarget) return;
+        setDeleting(true);
         try {
-            await houseApi.delete(id);
+            await houseApi.delete(deleteTarget.id);
             toast.success('Xóa thành công');
+            setDeleteModalOpen(false);
+            setDeleteTarget(null);
             loadHouses();
         } catch {
             toast.error('Xóa thất bại');
+        } finally {
+            setDeleting(false);
         }
     };
 
@@ -106,7 +116,7 @@ const HouseManagementPage: React.FC = () => {
             key: 'status',
             render: (status: number) => (
                 <Badge color={status === 1 ? 'success' : 'error'}>
-                    {status === 1 ? 'Hoạt động' : 'Ẩn'}
+                    {status === 1 ? 'Hoạt động' : 'Đã bán'}
                 </Badge>
             ),
         },
@@ -134,9 +144,8 @@ const HouseManagementPage: React.FC = () => {
                         iconOnly
                         ariaLabel="Xóa"
                         onClick={() => {
-                            if (window.confirm('Bạn có chắc muốn xóa?')) {
-                                handleDelete(record.id);
-                            }
+                            setDeleteTarget(record);
+                            setDeleteModalOpen(true);
                         }}
                         startIcon={
                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -196,6 +205,42 @@ const HouseManagementPage: React.FC = () => {
                 initialIndex={previewIndex}
                 onClose={() => setPreviewOpen(false)}
             />
+
+            <Modal
+                isOpen={deleteModalOpen}
+                onClose={() => {
+                    if (!deleting) {
+                        setDeleteModalOpen(false);
+                        setDeleteTarget(null);
+                    }
+                }}
+                title="Xác nhận xóa nhà"
+                width="max-w-md"
+                footer={(
+                    <>
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setDeleteModalOpen(false);
+                                setDeleteTarget(null);
+                            }}
+                            disabled={deleting}
+                        >
+                            Hủy
+                        </Button>
+                        <Button variant="danger" onClick={handleDelete} loading={deleting}>
+                            Xóa
+                        </Button>
+                    </>
+                )}
+            >
+                <p className="text-sm text-gray-700">
+                    Bạn có chắc muốn xóa nhà
+                    {' '}
+                    <span className="font-semibold text-gray-900">{deleteTarget?.title}</span>
+                    ?
+                </p>
+            </Modal>
         </div>
     );
 };

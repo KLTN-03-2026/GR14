@@ -12,6 +12,8 @@ const CategoryManagementPage: React.FC = () => {
     const [editingCategory, setEditingCategory] = useState<PropertyCategory | null>(null);
     const [formData, setFormData] = useState({ code: '', name: '' });
     const [search, setSearch] = useState('');
+    const [deleteTarget, setDeleteTarget] = useState<PropertyCategory | null>(null);
+    const [deleting, setDeleting] = useState(false);
 
     useEffect(() => {
         loadCategories();
@@ -29,13 +31,18 @@ const CategoryManagementPage: React.FC = () => {
         }
     };
 
-    const handleDelete = async (id: number) => {
+    const handleDelete = async () => {
+        if (!deleteTarget) return;
+        setDeleting(true);
         try {
-            await propertyCategoryApi.delete(id);
+            await propertyCategoryApi.delete(deleteTarget.id);
             toast.success('Xóa thành công');
+            setDeleteTarget(null);
             loadCategories();
         } catch {
             toast.error('Xóa thất bại');
+        } finally {
+            setDeleting(false);
         }
     };
 
@@ -95,7 +102,7 @@ const CategoryManagementPage: React.FC = () => {
                             </svg>
                         )}
                         onClick={() => {
-                            if (window.confirm('Bạn có chắc muốn xóa?')) handleDelete(record.id);
+                            setDeleteTarget(record);
                         }}
                     >
                         Xóa
@@ -139,6 +146,32 @@ const CategoryManagementPage: React.FC = () => {
             </div>
 
             <DataTable columns={columns} dataSource={filteredCategories} rowKey="id" loading={loading} pagination={false} />
+
+            <Modal
+                isOpen={!!deleteTarget}
+                onClose={() => {
+                    if (!deleting) setDeleteTarget(null);
+                }}
+                title="Xác nhận xóa danh mục"
+                width="max-w-md"
+                footer={
+                    <>
+                        <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+                            Hủy
+                        </Button>
+                        <Button variant="danger" onClick={handleDelete} loading={deleting}>
+                            Xóa
+                        </Button>
+                    </>
+                }
+            >
+                <p className="text-sm text-gray-700">
+                    Bạn có chắc muốn xóa danh mục
+                    {' '}
+                    <span className="font-semibold text-gray-900">{deleteTarget?.name}</span>
+                    ?
+                </p>
+            </Modal>
 
             <Modal
                 isOpen={modalOpen}

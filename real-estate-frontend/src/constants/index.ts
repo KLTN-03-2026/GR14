@@ -2,8 +2,13 @@ export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localho
 
 export const PROPERTY_STATUS = {
     ACTIVE: 1,
-    INACTIVE: 0,
+    SOLD: 0,
 } as const;
+
+export const PROPERTY_STATUS_LABELS: Record<number, string> = {
+    0: 'Đã bán',
+    1: 'Hoạt động',
+};
 
 export const APPOINTMENT_STATUS = {
     PENDING: 0,

@@ -41,6 +41,7 @@ const LandFormPage: React.FC = () => {
         landType: '',
         legalStatus: '',
         employeeId: '',
+        status: 1,
         description: '',
     });
 
@@ -82,6 +83,7 @@ const LandFormPage: React.FC = () => {
                 landType: land.landType || '',
                 legalStatus: land.legalStatus || '',
                 employeeId: land.employeeId || '',
+                status: land.status ?? 1,
                 description: land.description || '',
             });
             if (land.images) {
@@ -294,8 +296,8 @@ const LandFormPage: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Row 4: Chiều dài, Loại đất, Pháp lý, Nhân viên */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                    {/* Row 4: Chiều dài, Loại đất, Pháp lý, Nhân viên, Trạng thái */}
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
                         <div>
                             <label className={labelClass}>Chiều dài (m)</label>
                             <input type="number" className={inputClass} min={0} value={String(formData.landLength || '')} onChange={(e) => setField('landLength', e.target.value)} />
@@ -315,6 +317,13 @@ const LandFormPage: React.FC = () => {
                                 {employees.map((emp) => (
                                     <option key={emp.id} value={emp.id}>{emp.code} - {emp.user?.fullName || ''}</option>
                                 ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className={labelClass}>Trạng thái</label>
+                            <select className={inputClass} value={String(formData.status || 1)} onChange={(e) => setField('status', Number(e.target.value))}>
+                                <option value={1}>Hoạt động</option>
+                                <option value={0}>Đã bán</option>
                             </select>
                         </div>
                     </div>

@@ -59,6 +59,8 @@ const PostManagementPage: React.FC = () => {
     const [previewOpen, setPreviewOpen] = useState(false);
     const [previewImages, setPreviewImages] = useState<string[]>([]);
     const [previewIndex, setPreviewIndex] = useState(0);
+    const [deletePost, setDeletePost] = useState<Post | null>(null);
+    const [deleting, setDeleting] = useState(false);
     const [vipTooltip, setVipTooltip] = useState<VipTooltipState>({
         visible: false,
         x: 0,
@@ -233,13 +235,18 @@ const PostManagementPage: React.FC = () => {
         }
     };
 
-    const handleDelete = async (id: number) => {
+    const handleDelete = async () => {
+        if (!deletePost) return;
+        setDeleting(true);
         try {
-            await postApi.delete(id);
+            await postApi.delete(deletePost.id);
             toast.success('Xóa thành công');
+            setDeletePost(null);
             loadPosts();
         } catch {
             toast.error('Xóa thất bại');
+        } finally {
+            setDeleting(false);
         }
     };
 
@@ -365,9 +372,7 @@ const PostManagementPage: React.FC = () => {
                             </svg>
                         )}
                         onClick={() => {
-                            if (window.confirm('Bạn có chắc muốn xóa bài đăng này?')) {
-                                handleDelete(r.id);
-                            }
+                            setDeletePost(r);
                         }}
                     >
                         Xóa
@@ -486,6 +491,32 @@ const PostManagementPage: React.FC = () => {
                     <div>{vipTooltip.statusText}</div>
                 </div>
             )}
+
+            <Modal
+                title="Xác nhận xóa bài đăng"
+                isOpen={!!deletePost}
+                onClose={() => {
+                    if (!deleting) setDeletePost(null);
+                }}
+                width="max-w-md"
+                footer={(
+                    <>
+                        <Button variant="outline" onClick={() => setDeletePost(null)} disabled={deleting}>
+                            Hủy
+                        </Button>
+                        <Button variant="danger" onClick={handleDelete} loading={deleting}>
+                            Xóa
+                        </Button>
+                    </>
+                )}
+            >
+                <p className="text-sm text-gray-700">
+                    Bạn có chắc muốn xóa bài đăng
+                    {' '}
+                    <span className="font-semibold text-gray-900">{deletePost?.title}</span>
+                    ?
+                </p>
+            </Modal>
 
             <Modal
                 title={editingPost ? 'Sửa bài đăng' : 'Thêm bài đăng'}

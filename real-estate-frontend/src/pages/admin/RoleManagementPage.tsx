@@ -11,6 +11,8 @@ const RoleManagementPage: React.FC = () => {
     const [modalOpen, setModalOpen] = useState(false);
     const [editingRole, setEditingRole] = useState<Role | null>(null);
     const [formData, setFormData] = useState({ code: '', name: '', description: '' });
+    const [deleteTarget, setDeleteTarget] = useState<Role | null>(null);
+    const [deleting, setDeleting] = useState(false);
 
     useEffect(() => {
         loadRoles();
@@ -28,13 +30,18 @@ const RoleManagementPage: React.FC = () => {
         }
     };
 
-    const handleDelete = async (id: number) => {
+    const handleDelete = async () => {
+        if (!deleteTarget) return;
+        setDeleting(true);
         try {
-            await roleApi.delete(id);
+            await roleApi.delete(deleteTarget.id);
             toast.success('Xóa thành công');
+            setDeleteTarget(null);
             loadRoles();
         } catch {
             toast.error('Xóa thất bại');
+        } finally {
+            setDeleting(false);
         }
     };
 
@@ -95,7 +102,7 @@ const RoleManagementPage: React.FC = () => {
                             </svg>
                         )}
                         onClick={() => {
-                            if (window.confirm('Bạn có chắc muốn xóa?')) handleDelete(record.id);
+                            setDeleteTarget(record);
                         }}
                     >
                         Xóa
@@ -119,6 +126,32 @@ const RoleManagementPage: React.FC = () => {
             </div>
 
             <DataTable columns={columns} dataSource={roles} rowKey="id" loading={loading} pagination={false} />
+
+            <Modal
+                isOpen={!!deleteTarget}
+                onClose={() => {
+                    if (!deleting) setDeleteTarget(null);
+                }}
+                title="Xác nhận xóa vai trò"
+                width="max-w-md"
+                footer={
+                    <>
+                        <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+                            Hủy
+                        </Button>
+                        <Button variant="danger" onClick={handleDelete} loading={deleting}>
+                            Xóa
+                        </Button>
+                    </>
+                }
+            >
+                <p className="text-sm text-gray-700">
+                    Bạn có chắc muốn xóa vai trò
+                    {' '}
+                    <span className="font-semibold text-gray-900">{deleteTarget?.name}</span>
+                    ?
+                </p>
+            </Modal>
 
             <Modal
                 isOpen={modalOpen}

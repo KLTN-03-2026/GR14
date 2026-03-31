@@ -6,6 +6,7 @@ import { formatCurrency, formatArea } from '@/utils';
 import type { Land } from '@/types';
 import { DEFAULT_PAGE_SIZE } from '@/constants';
 import { Button, Badge, DataTable, ImageLightbox } from '@/components/ui';
+import Modal from '@/components/ui/Modal';
 import type { Column } from '@/components/ui';
 
 const LandManagementPage: React.FC = () => {
@@ -18,6 +19,9 @@ const LandManagementPage: React.FC = () => {
     const [previewOpen, setPreviewOpen] = useState(false);
     const [previewImages, setPreviewImages] = useState<string[]>([]);
     const [previewIndex, setPreviewIndex] = useState(0);
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [deleteTarget, setDeleteTarget] = useState<Land | null>(null);
+    const [deleting, setDeleting] = useState(false);
 
     const loadLands = useCallback(async () => {
         setLoading(true);
@@ -39,13 +43,19 @@ const LandManagementPage: React.FC = () => {
         loadLands();
     }, [loadLands]);
 
-    const handleDelete = async (id: number) => {
+    const handleDelete = async () => {
+        if (!deleteTarget) return;
+        setDeleting(true);
         try {
-            await landApi.delete(id);
+            await landApi.delete(deleteTarget.id);
             toast.success('Xóa thành công');
+            setDeleteModalOpen(false);
+            setDeleteTarget(null);
             loadLands();
         } catch {
             toast.error('Xóa thất bại');
+        } finally {
+            setDeleting(false);
         }
     };
 
@@ -103,7 +113,7 @@ const LandManagementPage: React.FC = () => {
             key: 'status',
             render: (status: number) => (
                 <Badge color={status === 1 ? 'success' : 'error'}>
-                    {status === 1 ? 'Hoạt động' : 'Ẩn'}
+                    {status === 1 ? 'Hoạt động' : 'Đã bán'}
                 </Badge>
             ),
         },
@@ -136,9 +146,8 @@ const LandManagementPage: React.FC = () => {
                             </svg>
                         )}
                         onClick={() => {
-                            if (window.confirm('Bạn có chắc muốn xóa?')) {
-                                handleDelete(record.id);
-                            }
+                            setDeleteTarget(record);
+                            setDeleteModalOpen(true);
                         }}
                     />
                 </div>
@@ -193,6 +202,42 @@ const LandManagementPage: React.FC = () => {
                 initialIndex={previewIndex}
                 onClose={() => setPreviewOpen(false)}
             />
+
+            <Modal
+                isOpen={deleteModalOpen}
+                onClose={() => {
+                    if (!deleting) {
+                        setDeleteModalOpen(false);
+                        setDeleteTarget(null);
+                    }
+                }}
+                title="Xác nhận xóa đất"
+                width="max-w-md"
+                footer={(
+                    <>
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setDeleteModalOpen(false);
+                                setDeleteTarget(null);
+                            }}
+                            disabled={deleting}
+                        >
+                            Hủy
+                        </Button>
+                        <Button variant="danger" onClick={handleDelete} loading={deleting}>
+                            Xóa
+                        </Button>
+                    </>
+                )}
+            >
+                <p className="text-sm text-gray-700">
+                    Bạn có chắc muốn xóa đất
+                    {' '}
+                    <span className="font-semibold text-gray-900">{deleteTarget?.title}</span>
+                    ?
+                </p>
+            </Modal>
         </div>
     );
 };

@@ -23,6 +23,8 @@ const UserManagementPage: React.FC = () => {
     const [search, setSearch] = useState('');
     const [modalOpen, setModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
+    const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
+    const [deleting, setDeleting] = useState(false);
     const [formData, setFormData] = useState({
         username: '',
         password: '',
@@ -51,13 +53,18 @@ const UserManagementPage: React.FC = () => {
         loadUsers();
     }, [loadUsers]);
 
-    const handleDelete = async (id: number) => {
+    const handleDelete = async () => {
+        if (!deleteTarget) return;
+        setDeleting(true);
         try {
-            await userApi.delete(id);
+            await userApi.delete(deleteTarget.id);
             toast.success('Đã khóa tài khoản');
+            setDeleteTarget(null);
             loadUsers();
         } catch (err) {
             toast.error(getApiErrorMessage(err, 'Khóa tài khoản thất bại'));
+        } finally {
+            setDeleting(false);
         }
     };
 
@@ -168,9 +175,7 @@ const UserManagementPage: React.FC = () => {
                         )}
                         disabled={record.status === 0}
                         onClick={() => {
-                            if (window.confirm('Bạn có chắc muốn khóa tài khoản này?')) {
-                                handleDelete(record.id);
-                            }
+                            setDeleteTarget(record);
                         }}
                     >
                         Khóa
@@ -210,6 +215,28 @@ const UserManagementPage: React.FC = () => {
                 loading={loading}
                 pagination={{ current: page, total, pageSize: DEFAULT_PAGE_SIZE, onChange: setPage, showTotal: (t) => `Tổng ${t} bản ghi` }}
             />
+
+            <Modal
+                isOpen={!!deleteTarget}
+                onClose={() => {
+                    if (!deleting) setDeleteTarget(null);
+                }}
+                title="Xác nhận khóa tài khoản"
+                width="max-w-md"
+                footer={(
+                    <>
+                        <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>Hủy</Button>
+                        <Button variant="danger" onClick={handleDelete} loading={deleting}>Khóa tài khoản</Button>
+                    </>
+                )}
+            >
+                <p className="text-sm text-gray-700">
+                    Bạn có chắc muốn khóa tài khoản
+                    {' '}
+                    <span className="font-semibold text-gray-900">{deleteTarget?.fullName || deleteTarget?.username}</span>
+                    ?
+                </p>
+            </Modal>
 
             <Modal
                 isOpen={modalOpen}

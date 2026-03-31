@@ -9,3 +9,4 @@ export { roleApi, propertyCategoryApi, favoriteApi, featuredApi, profileApi } fr
 export { paymentApi } from './payment';
 export { aiApi } from './ai';
 export { recommendationApi } from './recommendation';
+export { vipPackageApi } from './vip-package';

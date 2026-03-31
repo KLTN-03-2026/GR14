@@ -23,6 +23,8 @@ const EmployeeManagementPage = () => {
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<EmployeeRecord | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<EmployeeRecord | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [formData, setFormData] = useState({
     code: '',
     username: '',
@@ -121,15 +123,17 @@ const EmployeeManagementPage = () => {
   };
 
   // ================= DELETE (SOFT) =================
-  const remove = async (id: number) => {
+  const remove = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await employeeApi.delete(id);
+      await employeeApi.delete(deleteTarget.id);
       toast.success("Đã khóa tài khoản");
 
       // update UI ngay
       setData(prev =>
         prev.map(item =>
-          item.id === id
+          item.id === deleteTarget.id
             ? {
               ...item,
               user: item.user
@@ -140,9 +144,13 @@ const EmployeeManagementPage = () => {
         )
       );
 
+      setDeleteTarget(null);
+
 
     } catch (err) {
       toast.error(getApiErrorMessage(err, "Khóa tài khoản thất bại"));
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -193,11 +201,7 @@ const EmployeeManagementPage = () => {
               </svg>
             )}
             disabled={r.user?.status === 0}
-            onClick={() => {
-              if (window.confirm('Bạn có chắc muốn khóa?')) {
-                remove(r.id);
-              }
-            }}
+            onClick={() => setDeleteTarget(r)}
           >
             Khóa
           </Button>
@@ -236,6 +240,28 @@ const EmployeeManagementPage = () => {
         loading={loading}
         pagination={false}
       />
+
+      <Modal
+        isOpen={!!deleteTarget}
+        onClose={() => {
+          if (!deleting) setDeleteTarget(null);
+        }}
+        title="Xác nhận khóa tài khoản nhân viên"
+        width="max-w-md"
+        footer={(
+          <>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>Hủy</Button>
+            <Button variant="danger" onClick={remove} loading={deleting}>Khóa tài khoản</Button>
+          </>
+        )}
+      >
+        <p className="text-sm text-gray-700">
+          Bạn có chắc muốn khóa tài khoản nhân viên
+          {' '}
+          <span className="font-semibold text-gray-900">{deleteTarget?.user?.fullName || deleteTarget?.code}</span>
+          ?
+        </p>
+      </Modal>
 
       {/* MODAL */}
       <Modal

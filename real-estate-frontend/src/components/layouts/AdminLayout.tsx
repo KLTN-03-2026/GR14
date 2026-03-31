@@ -110,6 +110,15 @@ const navItems: NavItem[] = [
         ),
         path: '/admin/payment-history',
     },
+    {
+        name: 'Gói VIP',
+        icon: (
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.5.5 0 011.04 0V6h3a2 2 0 012 2v4a2 2 0 01-2 2h-3v2.97a.75.75 0 01-1.06.73l-5.7-3.73a.75.75 0 010-1.26l5.7-3.73a.75.75 0 011.06.73V9h-3V7a2 2 0 012-2h3V3.5z" />
+            </svg>
+        ),
+        path: '/admin/vip-packages',
+    },
 ];
 
 // ─── Sidebar Component ───────────────────────────────────────

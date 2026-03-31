@@ -23,6 +23,8 @@ const CustomerManagementPage: React.FC = () => {
     const [search, setSearch] = useState('');
     const [modalOpen, setModalOpen] = useState(false);
     const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+    const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
+    const [deleting, setDeleting] = useState(false);
     const [formData, setFormData] = useState({
         username: '',
         password: '',
@@ -54,15 +56,17 @@ const CustomerManagementPage: React.FC = () => {
         loadCustomers();
     }, [loadCustomers]);
 
-    const handleDelete = async (id: number) => {
+    const handleDelete = async () => {
+        if (!deleteTarget) return;
+        setDeleting(true);
         try {
-            await customerApi.delete(id);
+            await customerApi.delete(deleteTarget.id);
 
             toast.success('Đã khóa tài khoản');
 
             setCustomers(prev =>
                 prev.map(item =>
-                    item.id === id
+                    item.id === deleteTarget.id
                         ? {
                             ...item,
                             user: item.user
@@ -76,8 +80,12 @@ const CustomerManagementPage: React.FC = () => {
                 )
             );
 
+            setDeleteTarget(null);
+
         } catch (err) {
             toast.error(getApiErrorMessage(err, 'Xóa thất bại'));
+        } finally {
+            setDeleting(false);
         }
     };
 
@@ -226,11 +234,7 @@ const CustomerManagementPage: React.FC = () => {
                             </svg>
                         )}
                         disabled={record.user?.status === 0}
-                        onClick={() => {
-                            if (window.confirm('Bạn có chắc muốn xóa?')) {
-                                handleDelete(record.id);
-                            }
-                        }}
+                        onClick={() => setDeleteTarget(record)}
                     >
                         Khóa
                     </Button>
@@ -281,6 +285,32 @@ const CustomerManagementPage: React.FC = () => {
                     showTotal: (t) => `Tổng ${t} bản ghi`,
                 }}
             />
+
+            <Modal
+                isOpen={!!deleteTarget}
+                onClose={() => {
+                    if (!deleting) setDeleteTarget(null);
+                }}
+                title="Xác nhận khóa tài khoản khách hàng"
+                width="max-w-md"
+                footer={(
+                    <>
+                        <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+                            Hủy
+                        </Button>
+                        <Button variant="danger" onClick={handleDelete} loading={deleting}>
+                            Khóa tài khoản
+                        </Button>
+                    </>
+                )}
+            >
+                <p className="text-sm text-gray-700">
+                    Bạn có chắc muốn khóa tài khoản khách hàng
+                    {' '}
+                    <span className="font-semibold text-gray-900">{deleteTarget?.user?.fullName || deleteTarget?.code}</span>
+                    ?
+                </p>
+            </Modal>
 
             <Modal
                 isOpen={modalOpen}

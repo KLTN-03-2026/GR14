@@ -68,6 +68,8 @@ const AppointmentManagementPage: React.FC = () => {
     const [assignModalOpen, setAssignModalOpen] = useState(false);
     const [assignId, setAssignId] = useState<number | null>(null);
     const [assignData, setAssignData] = useState<{ employeeId?: number }>({});
+    const [deleteTarget, setDeleteTarget] = useState<Appointment | null>(null);
+    const [deleting, setDeleting] = useState(false);
 
     const loadAppointments = useCallback(async () => {
         setLoading(true);
@@ -109,13 +111,18 @@ const AppointmentManagementPage: React.FC = () => {
     }, []);
 
     // -- Delete ---------------------------------------------
-    const handleDelete = async (id: number) => {
+    const handleDelete = async () => {
+        if (!deleteTarget) return;
+        setDeleting(true);
         try {
-            await appointmentApi.delete(id);
+            await appointmentApi.delete(deleteTarget.id);
             toast.success('Xóa thành công');
+            setDeleteTarget(null);
             loadAppointments();
         } catch {
             toast.error('Xóa thất bại');
+        } finally {
+            setDeleting(false);
         }
     };
 
@@ -333,9 +340,7 @@ const AppointmentManagementPage: React.FC = () => {
                                 </svg>
                             )}
                             onClick={() => {
-                                if (window.confirm('Bạn có chắc muốn xóa?')) {
-                                    handleDelete(record.id);
-                                }
+                                setDeleteTarget(record);
                             }}
                         >
                             Xóa
@@ -474,6 +479,28 @@ const AppointmentManagementPage: React.FC = () => {
             </Modal>
 
             {/* Assign employee Modal */}
+            <Modal
+                isOpen={!!deleteTarget}
+                onClose={() => {
+                    if (!deleting) setDeleteTarget(null);
+                }}
+                title="Xác nhận xóa lịch hẹn"
+                width="max-w-md"
+                footer={(
+                    <>
+                        <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>Hủy</Button>
+                        <Button variant="danger" onClick={handleDelete} loading={deleting}>Xóa</Button>
+                    </>
+                )}
+            >
+                <p className="text-sm text-gray-700">
+                    Bạn có chắc muốn xóa lịch hẹn của khách
+                    {' '}
+                    <span className="font-semibold text-gray-900">{deleteTarget?.customer?.user?.fullName || `#${deleteTarget?.id || ''}`}</span>
+                    ?
+                </p>
+            </Modal>
+
             <Modal
                 isOpen={assignModalOpen}
                 onClose={() => setAssignModalOpen(false)}

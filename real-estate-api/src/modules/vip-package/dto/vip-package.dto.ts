@@ -31,6 +31,11 @@ export class CreateVipPackageDto {
     @IsOptional()
     @IsString()
     features?: string;
+
+    @IsOptional()
+    @IsNumber()
+    @Type(() => Number)
+    status?: number;
 }
 
 export class UpdateVipPackageDto {

@@ -317,7 +317,7 @@ const HouseFormPage: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Row 4: floors, bedrooms, bathrooms, employee */}
+                    {/* Row 4: floors, bedrooms, bathrooms, employee, status */}
                     <div className="grid grid-cols-3 md:grid-cols-12 gap-4 mb-4">
                         <div className="md:col-span-2">
                             <label className={labelClass}>Số tầng</label>
@@ -349,7 +349,18 @@ const HouseFormPage: React.FC = () => {
                                 onChange={(e) => handleChange('bathrooms', e.target.value ? Number(e.target.value) : undefined)}
                             />
                         </div>
-                        <div className="col-span-3 md:col-span-6">
+                        <div className="md:col-span-3">
+                            <label className={labelClass}>Trạng thái</label>
+                            <select
+                                className={inputClass}
+                                value={formData.status ?? 1}
+                                onChange={(e) => handleChange('status', Number(e.target.value))}
+                            >
+                                <option value={1}>Hoạt động</option>
+                                <option value={0}>Đã bán</option>
+                            </select>
+                        </div>
+                        <div className="col-span-3 md:col-span-3">
                             <label className={labelClass}>Nhân viên phụ trách</label>
                             <select
                                 className={inputClass}

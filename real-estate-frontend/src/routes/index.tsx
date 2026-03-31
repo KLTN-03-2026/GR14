@@ -37,6 +37,8 @@ import CategoryManagementPage from '@/pages/admin/CategoryManagementPage';
 import FavoriteManagementPage from '@/pages/admin/FavoriteManagementPage';
 import ProfilePage from '@/pages/admin/ProfilePage';
 import PaymentHistoryPage from '@/pages/admin/PaymentHistoryPage';
+import VipPackageManagementPage from '@/pages/admin/VipPackageManagementPage';
+import VipPackageFormPage from '@/pages/admin/VipPackageFormPage';
 import PaymentResultPage from '@/pages/public/PaymentResultPage';
 import EmployeeAppointmentPage from '@/pages/employee/EmployeeAppointmentPage';
 
@@ -158,6 +160,9 @@ const router = createBrowserRouter([
 
             // VIP & Payment
             { path: 'payment-history', element: <PaymentHistoryPage /> },
+            { path: 'vip-packages', element: <VipPackageManagementPage /> },
+            { path: 'vip-packages/create', element: <VipPackageFormPage /> },
+            { path: 'vip-packages/:id', element: <VipPackageFormPage /> },
         ],
     },
 
