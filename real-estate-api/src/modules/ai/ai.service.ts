@@ -66,6 +66,35 @@ export class AiService {
         private readonly redis: RedisService,
     ) { }
 
+    async indexOne(type: 'house' | 'land' | 'post', id: number): Promise<void> {
+        try {
+            let doc: IndexedDoc;
+
+            if (type === 'house') {
+                const house = await this.prisma.house.findUnique({ where: { id } });
+                if (!house || house.status !== 1) return;
+                doc = this.houseToDoc(house as Record<string, unknown>);
+            } else if (type === 'land') {
+                const land = await this.prisma.land.findUnique({ where: { id } });
+                if (!land || land.status !== 1) return;
+                doc = this.landToDoc(land as Record<string, unknown>);
+            } else {
+                const post = await this.prisma.post.findUnique({ where: { id } });
+                if (!post || post.status !== 2) return;
+                doc = this.postToDoc(post as Record<string, unknown>);
+            }
+
+            await this.ensureCollection(768);
+            const vector = await this.embed(doc.text);
+            await axios.put(`${this.qdrantUrl}/collections/${this.ragCollection}/points?wait=true`, {
+                points: [{ id: doc.id, vector, payload: doc.payload }],
+            });
+            this.logger.log(`Indexed ${type}:${id} (qdrant id=${doc.id})`);
+        } catch (error) {
+            this.logger.warn(`indexOne(${type}:${id}) failed: ${this.stringifyError(error)}`);
+        }
+    }
+
     async indexData(limit = 200) {
         const [houses, lands, posts] = await Promise.all([
             this.prisma.house.findMany({

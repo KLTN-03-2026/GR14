@@ -1,18 +1,36 @@
-import { useEffect, useState } from 'react';
-import { Table, Tag, Typography, message, Button, Space } from 'antd';
-import { HistoryOutlined } from '@ant-design/icons';
-import type { ColumnsType } from 'antd/es/table';
+import { useCallback, useEffect, useState } from 'react';
+import { toast } from 'react-hot-toast';
 import { paymentApi } from '@/api';
 import { formatCurrency, formatDateTime } from '@/utils';
 import type { Payment } from '@/types';
+import { Button, Badge, DataTable } from '@/components/ui';
+import type { Column } from '@/components/ui';
 
-const { Title } = Typography;
+type PaymentRow = Payment & {
+    subscription?: {
+        post?: {
+            id: number;
+            title: string;
+        };
+        package?: {
+            name: string;
+        };
+    };
+};
 
-const PAYMENT_STATUS_MAP: Record<number, { label: string; color: string }> = {
-    0: { label: 'Chờ thanh toán', color: 'processing' },
+type ApiError = {
+    response?: {
+        data?: {
+            message?: string;
+        };
+    };
+};
+
+const PAYMENT_STATUS_MAP: Record<number, { label: string; color: 'primary' | 'success' | 'error' | 'warning' | 'info' | 'light' | 'dark' }> = {
+    0: { label: 'Chờ thanh toán', color: 'info' },
     1: { label: 'Thành công', color: 'success' },
     2: { label: 'Thất bại', color: 'error' },
-    3: { label: 'Đã hủy', color: 'default' },
+    3: { label: 'Đã hủy', color: 'light' },
 };
 
 const PaymentHistoryPage: React.FC = () => {
@@ -21,34 +39,35 @@ const PaymentHistoryPage: React.FC = () => {
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(1);
 
-    useEffect(() => {
-        loadPayments();
-    }, [page]);
-
-    const loadPayments = async () => {
+    const loadPayments = useCallback(async () => {
         setLoading(true);
         try {
             const res = await paymentApi.getMyPayments({ page, limit: 10 });
             setPayments(res.data.data || []);
             setTotal(res.data.meta?.total || 0);
         } catch {
-            message.error('Lỗi tải dữ liệu');
+            toast.error('Lỗi tải dữ liệu');
         } finally {
             setLoading(false);
         }
-    };
+    }, [page]);
+
+    useEffect(() => {
+        loadPayments();
+    }, [loadPayments]);
 
     const handleSimulate = async (paymentId: number) => {
         try {
             await paymentApi.simulateSuccess(paymentId);
-            message.success('Thanh toán mô phỏng thành công!');
+            toast.success('Thanh toán mô phỏng thành công!');
             loadPayments();
-        } catch (err: any) {
-            message.error(err?.response?.data?.message || 'Lỗi mô phỏng thanh toán');
+        } catch (err: unknown) {
+            const error = err as ApiError;
+            toast.error(error.response?.data?.message || 'Lỗi mô phỏng thanh toán');
         }
     };
 
-    const columns: ColumnsType<Payment> = [
+    const columns: Column<PaymentRow>[] = [
         {
             title: 'ID',
             dataIndex: 'id',
@@ -56,16 +75,18 @@ const PaymentHistoryPage: React.FC = () => {
         },
         {
             title: 'Tin đăng',
-            render: (_, record: any) =>
+            key: 'post',
+            render: (_, record: PaymentRow) =>
                 record.subscription?.post
                     ? `#${record.subscription.post.id} - ${record.subscription.post.title}`
                     : '-',
         },
         {
             title: 'Gói VIP',
-            render: (_, record: any) =>
+            key: 'package',
+            render: (_, record: PaymentRow) =>
                 record.subscription?.package ? (
-                    <Tag color="gold">{record.subscription.package.name}</Tag>
+                    <Badge color="warning">{record.subscription.package.name}</Badge>
                 ) : (
                     '-'
                 ),
@@ -79,17 +100,17 @@ const PaymentHistoryPage: React.FC = () => {
             title: 'Phương thức',
             dataIndex: 'paymentMethod',
             render: (val: string) => (
-                <Tag color={val === 'vnpay' ? 'blue' : 'magenta'}>
+                <Badge color={val === 'vnpay' ? 'info' : 'primary'}>
                     {val === 'vnpay' ? 'VNPay' : 'MoMo'}
-                </Tag>
+                </Badge>
             ),
         },
         {
             title: 'Trạng thái',
             dataIndex: 'status',
             render: (val: number) => {
-                const s = PAYMENT_STATUS_MAP[val] || { label: 'Không rõ', color: 'default' };
-                return <Tag color={s.color}>{s.label}</Tag>;
+                const s = PAYMENT_STATUS_MAP[val] || { label: 'Không rõ', color: 'light' as const };
+                return <Badge color={s.color}>{s.label}</Badge>;
             },
         },
         {
@@ -104,30 +125,30 @@ const PaymentHistoryPage: React.FC = () => {
         },
         {
             title: 'Thao tác',
+            key: 'actions',
             render: (_, record) => (
-                <Space>
+                <>
                     {record.status === 0 && (
                         <Button
-                            size="small"
-                            type="primary"
+                            size="sm"
+                            variant="primary"
                             onClick={() => handleSimulate(record.id)}
                         >
-                            🧪 Test thanh toán
+                            Test thanh toán
                         </Button>
                     )}
-                </Space>
+                </>
             ),
         },
     ];
 
     return (
-        <div style={{ padding: 24 }}>
-            <Title level={2}>
-                <HistoryOutlined style={{ marginRight: 8 }} />
+        <div className="p-6">
+            <h2 className="text-2xl font-semibold text-gray-900 mb-6">
                 Lịch sử thanh toán
-            </Title>
+            </h2>
 
-            <Table
+            <DataTable
                 columns={columns}
                 dataSource={payments}
                 rowKey="id"

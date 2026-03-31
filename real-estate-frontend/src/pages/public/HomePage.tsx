@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Row, Col, Typography, Button, Card } from 'antd';
-import { BankOutlined, EnvironmentOutlined, ReadOutlined } from '@ant-design/icons';
+import { Row, Col, Typography, Button, Card, Tag } from 'antd';
+import { BankOutlined, EnvironmentOutlined, ReadOutlined, RobotOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { houseApi, landApi } from '@/api';
+import { featuredApi, recommendationApi } from '@/api';
 import { PropertyCard } from '@/components/common';
-import type { House, Land } from '@/types';
+import { useAuthStore } from '@/stores/authStore';
+import { formatCurrency, formatArea, getFullAddress } from '@/utils';
+import type { House, Land, AIRecommendation } from '@/types';
 import banner1 from '@/assets/ABbn1.jpg';
 import banner2 from '@/assets/ABbn2.jpg';
 import banner3 from '@/assets/ABbn3.jpg';
@@ -16,22 +18,29 @@ const { Title, Paragraph } = Typography;
 
 const HomePage: React.FC = () => {
     const navigate = useNavigate();
+    const { isAuthenticated } = useAuthStore();
     const [houses, setHouses] = useState<House[]>([]);
     const [lands, setLands] = useState<Land[]>([]);
     const [currentSlide, setCurrentSlide] = useState(0);
+    const [aiRecs, setAiRecs] = useState<AIRecommendation[]>([]);
 
     useEffect(() => {
         loadData();
     }, []);
 
+    useEffect(() => {
+        if (!isAuthenticated) return;
+        recommendationApi.getAIRecommendations(8)
+            .then(res => setAiRecs(res.data?.data || res.data || []))
+            .catch(() => { });
+    }, [isAuthenticated]);
+
     const loadData = async () => {
         try {
-            const [housesRes, landsRes] = await Promise.all([
-                houseApi.getAll({ limit: 8 }),
-                landApi.getAll({ limit: 8 }),
-            ]);
-            setHouses(housesRes.data.data || housesRes.data);
-            setLands(landsRes.data.data || landsRes.data);
+            const featuredRes = await featuredApi.getAll();
+            const payload = featuredRes.data?.data || featuredRes.data || {};
+            setHouses(payload.houses || []);
+            setLands(payload.lands || []);
         } catch (error) {
             console.error('Error loading data:', error);
         }
@@ -105,6 +114,69 @@ const HomePage: React.FC = () => {
 
             </div>
 
+            {/* ================= AI HYBRID RECOMMENDATIONS ================= */}
+            {isAuthenticated && aiRecs.length > 0 && (
+                <div style={{ maxWidth: 1200, margin: '0 auto 48px', padding: '0 24px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: 24 }}>
+                        <RobotOutlined style={{ fontSize: 24, color: '#1677ff', marginRight: 10 }} />
+                        <Title level={2} style={{ margin: 0 }}>AI gợi ý cho bạn</Title>
+                        <Tag color="blue" style={{ marginLeft: 12 }}>Hybrid AI</Tag>
+                    </div>
+
+                    <Row gutter={[16, 16]}>
+                        {aiRecs.map(rec => (
+                            <Col xs={24} sm={12} md={8} lg={6} key={`${rec.propertyType}-${rec.id}`}>
+                                <Card
+                                    hoverable
+                                    cover={
+                                        <div style={{ height: 180, overflow: 'hidden', position: 'relative' }}>
+                                            <img
+                                                alt={rec.title}
+                                                src={rec.images?.[0]?.url || 'https://via.placeholder.com/300x200?text=No+Image'}
+                                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                            />
+                                            <Tag color="gold" style={{ position: 'absolute', top: 8, right: 8 }}>
+                                                {Math.round(rec.recommendationScore * 100)}% phù hợp
+                                            </Tag>
+                                            <Tag
+                                                color={rec.propertyType === 'house' ? 'blue' : 'green'}
+                                                style={{ position: 'absolute', top: 8, left: 8 }}
+                                            >
+                                                {rec.propertyType === 'house' ? 'Nhà' : 'Đất'}
+                                            </Tag>
+                                        </div>
+                                    }
+                                    onClick={() => navigate(`/${rec.propertyType === 'house' ? 'houses' : 'lands'}/${rec.id}`)}
+                                    style={{ height: '100%' }}
+                                >
+                                    <Card.Meta
+                                        title={<span style={{ fontSize: 14 }}>{rec.title}</span>}
+                                        description={
+                                            <div>
+                                                <div style={{ color: '#f5222d', fontWeight: 600, fontSize: 15, marginBottom: 6 }}>
+                                                    {formatCurrency(rec.price)}
+                                                </div>
+                                                <div style={{ marginBottom: 6 }}>
+                                                    <Tag color="blue">{formatArea(rec.area)}</Tag>
+                                                    {rec.direction && <Tag color="green">{rec.direction}</Tag>}
+                                                </div>
+                                                <div style={{ color: '#666', fontSize: 12, marginBottom: 6 }}>
+                                                    <EnvironmentOutlined /> {getFullAddress(rec)}
+                                                </div>
+                                                <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+                                                    {rec.recommendationReason}
+                                                </div>
+                                            </div>
+                                        }
+                                    />
+                                </Card>
+                            </Col>
+                        ))}
+                    </Row>
+                </div>
+            )}
+
+
             {/* ================= CATEGORIES ================= */}
             <div style={{ maxWidth: 1200, margin: '100px auto 48px', padding: '0 24px' }}>
                 <Row gutter={24} justify="center">
@@ -148,22 +220,6 @@ const HomePage: React.FC = () => {
                 {/* Header */}
                 <div className="flex justify-between items-center mb-6">
                     <Title level={2}>Bất động sản theo khu vực</Title>
-
-                    <div className="flex gap-2">
-                        <button className="px-4 py-1 rounded-full bg-black text-white text-sm">
-                            Mua bán
-                        </button>
-                        <button className="px-4 py-1 rounded-full bg-gray-200 text-sm">
-                            Cho thuê
-                        </button>
-                    </div>
-                </div>
-
-                {/* Tabs */}
-                <div className="flex gap-6 mb-4 text-gray-600 text-sm">
-                    <span className="border-b-2 border-black pb-1">Căn hộ/Chung cư</span>
-                    <span>Nhà ở</span>
-                    <span>Đất</span>
                 </div>
 
                 {/* Grid */}

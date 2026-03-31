@@ -1,5 +1,5 @@
 import { createBrowserRouter } from 'react-router-dom';
-import { AdminLayout, PublicLayout } from '@/components/layouts';
+import { AdminLayout, EmployeeLayout, PublicLayout } from '@/components/layouts';
 import { ProtectedRoute } from '@/components/common';
 
 // Public pages
@@ -37,7 +37,10 @@ import CategoryManagementPage from '@/pages/admin/CategoryManagementPage';
 import FavoriteManagementPage from '@/pages/admin/FavoriteManagementPage';
 import ProfilePage from '@/pages/admin/ProfilePage';
 import PaymentHistoryPage from '@/pages/admin/PaymentHistoryPage';
+import VipPackageManagementPage from '@/pages/admin/VipPackageManagementPage';
+import VipPackageFormPage from '@/pages/admin/VipPackageFormPage';
 import PaymentResultPage from '@/pages/public/PaymentResultPage';
+import EmployeeAppointmentPage from '@/pages/employee/EmployeeAppointmentPage';
 
 
 const router = createBrowserRouter([
@@ -157,6 +160,24 @@ const router = createBrowserRouter([
 
             // VIP & Payment
             { path: 'payment-history', element: <PaymentHistoryPage /> },
+            { path: 'vip-packages', element: <VipPackageManagementPage /> },
+            { path: 'vip-packages/create', element: <VipPackageFormPage /> },
+            { path: 'vip-packages/:id', element: <VipPackageFormPage /> },
+        ],
+    },
+
+    // Employee routes (protected - EMPLOYEE only)
+    {
+        path: '/employee',
+        element: (
+            <ProtectedRoute requiredRoles={['EMPLOYEE']}>
+                <EmployeeLayout />
+            </ProtectedRoute>
+        ),
+        children: [
+            { index: true, element: <EmployeeAppointmentPage /> },
+            { path: 'appointments', element: <EmployeeAppointmentPage /> },
+            { path: 'profile', element: <ProfilePage /> },
         ],
     },
 ]);

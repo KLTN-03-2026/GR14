@@ -2,3 +2,4 @@
 real-estate-AI/.env
 real-estate-frontend/.env
 node_modules
+.claude/

@@ -26,11 +26,14 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
-  app.useGlobalPipes(
+  app.useGlobalPipes( 
     new ValidationPipe({
       whitelist: true,
       transform: true,
-      forbidNonWhitelisted: true,
+      forbidNonWhitelisted: false,
+      transformOptions: {
+        enableImplicitConversion:true, 
+      }
     }),
   );
 

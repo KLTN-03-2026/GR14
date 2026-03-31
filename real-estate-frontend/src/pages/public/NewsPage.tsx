@@ -43,7 +43,7 @@ const NewsPage = () => {
     });
   };
 
-  // ===== FETCH POSTS (KHÔNG TÁCH MẢNG) =====
+  // ===== FETCH POSTS =====
   const fetchPosts = async (pageNumber = 1, append = false) => {
     try {
       setLoading(true);
@@ -70,14 +70,11 @@ const NewsPage = () => {
   useEffect(() => {
     fetchPosts(1);
   }, []);
-
-  // ===== DỮ LIỆU ĐÃ SẮP XẾP: VIP TRƯỚC -> THƯỜNG SAU =====
   const sortedPosts = useMemo(() => {
     return [...allPosts].sort((a, b) => {
-      // Ưu tiên bài VIP lên đầu
+
       if (a.isVip && !b.isVip) return -1;
       if (!a.isVip && b.isVip) return 1;
-      // Nếu cùng loại thì sắp xếp theo thời gian mới nhất
       return (
         new Date(b.postedAt || b.createdAt || 0).getTime() -
         new Date(a.postedAt || a.createdAt || 0).getTime()
@@ -85,10 +82,10 @@ const NewsPage = () => {
     });
   }, [allPosts]);
 
-  // ===== HERO (Lấy bài đầu tiên trong danh sách đã sắp xếp) =====
+  // ===== HERO  =====
   const heroPost = useMemo(() => sortedPosts[0], [sortedPosts]);
 
-  // ===== LATEST (Danh sách bài mới nhất cho sidebar) =====
+  // ===== LATEST =====
   const latestPosts = useMemo(() => {
     return [...allPosts]
       .sort((a, b) =>

@@ -2,8 +2,13 @@ export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localho
 
 export const PROPERTY_STATUS = {
     ACTIVE: 1,
-    INACTIVE: 0,
+    SOLD: 0,
 } as const;
+
+export const PROPERTY_STATUS_LABELS: Record<number, string> = {
+    0: 'Đã bán',
+    1: 'Hoạt động',
+};
 
 export const APPOINTMENT_STATUS = {
     PENDING: 0,
@@ -15,6 +20,20 @@ export const APPOINTMENT_STATUS_LABELS: Record<number, string> = {
     0: 'Chờ duyệt',
     1: 'Đã duyệt',
     2: 'Từ chối',
+};
+
+export const APPOINTMENT_ACTUAL_STATUS = {
+    NOT_MET: 0,
+    MET: 1,
+    CUSTOMER_NO_SHOW: 2,
+    UNABLE_TO_PROCEED: 3,
+} as const;
+
+export const APPOINTMENT_ACTUAL_STATUS_LABELS: Record<number, string> = {
+    0: 'Chưa gặp',
+    1: 'Đã gặp',
+    2: 'Khách không đến',
+    3: 'Không thể thực hiện',
 };
 
 export const POST_STATUS = {

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../../common/mail/mail.service';
 import { MailProducerService } from '../../common/mail/mail-producer.service';
@@ -16,8 +16,29 @@ import {
 const appointmentInclude = {
     employee: { include: { user: { select: { id: true, fullName: true, phone: true } } } },
     customer: { include: { user: { select: { id: true, fullName: true, phone: true, email: true } } } },
-    house: { select: { id: true, title: true, city: true, district: true } },
-    land: { select: { id: true, title: true, city: true, district: true } },
+    house: {
+        select: {
+            id: true,
+            title: true,
+            city: true,
+            district: true,
+            images: { select: { id: true, url: true }, orderBy: { position: 'asc' as const }, take: 1 },
+        },
+    },
+    land: {
+        select: {
+            id: true,
+            title: true,
+            city: true,
+            district: true,
+            images: { select: { id: true, url: true }, orderBy: { position: 'asc' as const }, take: 1 },
+        },
+    },
+};
+
+type AppointmentActor = {
+    id: number;
+    roles?: string[];
 };
 
 @Injectable()
@@ -28,24 +49,53 @@ export class AppointmentService {
         private mailProducer: MailProducerService, // dùng để publish lên RabbitMQ
     ) { }
 
-    async findAll(page = 1, limit = 10, search?: string) {
-        const skip = (page - 1) * limit;
-        const where = search
-            ? {
-                OR: [
-                    { customer: { user: { fullName: { contains: search } } } },
-                    { customer: { user: { email: { contains: search } } } },
-                    { customer: { user: { phone: { contains: search } } } },
-                    { guestName: { contains: search } },
-                    { guestPhone: { contains: search } },
-                    { guestEmail: { contains: search } },
-                    { house: { title: { contains: search } } },
-                    { land: { title: { contains: search } } },
-                ],
-            }
-            : {};
+    private isEmployeeRole(actor: AppointmentActor) {
+        return Array.isArray(actor.roles) && actor.roles.includes('EMPLOYEE') && !actor.roles.includes('ADMIN');
+    }
 
-        const [appointments, total] = await Promise.all([
+    private async resolveEmployeeIdByUser(userId: number) {
+        const employee = await this.prisma.employee.findUnique({ where: { userId }, select: { id: true } });
+        if (!employee) {
+            throw new BadRequestException('Tài khoản nhân viên không hợp lệ');
+        }
+        return employee.id;
+    }
+
+    private buildFindAllWhere(search?: string, status?: number) {
+        const andConditions: any[] = [];
+
+        if (typeof status === 'number' && [0, 1, 2].includes(status)) {
+            andConditions.push({ status });
+        }
+
+        if (search?.trim()) {
+            const keyword = search.trim();
+            andConditions.push({
+                OR: [
+                    { customer: { user: { fullName: { contains: keyword } } } },
+                    { customer: { user: { email: { contains: keyword } } } },
+                    { customer: { user: { phone: { contains: keyword } } } },
+                    { guestName: { contains: keyword } },
+                    { guestPhone: { contains: keyword } },
+                    { guestEmail: { contains: keyword } },
+                    { house: { title: { contains: keyword } } },
+                    { land: { title: { contains: keyword } } },
+                ],
+            });
+        }
+
+        if (andConditions.length === 0) return {};
+        if (andConditions.length === 1) return andConditions[0];
+
+        return { AND: andConditions };
+    }
+
+    async findAll(page = 1, limit = 10, search?: string, status?: number) {
+        const skip = (page - 1) * limit;
+        const where = this.buildFindAllWhere(search, status);
+        const statusCountWhere = this.buildFindAllWhere(search);
+
+        const [appointments, total, groupedStatusCounts] = await Promise.all([
             this.prisma.appointment.findMany({
                 where,
                 skip,
@@ -54,13 +104,34 @@ export class AppointmentService {
                 orderBy: { createdAt: 'desc' },
             }),
             this.prisma.appointment.count({ where }),
+            this.prisma.appointment.groupBy({
+                by: ['status'],
+                where: statusCountWhere,
+                _count: { _all: true },
+            }),
         ]);
+
+        const statusCounts = {
+            all: 0,
+            pending: 0,
+            approved: 0,
+            rejected: 0,
+        };
+
+        for (const item of groupedStatusCounts) {
+            const count = item._count._all;
+            statusCounts.all += count;
+            if (item.status === 0) statusCounts.pending = count;
+            if (item.status === 1) statusCounts.approved = count;
+            if (item.status === 2) statusCounts.rejected = count;
+        }
 
         return {
             data: appointments,
             currentPage: page,
             totalPages: Math.ceil(total / limit),
             totalItems: total,
+            statusCounts,
         };
     }
 
@@ -204,6 +275,28 @@ export class AppointmentService {
         const appointment = await this.prisma.appointment.findUnique({ where: { id } });
         if (!appointment) throw new NotFoundException('Lịch hẹn không tồn tại');
 
+        const nextAppointmentDate = dto.appointmentDate ? new Date(dto.appointmentDate) : appointment.appointmentDate;
+        const nextEmployeeId = dto.employeeId !== undefined ? (dto.employeeId || null) : appointment.employeeId;
+        const nextStatus = dto.status !== undefined ? dto.status : appointment.status;
+
+        if (nextStatus === 1 && !nextEmployeeId) {
+            throw new BadRequestException('Lịch hẹn đã duyệt phải có nhân viên phụ trách');
+        }
+
+        if (nextStatus === 1 && nextEmployeeId) {
+            const conflict = await this.prisma.appointment.findFirst({
+                where: {
+                    employeeId: nextEmployeeId,
+                    appointmentDate: nextAppointmentDate,
+                    status: 1,
+                    id: { not: id },
+                },
+            });
+            if (conflict) {
+                throw new BadRequestException('Nhân viên đã có lịch hẹn vào thời điểm này');
+            }
+        }
+
         const appointmentFull = await this.prisma.appointment.findUnique({
             where: { id },
             include: {
@@ -216,9 +309,9 @@ export class AppointmentService {
         const updated = await this.prisma.appointment.update({
             where: { id },
             data: {
-                ...(dto.appointmentDate && { appointmentDate: new Date(dto.appointmentDate) }),
-                ...(dto.employeeId !== undefined && { employeeId: dto.employeeId || null }),
-                ...(dto.status !== undefined && { status: dto.status }),
+                ...(dto.appointmentDate && { appointmentDate: nextAppointmentDate }),
+                ...(dto.employeeId !== undefined && { employeeId: nextEmployeeId }),
+                ...(dto.status !== undefined && { status: nextStatus }),
             },
             include: appointmentInclude,
         });
@@ -351,9 +444,19 @@ export class AppointmentService {
         return { message: 'Từ chối lịch hẹn thành công', data: updated };
     }
 
-    async findByEmployee(employeeId: number) {
+    async findByEmployee(employeeId: number, actor: AppointmentActor) {
+        let effectiveEmployeeId = employeeId;
+
+        if (this.isEmployeeRole(actor)) {
+            const selfEmployeeId = await this.resolveEmployeeIdByUser(actor.id);
+            if (selfEmployeeId !== employeeId) {
+                throw new ForbiddenException('Bạn chỉ được xem lịch hẹn của chính mình');
+            }
+            effectiveEmployeeId = selfEmployeeId;
+        }
+
         return this.prisma.appointment.findMany({
-            where: { employeeId, status: 1 },
+            where: { employeeId: effectiveEmployeeId, status: 1 },
             include: {
                 customer: {
                     include: { user: { select: { fullName: true, phone: true } } },
@@ -368,15 +471,38 @@ export class AppointmentService {
         });
     }
 
-    async updateActualStatus(id: number, dto: UpdateActualStatusDto) {
-        const appointment = await this.prisma.appointment.findUnique({ where: { id } });
+    async findMyAssignedAppointments(actor: AppointmentActor) {
+        const employeeId = await this.resolveEmployeeIdByUser(actor.id);
+        return this.findByEmployee(employeeId, { ...actor, roles: ['EMPLOYEE'] });
+    }
+
+    async updateActualStatus(id: number, dto: UpdateActualStatusDto, actor: AppointmentActor) {
+        const appointment = await this.prisma.appointment.findUnique({
+            where: { id },
+            include: { employee: { select: { id: true, userId: true } } },
+        });
         if (!appointment) throw new NotFoundException('Lịch hẹn không tồn tại');
+        if (appointment.status !== 1) {
+            throw new BadRequestException('Chỉ có thể cập nhật trạng thái thực tế cho lịch hẹn đã duyệt');
+        }
+        if (!appointment.employeeId || !appointment.employee) {
+            throw new BadRequestException('Lịch hẹn chưa được phân công nhân viên');
+        }
+
+        if (this.isEmployeeRole(actor)) {
+            const selfEmployeeId = await this.resolveEmployeeIdByUser(actor.id);
+            if (selfEmployeeId !== appointment.employeeId) {
+                throw new ForbiddenException('Bạn chỉ được cập nhật lịch hẹn được phân công cho mình');
+            }
+        }
+
+        const normalizedReason = dto.cancelReason?.trim();
 
         const updated = await this.prisma.appointment.update({
             where: { id },
             data: {
                 actualStatus: dto.actualStatus,
-                cancelReason: dto.cancelReason,
+                cancelReason: dto.actualStatus === 1 ? null : (normalizedReason || null),
             },
         });
 

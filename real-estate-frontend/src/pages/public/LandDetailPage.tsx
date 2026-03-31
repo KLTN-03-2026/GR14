@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { message } from 'antd';
 import { HeartOutlined, HeartFilled, CalendarOutlined } from '@ant-design/icons';
-import { landApi, favoriteApi } from '@/api';
+import { landApi, favoriteApi, recommendationApi } from '@/api';
 import { Loading } from '@/components/common';
 import { formatCurrency, formatArea, getFullAddress, formatDateTime } from '@/utils';
 import { useAuthStore } from '@/stores/authStore';
@@ -29,6 +29,12 @@ const LandDetailPage: React.FC = () => {
     useEffect(() => {
         if (id) loadLand(Number(id));
     }, [id]);
+
+    // Track view behavior for AI recommendations
+    useEffect(() => {
+        if (!land || !isAuthenticated) return;
+        recommendationApi.trackBehavior({ action: 'view', landId: land.id }).catch(() => { });
+    }, [land, isAuthenticated]);
 
     const loadLand = async (landId: number) => {
         try {

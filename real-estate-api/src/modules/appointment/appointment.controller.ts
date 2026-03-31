@@ -43,8 +43,11 @@ export class AppointmentController {
         @Query('page') page = 1,
         @Query('limit') limit = 10,
         @Query('search') search?: string,
+        @Query('status') status?: string,
     ) {
-        return this.appointmentService.findAll(+page, +limit, search);
+        const parsedStatus = status === undefined || status === '' ? undefined : Number(status);
+        const safeStatus = Number.isNaN(parsedStatus) ? undefined : parsedStatus;
+        return this.appointmentService.findAll(+page, +limit, search, safeStatus);
     }
 
     // Admin get one
@@ -91,13 +94,19 @@ export class AppointmentController {
 
     @Get('employee/:id')
     @Roles('ADMIN', 'EMPLOYEE')
-    findByEmployee(@Param('id', ParseIntPipe) id: number) {
-        return this.appointmentService.findByEmployee(id);
+    findByEmployee(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+        return this.appointmentService.findByEmployee(id, req.user);
+    }
+
+    @Get('me/assigned')
+    @Roles('EMPLOYEE')
+    findMyAssignedAppointments(@Req() req: any) {
+        return this.appointmentService.findMyAssignedAppointments(req.user);
     }
 
     @Put(':id/actual-status')
     @Roles('ADMIN', 'EMPLOYEE')
-    updateActualStatus(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateActualStatusDto) {
-        return this.appointmentService.updateActualStatus(id, dto);
+    updateActualStatus(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateActualStatusDto, @Req() req: any) {
+        return this.appointmentService.updateActualStatus(id, dto, req.user);
     }
 }

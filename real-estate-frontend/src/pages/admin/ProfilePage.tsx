@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Card, Form, Input, Button, message, Typography, Row, Col } from 'antd';
+import { toast } from 'react-hot-toast';
 import { profileApi } from '@/api';
 import { useAuthStore } from '@/stores/authStore';
+import { Button } from '@/components/ui';
 import type { User } from '@/types';
 
-const { Title } = Typography;
-
 const ProfilePage: React.FC = () => {
-    const [form] = Form.useForm();
-    const [passwordForm] = Form.useForm();
+    const [profileData, setProfileData] = useState({ fullName: '', email: '', phone: '', address: '' });
+    const [passwordData, setPasswordData] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
     const [loading, setLoading] = useState(false);
     const [pwLoading, setPwLoading] = useState(false);
+    const [pwErrors, setPwErrors] = useState<Record<string, string>>({});
     const { setUser } = useAuthStore();
 
     useEffect(() => {
@@ -21,110 +21,170 @@ const ProfilePage: React.FC = () => {
         try {
             const res = await profileApi.getProfile();
             const user: User = res.data.data || res.data;
-            form.setFieldsValue(user);
+            setProfileData({
+                fullName: user.fullName || '',
+                email: user.email || '',
+                phone: user.phone || '',
+                address: user.address || '',
+            });
         } catch {
-            message.error('Lỗi tải thông tin');
+            toast.error('Lỗi tải thông tin');
         }
     };
 
-    const handleUpdateProfile = async (values: Record<string, unknown>) => {
+    const handleUpdateProfile = async (e: React.FormEvent) => {
+        e.preventDefault();
         setLoading(true);
         try {
+            const values: Record<string, unknown> = { ...profileData };
             const res = await profileApi.updateProfile(values);
             const updatedUser = res.data.data || res.data;
             setUser(updatedUser);
-            message.success('Cập nhật thành công');
+            toast.success('Cập nhật thành công');
         } catch {
-            message.error('Cập nhật thất bại');
+            toast.error('Cập nhật thất bại');
         } finally {
             setLoading(false);
         }
     };
 
-    const handleChangePassword = async (values: { oldPassword: string; newPassword: string }) => {
+    const validatePassword = (): boolean => {
+        const errors: Record<string, string> = {};
+        if (!passwordData.oldPassword) errors.oldPassword = 'Vui lòng nhập mật khẩu cũ';
+        if (!passwordData.newPassword) {
+            errors.newPassword = 'Vui lòng nhập mật khẩu mới';
+        } else if (passwordData.newPassword.length < 6) {
+            errors.newPassword = 'Tối thiểu 6 ký tự';
+        }
+        if (!passwordData.confirmPassword) {
+            errors.confirmPassword = 'Vui lòng xác nhận';
+        } else if (passwordData.newPassword !== passwordData.confirmPassword) {
+            errors.confirmPassword = 'Mật khẩu không khớp';
+        }
+        setPwErrors(errors);
+        return Object.keys(errors).length === 0;
+    };
+
+    const handleChangePassword = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!validatePassword()) return;
         setPwLoading(true);
         try {
+            const values = { oldPassword: passwordData.oldPassword, newPassword: passwordData.newPassword };
             await profileApi.changePassword(values);
-            message.success('Đổi mật khẩu thành công');
-            passwordForm.resetFields();
+            toast.success('Đổi mật khẩu thành công');
+            setPasswordData({ oldPassword: '', newPassword: '', confirmPassword: '' });
+            setPwErrors({});
         } catch (error: unknown) {
             const err = error as { response?: { data?: { message?: string } } };
-            message.error(err.response?.data?.message || 'Đổi mật khẩu thất bại');
+            toast.error(err.response?.data?.message || 'Đổi mật khẩu thất bại');
         } finally {
             setPwLoading(false);
         }
     };
 
+    const inputClass = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none';
+    const errorInputClass = 'w-full rounded-lg border border-error-500 px-3 py-2 text-sm focus:border-error-500 focus:ring-1 focus:ring-error-500 outline-none';
+
     return (
         <div>
-            <Title level={3}>Hồ sơ cá nhân</Title>
+            <h3 className="text-xl font-semibold text-gray-900 mb-6">Hồ sơ cá nhân</h3>
 
-            <Row gutter={24}>
-                <Col xs={24} md={14}>
-                    <Card title="Thông tin cá nhân">
-                        <Form form={form} layout="vertical" onFinish={handleUpdateProfile}>
-                            <Form.Item name="fullName" label="Họ tên">
-                                <Input />
-                            </Form.Item>
-                            <Form.Item name="email" label="Email" rules={[{ type: 'email' }]}>
-                                <Input />
-                            </Form.Item>
-                            <Form.Item name="phone" label="Số điện thoại">
-                                <Input />
-                            </Form.Item>
-                            <Form.Item name="address" label="Địa chỉ">
-                                <Input />
-                            </Form.Item>
-                            <Button type="primary" htmlType="submit" loading={loading}>
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+                {/* Profile Info */}
+                <div className="md:col-span-7">
+                    <div className="rounded-xl border border-gray-200 bg-white">
+                        <div className="border-b border-gray-200 px-6 py-4">
+                            <h4 className="text-base font-semibold text-gray-900">Thông tin cá nhân</h4>
+                        </div>
+                        <form onSubmit={handleUpdateProfile} className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Họ tên</label>
+                                <input
+                                    type="text"
+                                    className={inputClass}
+                                    value={profileData.fullName}
+                                    onChange={(e) => setProfileData({ ...profileData, fullName: e.target.value })}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                                <input
+                                    type="email"
+                                    className={inputClass}
+                                    value={profileData.email}
+                                    onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Số điện thoại</label>
+                                <input
+                                    type="text"
+                                    className={inputClass}
+                                    value={profileData.phone}
+                                    onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Địa chỉ</label>
+                                <input
+                                    type="text"
+                                    className={inputClass}
+                                    value={profileData.address}
+                                    onChange={(e) => setProfileData({ ...profileData, address: e.target.value })}
+                                />
+                            </div>
+                            <Button variant="primary" type="submit" loading={loading}>
                                 Cập nhật
                             </Button>
-                        </Form>
-                    </Card>
-                </Col>
+                        </form>
+                    </div>
+                </div>
 
-                <Col xs={24} md={10}>
-                    <Card title="Đổi mật khẩu">
-                        <Form form={passwordForm} layout="vertical" onFinish={handleChangePassword}>
-                            <Form.Item
-                                name="oldPassword"
-                                label="Mật khẩu cũ"
-                                rules={[{ required: true, message: 'Vui lòng nhập mật khẩu cũ' }]}
-                            >
-                                <Input.Password />
-                            </Form.Item>
-                            <Form.Item
-                                name="newPassword"
-                                label="Mật khẩu mới"
-                                rules={[
-                                    { required: true, message: 'Vui lòng nhập mật khẩu mới' },
-                                    { min: 6, message: 'Tối thiểu 6 ký tự' },
-                                ]}
-                            >
-                                <Input.Password />
-                            </Form.Item>
-                            <Form.Item
-                                name="confirmPassword"
-                                label="Xác nhận mật khẩu"
-                                dependencies={['newPassword']}
-                                rules={[
-                                    { required: true, message: 'Vui lòng xác nhận' },
-                                    ({ getFieldValue }) => ({
-                                        validator(_, value) {
-                                            if (!value || getFieldValue('newPassword') === value) return Promise.resolve();
-                                            return Promise.reject(new Error('Mật khẩu không khớp'));
-                                        },
-                                    }),
-                                ]}
-                            >
-                                <Input.Password />
-                            </Form.Item>
-                            <Button type="primary" htmlType="submit" loading={pwLoading}>
+                {/* Change Password */}
+                <div className="md:col-span-5">
+                    <div className="rounded-xl border border-gray-200 bg-white">
+                        <div className="border-b border-gray-200 px-6 py-4">
+                            <h4 className="text-base font-semibold text-gray-900">Đổi mật khẩu</h4>
+                        </div>
+                        <form onSubmit={handleChangePassword} className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Mật khẩu cũ</label>
+                                <input
+                                    type="password"
+                                    className={pwErrors.oldPassword ? errorInputClass : inputClass}
+                                    value={passwordData.oldPassword}
+                                    onChange={(e) => setPasswordData({ ...passwordData, oldPassword: e.target.value })}
+                                />
+                                {pwErrors.oldPassword && <p className="text-xs text-error-500 mt-1">{pwErrors.oldPassword}</p>}
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Mật khẩu mới</label>
+                                <input
+                                    type="password"
+                                    className={pwErrors.newPassword ? errorInputClass : inputClass}
+                                    value={passwordData.newPassword}
+                                    onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                                />
+                                {pwErrors.newPassword && <p className="text-xs text-error-500 mt-1">{pwErrors.newPassword}</p>}
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Xác nhận mật khẩu</label>
+                                <input
+                                    type="password"
+                                    className={pwErrors.confirmPassword ? errorInputClass : inputClass}
+                                    value={passwordData.confirmPassword}
+                                    onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                                />
+                                {pwErrors.confirmPassword && <p className="text-xs text-error-500 mt-1">{pwErrors.confirmPassword}</p>}
+                            </div>
+                            <Button variant="primary" type="submit" loading={pwLoading}>
                                 Đổi mật khẩu
                             </Button>
-                        </Form>
-                    </Card>
-                </Col>
-            </Row>
+                        </form>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };

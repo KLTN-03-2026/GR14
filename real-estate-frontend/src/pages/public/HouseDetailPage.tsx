@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { message } from 'antd';
 import { HeartOutlined, HeartFilled, CalendarOutlined } from '@ant-design/icons';
-import { houseApi, favoriteApi } from '@/api';
+import { houseApi, favoriteApi, recommendationApi } from '@/api';
 import { Loading } from '@/components/common';
 import { formatCurrency, formatArea, getFullAddress, formatDateTime } from '@/utils';
 import { useAuthStore } from '@/stores/authStore';
@@ -30,6 +30,12 @@ const HouseDetailPage: React.FC = () => {
     useEffect(() => {
         if (id) loadHouse(Number(id));
     }, [id]);
+
+    // Track view behavior for AI recommendations
+    useEffect(() => {
+        if (!house || !isAuthenticated) return;
+        recommendationApi.trackBehavior({ action: 'view', houseId: house.id }).catch(() => { });
+    }, [house, isAuthenticated]);
 
     const loadHouse = async (houseId: number) => {
         try {

@@ -1,13 +1,19 @@
-import { useEffect, useState } from 'react';
-import { Table, Button, Space, Tag, Input, Popconfirm, message, Typography, Modal, Form } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
-import type { ColumnsType } from 'antd/es/table';
+import { useCallback, useEffect, useState } from 'react';
+import { toast } from 'react-hot-toast';
 import { userApi } from '@/api';
 import { formatDateTime, getApiErrorMessage } from '@/utils';
 import type { User } from '@/types';
 import { DEFAULT_PAGE_SIZE } from '@/constants';
+import { Button, Badge, Modal, DataTable } from '@/components/ui';
+import type { Column } from '@/components/ui';
 
-const { Title } = Typography;
+type ApiError = {
+    response?: {
+        data?: {
+            message?: string;
+        };
+    };
+};
 
 const UserManagementPage: React.FC = () => {
     const [users, setUsers] = useState<User[]>([]);
@@ -17,13 +23,17 @@ const UserManagementPage: React.FC = () => {
     const [search, setSearch] = useState('');
     const [modalOpen, setModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
-    const [form] = Form.useForm();
+    const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
+    const [deleting, setDeleting] = useState(false);
+    const [formData, setFormData] = useState({
+        username: '',
+        password: '',
+        fullName: '',
+        email: '',
+        phone: '',
+    });
 
-    useEffect(() => {
-        loadUsers();
-    }, [page, search]);
-
-    const loadUsers = async () => {
+    const loadUsers = useCallback(async () => {
         setLoading(true);
         try {
             const params: Record<string, unknown> = { page, limit: DEFAULT_PAGE_SIZE };
@@ -33,51 +43,86 @@ const UserManagementPage: React.FC = () => {
             setUsers(data.data || data);
             setTotal(data.totalItems || 0);
         } catch (err) {
-            message.error(getApiErrorMessage(err, 'Lỗi tải dữ liệu'));
+            toast.error(getApiErrorMessage(err, 'Lỗi tải dữ liệu'));
         } finally {
             setLoading(false);
         }
-    };
+    }, [page, search]);
 
-    const handleDelete = async (id: number) => {
+    useEffect(() => {
+        loadUsers();
+    }, [loadUsers]);
+
+    const handleDelete = async () => {
+        if (!deleteTarget) return;
+        setDeleting(true);
         try {
-            await userApi.delete(id);
-            message.success('Đã khóa tài khoản');
+            await userApi.delete(deleteTarget.id);
+            toast.success('Đã khóa tài khoản');
+            setDeleteTarget(null);
             loadUsers();
         } catch (err) {
-            message.error(getApiErrorMessage(err, 'Khóa tài khoản thất bại'));
+            toast.error(getApiErrorMessage(err, 'Khóa tài khoản thất bại'));
+        } finally {
+            setDeleting(false);
         }
     };
 
     const handleOpenModal = (user?: User) => {
         setEditingUser(user || null);
         if (user) {
-            form.setFieldsValue(user);
+            setFormData({
+                username: user.username || '',
+                password: '',
+                fullName: user.fullName || '',
+                email: user.email || '',
+                phone: user.phone || '',
+            });
         } else {
-            form.resetFields();
+            setFormData({ username: '', password: '', fullName: '', email: '', phone: '' });
         }
         setModalOpen(true);
     };
 
     const handleSubmit = async () => {
         try {
-            const values = await form.validateFields();
+            if (!formData.username || !formData.fullName || !formData.email || !formData.phone) {
+                toast.error('Vui lòng nhập đầy đủ thông tin bắt buộc');
+                return;
+            }
+            if (!editingUser && !formData.password) {
+                toast.error('Vui lòng nhập mật khẩu');
+                return;
+            }
+            if (!/^\S+@\S+\.\S+$/.test(formData.email)) {
+                toast.error('Email không đúng định dạng');
+                return;
+            }
+
+            const values: Record<string, unknown> = {
+                username: formData.username,
+                fullName: formData.fullName,
+                email: formData.email,
+                phone: formData.phone,
+            };
+            if (!editingUser) values.password = formData.password;
+
             if (editingUser) {
                 await userApi.update(editingUser.id, values);
-                message.success('Cập nhật thành công');
+                toast.success('Cập nhật thành công');
             } else {
                 await userApi.create(values);
-                message.success('Tạo mới thành công');
+                toast.success('Tạo mới thành công');
             }
             setModalOpen(false);
             loadUsers();
-        } catch (err: any) {
-            if (err?.errorFields) return;
-            message.error(getApiErrorMessage(err, editingUser ? 'Cập nhật thất bại' : 'Tạo mới thất bại'));
+        } catch (err: unknown) {
+            const error = err as ApiError;
+            toast.error(getApiErrorMessage(error, editingUser ? 'Cập nhật thất bại' : 'Tạo mới thất bại'));
         }
     };
 
-    const columns: ColumnsType<User> = [
+    const columns: Column<User>[] = [
         { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
         { title: 'Username', dataIndex: 'username', key: 'username' },
         { title: 'Họ tên', dataIndex: 'fullName', key: 'fullName' },
@@ -88,7 +133,7 @@ const UserManagementPage: React.FC = () => {
             key: 'roles',
             render: (_, record) =>
                 record.userRoles?.map((ur) => (
-                    <Tag key={ur.id} color="blue">{ur.role?.name || ur.roleId}</Tag>
+                    <Badge key={ur.id} color="info" className="mr-1">{ur.role?.name || ur.roleId}</Badge>
                 )) || '—',
         },
         {
@@ -96,7 +141,7 @@ const UserManagementPage: React.FC = () => {
             dataIndex: 'status',
             key: 'status',
             render: (status: number) => (
-                <Tag color={status === 1 ? 'green' : 'red'}>{status === 1 ? 'Hoạt động' : 'Khóa'}</Tag>
+                <Badge color={status === 1 ? 'success' : 'error'}>{status === 1 ? 'Hoạt động' : 'Khóa'}</Badge>
             ),
         },
         {
@@ -110,35 +155,60 @@ const UserManagementPage: React.FC = () => {
             key: 'action',
             width: 150,
             render: (_, record) => (
-                <Space>
-                    <Button size="small" type="primary" icon={<EditOutlined />} onClick={() => handleOpenModal(record)} />
-                    <Popconfirm title="Bạn có chắc muốn khóa tài khoản này?" onConfirm={() => handleDelete(record.id)} disabled={record.status === 0}>
-                        <Button size="small" danger icon={<DeleteOutlined />} disabled={record.status === 0} />
-                    </Popconfirm>
-                </Space>
+                <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" iconOnly ariaLabel="Sửa" onClick={() => handleOpenModal(record)} startIcon={(
+                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                    )}>Sửa</Button>
+                    <Button
+                        size="sm"
+                        variant="danger"
+                        iconOnly
+                        ariaLabel="Khóa"
+                        startIcon={(
+                            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 11c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 20a7 7 0 0114 0" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M18 6l4 4m0-4l-4 4" />
+                            </svg>
+                        )}
+                        disabled={record.status === 0}
+                        onClick={() => {
+                            setDeleteTarget(record);
+                        }}
+                    >
+                        Khóa
+                    </Button>
+                </div>
             ),
         },
     ];
 
     return (
         <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                <Title level={3} style={{ margin: 0 }}>Quản lý người dùng</Title>
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpenModal()}>
+            <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-semibold text-gray-900">Quản lý người dùng</h3>
+                <Button variant="primary" iconOnly ariaLabel="Thêm mới" onClick={() => handleOpenModal()} startIcon={(
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                    </svg>
+                )}>
                     Thêm mới
                 </Button>
             </div>
 
-            <Input
-                placeholder="Tìm kiếm..."
-                prefix={<SearchOutlined />}
-                style={{ marginBottom: 16, maxWidth: 400 }}
-                value={search}
-                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                allowClear
-            />
+            <div className="relative mb-4 w-full min-w-0 sm:max-w-[400px]">
+                <input
+                    type="text"
+                    placeholder="Tìm kiếm..."
+                    className="admin-control admin-filter-input w-full rounded-xl border border-gray-300 bg-white py-2.5 px-3.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    value={search}
+                    onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                />
+            </div>
 
-            <Table
+            <DataTable
                 columns={columns}
                 dataSource={users}
                 rowKey="id"
@@ -147,39 +217,88 @@ const UserManagementPage: React.FC = () => {
             />
 
             <Modal
-                title={editingUser ? 'Chỉnh sửa người dùng' : 'Thêm người dùng mới'}
-                open={modalOpen}
-                onOk={handleSubmit}
-                onCancel={() => setModalOpen(false)}
-                okText={editingUser ? 'Cập nhật' : 'Tạo mới'}
-                cancelText="Hủy"
+                isOpen={!!deleteTarget}
+                onClose={() => {
+                    if (!deleting) setDeleteTarget(null);
+                }}
+                title="Xác nhận khóa tài khoản"
+                width="max-w-md"
+                footer={(
+                    <>
+                        <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>Hủy</Button>
+                        <Button variant="danger" onClick={handleDelete} loading={deleting}>Khóa tài khoản</Button>
+                    </>
+                )}
             >
-                <Form form={form} layout="vertical">
-                    <Form.Item name="username" label="Username" rules={[{ required: true, message: 'Vui lòng nhập tên đăng nhập' }]}>
-                        <Input disabled={!!editingUser} />
-                    </Form.Item>
+                <p className="text-sm text-gray-700">
+                    Bạn có chắc muốn khóa tài khoản
+                    {' '}
+                    <span className="font-semibold text-gray-900">{deleteTarget?.fullName || deleteTarget?.username}</span>
+                    ?
+                </p>
+            </Modal>
+
+            <Modal
+                isOpen={modalOpen}
+                onClose={() => setModalOpen(false)}
+                title={editingUser ? 'Chỉnh sửa người dùng' : 'Thêm người dùng mới'}
+                footer={(
+                    <>
+                        <Button variant="outline" onClick={() => setModalOpen(false)}>Hủy</Button>
+                        <Button variant="primary" onClick={handleSubmit}>{editingUser ? 'Cập nhật' : 'Tạo mới'}</Button>
+                    </>
+                )}
+            >
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                        <input
+                            type="text"
+                            disabled={!!editingUser}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-gray-100"
+                            value={formData.username}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, username: e.target.value }))}
+                        />
+                    </div>
                     {!editingUser && (
-                        <Form.Item name="password" label="Mật khẩu" rules={[{ required: true, message: 'Vui lòng nhập mật khẩu' }]}>
-                            <Input.Password />
-                        </Form.Item>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Mật khẩu</label>
+                            <input
+                                type="password"
+                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                                value={formData.password}
+                                onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
+                            />
+                        </div>
                     )}
-                    <Form.Item name="fullName" label="Họ tên" rules={[{ required: true, message: 'Vui lòng nhập họ tên' }]}>
-                        <Input />
-                    </Form.Item>
-                    <Form.Item
-                        name="email"
-                        label="Email"
-                        rules={[
-                            { required: true, message: 'Vui lòng nhập email' },
-                            { type: 'email', message: 'Email không đúng định dạng' },
-                        ]}
-                    >
-                        <Input />
-                    </Form.Item>
-                    <Form.Item name="phone" label="Số điện thoại" rules={[{ required: true, message: 'Vui lòng nhập số điện thoại' }]}>
-                        <Input />
-                    </Form.Item>
-                </Form>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Họ tên</label>
+                        <input
+                            type="text"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                            value={formData.fullName}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, fullName: e.target.value }))}
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                        <input
+                            type="email"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                            value={formData.email}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Số điện thoại</label>
+                        <input
+                            type="text"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                            value={formData.phone}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, phone: e.target.value }))}
+                        />
+                    </div>
+                </div>
             </Modal>
         </div>
     );

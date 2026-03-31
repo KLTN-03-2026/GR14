@@ -30,11 +30,17 @@ const LoginPage: React.FC = () => {
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname;
 
   const handleRedirect = (user: any, fromPath?: string) => {
-    if (fromPath) {
-      navigate(fromPath, { replace: true });
+    const isAdmin = user?.roles?.includes('ADMIN') || false;
+    const isEmployee = user?.roles?.includes('EMPLOYEE') || false;
+
+    // Role-based users always go to their admin panel
+    if (isAdmin) {
+      navigate('/admin', { replace: true });
+    } else if (isEmployee) {
+      navigate('/employee', { replace: true });
     } else {
-      const isAdmin = user?.roles?.includes('ADMIN') || false;
-      navigate(isAdmin ? '/admin' : '/', { replace: true });
+      // Regular users respect the 'from' path if available
+      navigate(fromPath || '/', { replace: true });
     }
   };
 

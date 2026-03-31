@@ -4,10 +4,10 @@ import { Dropdown, type MenuProps } from 'antd';
 import { useAuthStore } from '@/stores/authStore';
 import group from "../../assets/logo.png";
 
-
+<img className="w-[45px] h-8" alt="Black'S City Logo" src={group} />
 const navigationItems = [
   { label: "Trang Chủ", href: "/" },
-  { label: "Nhà Đất", href: "/houses" },
+  { label: "Nhà Ở", href: "/houses" },
   { label: "Đất Đai", href: "/lands" },
   { label: "Bài Viết", href: "/posts" },
   { label: "Đăng Bài Viết", href: "/news" },
@@ -28,7 +28,36 @@ const PublicHeader: React.FC = () => {
   };
 
 
-  const userMenu: MenuProps['items'] = [
+  const isAdmin = user?.roles?.includes('ADMIN') || false;
+  const isEmployee = user?.roles?.includes('EMPLOYEE') || false;
+
+  const userMenu: MenuProps['items'] = isAdmin ? [
+    {
+      key: 'admin-panel',
+      label: <Link to="/admin">Về quản trị</Link>,
+    },
+    {
+      type: 'divider',
+    },
+    {
+      key: 'logout',
+      danger: true,
+      label: <span onClick={handleLogout}>Đăng xuất</span>,
+    },
+  ] : isEmployee ? [
+    {
+      key: 'employee-panel',
+      label: <Link to="/employee">Về quản trị nhân viên</Link>,
+    },
+    {
+      type: 'divider',
+    },
+    {
+      key: 'logout',
+      danger: true,
+      label: <span onClick={handleLogout}>Đăng xuất</span>,
+    },
+  ] : [
     {
       key: '1',
       label: <Link to="/profile">Thông tin tài khoản</Link>,
@@ -45,7 +74,7 @@ const PublicHeader: React.FC = () => {
       type: 'divider',
     },
     {
-      key: '2',
+      key: 'logout',
       danger: true,
       label: <span onClick={handleLogout}>Đăng xuất</span>,
     },

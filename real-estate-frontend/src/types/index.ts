@@ -146,8 +146,8 @@ export interface Appointment {
     cancelReason?: string;
     createdAt: string;
     updatedAt: string;
-    house?: Pick<House, 'id' | 'title' | 'city' | 'district'>;
-    land?: Pick<Land, 'id' | 'title' | 'city' | 'district'>;
+    house?: Pick<House, 'id' | 'title' | 'city' | 'district'> & { images?: Pick<HouseImage, 'id' | 'url'>[] };
+    land?: Pick<Land, 'id' | 'title' | 'city' | 'district'> & { images?: Pick<LandImage, 'id' | 'url'>[] };
     customer?: Customer;
     employee?: Employee;
 }
@@ -170,6 +170,7 @@ export interface Post {
     vipExpiry?: string;
     vipPackageName?: string;
     vipPriorityLevel?: number;
+    vipSubscriptionStatus?: number | null;
     userId: number;
     postedAt: string;
     approvedAt?: string;
@@ -196,6 +197,40 @@ export interface Favorite {
     createdAt: string;
     house?: House;
     land?: Land;
+}
+
+// ==================== RECOMMENDATION ====================
+
+export interface RecommendedHouse extends House {
+    recommendationScore: number;
+    recommendationReason: string;
+}
+
+export interface RecommendedLand extends Land {
+    recommendationScore: number;
+    recommendationReason: string;
+}
+
+export interface AIRecommendation {
+    id: number;
+    propertyType: 'house' | 'land';
+    title: string;
+    city?: string;
+    district?: string;
+    ward?: string;
+    street?: string;
+    price?: number;
+    area?: number;
+    direction?: string;
+    status: number;
+    createdAt: string;
+    images?: Array<{ id: number; url: string }>;
+    category?: PropertyCategory;
+    employee?: { id: number; user: { id: number; fullName: string; phone: string } };
+    recommendationScore: number;
+    recommendationReason: string;
+    embeddingScore: number;
+    ruleScore: number;
 }
 
 // ==================== API RESPONSE ====================

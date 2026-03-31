@@ -19,7 +19,7 @@ function App() {
         }}
       >
         <AntdApp>
-        <RouterProvider router={router} />
+          <RouterProvider router={router} />
         </AntdApp>
       </ConfigProvider>
     </GoogleOAuthProvider>

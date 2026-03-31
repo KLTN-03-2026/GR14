@@ -1,20 +1,39 @@
 import { useEffect, useState } from "react";
-import {
-  Table, Button, Space, Modal, Form, Input,
-  DatePicker, Popconfirm, message, Tag
-} from "antd";
-import { PlusOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
+import { toast } from 'react-hot-toast';
 import dayjs from "dayjs";
 import { employeeApi } from "@/api";
 import { getApiErrorMessage } from "@/utils";
+import type { Employee } from '@/types';
+import { Button, Modal, Badge, DataTable } from '@/components/ui';
+import type { Column } from '@/components/ui';
+
+type EmployeeRecord = Employee;
+
+type ApiError = {
+  response?: {
+    data?: {
+      message?: string;
+    };
+  };
+};
 
 const EmployeeManagementPage = () => {
 
-  const [data, setData] = useState<any[]>([]);
+  const [data, setData] = useState<EmployeeRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<any>(null);
-  const [form] = Form.useForm();
+  const [editing, setEditing] = useState<EmployeeRecord | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<EmployeeRecord | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [formData, setFormData] = useState({
+    code: '',
+    username: '',
+    password: '',
+    fullName: '',
+    email: '',
+    phone: '',
+    startDate: '',
+  });
 
   // ================= LOAD DATA =================
   const loadData = async () => {
@@ -23,7 +42,7 @@ const EmployeeManagementPage = () => {
       const res = await employeeApi.getAll({ page: 1, limit: 10 });
       setData(res.data.data);
     } catch (err) {
-      message.error(getApiErrorMessage(err, "Tải danh sách nhân viên thất bại"));
+      toast.error(getApiErrorMessage(err, "Tải danh sách nhân viên thất bại"));
     } finally {
       setLoading(false);
     }
@@ -34,18 +53,21 @@ const EmployeeManagementPage = () => {
   }, []);
 
   // ================= MODAL =================
-  const openModal = (record?: any) => {
+  const openModal = (record?: EmployeeRecord) => {
     setEditing(record || null);
-    form.resetFields();
 
     if (record) {
-      form.setFieldsValue({
-        ...record,
-        fullName: record.user?.fullName,
-        email: record.user?.email,
-        phone: record.user?.phone,
-        startDate: record.startDate ? dayjs(record.startDate) : null
+      setFormData({
+        code: record.code || '',
+        username: record.user?.username || '',
+        password: '',
+        fullName: record.user?.fullName || '',
+        email: record.user?.email || '',
+        phone: record.user?.phone || '',
+        startDate: record.startDate ? dayjs(record.startDate).format('YYYY-MM-DD') : '',
       });
+    } else {
+      setFormData({ code: '', username: '', password: '', fullName: '', email: '', phone: '', startDate: '' });
     }
 
     setOpen(true);
@@ -54,39 +76,64 @@ const EmployeeManagementPage = () => {
   // ================= SUBMIT =================
   const handleSubmit = async () => {
     try {
-      const values = await form.validateFields();
+      if (!formData.code || !formData.fullName || !formData.email || !formData.phone) {
+        toast.error('Vui lòng nhập đầy đủ trường bắt buộc');
+        return;
+      }
+      if (!editing && (!formData.username || !formData.password)) {
+        toast.error('Vui lòng nhập username và password');
+        return;
+      }
+      if (!/^\S+@\S+\.\S+$/.test(formData.email)) {
+        toast.error('Email không đúng định dạng');
+        return;
+      }
 
-      if (values.startDate) {
-        values.startDate = values.startDate.format("YYYY-MM-DD");
+      const values: Record<string, unknown> = {
+        code: formData.code,
+        fullName: formData.fullName,
+        email: formData.email,
+        phone: formData.phone,
+      };
+
+      if (!editing) {
+        values.username = formData.username;
+        values.password = formData.password;
+      }
+
+      if (formData.startDate) {
+        values.startDate = formData.startDate;
       }
 
       if (editing) {
         await employeeApi.update(editing.id, values);
-        message.success("Update success");
+        toast.success("Update success");
       } else {
         await employeeApi.create(values);
-        message.success("Create success");
+        toast.success("Create success");
       }
 
       setOpen(false);
       loadData();
 
-    } catch (err: any) {
-      if (err?.errorFields) return;
-      message.error(getApiErrorMessage(err, editing ? "Cập nhật nhân viên thất bại" : "Tạo nhân viên thất bại"));
+    } catch (err: unknown) {
+      const error = err as ApiError;
+      toast.error(getApiErrorMessage(error, editing ? "Cập nhật nhân viên thất bại" : "Tạo nhân viên thất bại"));
     }
   };
 
   // ================= DELETE (SOFT) =================
-  const remove = async (id: number) => {
+  const remove = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await employeeApi.delete(id);
-      message.success("Đã khóa tài khoản");
+      await employeeApi.delete(deleteTarget.id);
+      toast.success("Đã khóa tài khoản");
 
       // update UI ngay
       setData(prev =>
         prev.map(item =>
-          item.id === id
+          item.id === deleteTarget.id
             ? {
               ...item,
               user: item.user
@@ -97,30 +144,34 @@ const EmployeeManagementPage = () => {
         )
       );
 
+      setDeleteTarget(null);
+
 
     } catch (err) {
-      message.error(getApiErrorMessage(err, "Khóa tài khoản thất bại"));
+      toast.error(getApiErrorMessage(err, "Khóa tài khoản thất bại"));
+    } finally {
+      setDeleting(false);
     }
   };
 
   // ================= RENDER HELPERS =================
-  const renderUserField = (field: string) => (_: any, r: any) =>
+  const renderUserField = (field: 'fullName' | 'email' | 'phone') => (_: unknown, r: EmployeeRecord) =>
     r.user?.[field] || "—";
 
-  const renderStatus = (_: any, r: any) => {
+  const renderStatus = (_: unknown, r: EmployeeRecord) => {
     const isActive = r.user?.status === 1;
     return (
-      <Tag color={isActive ? "green" : "red"}>
+      <Badge color={isActive ? 'success' : 'error'}>
         {isActive ? "Hoạt động" : "Đã khóa"}
-      </Tag>
+      </Badge>
     );
   };
 
-  const renderDate = (field: string, format = "DD/MM/YYYY") => (_: any, r: any) =>
+  const renderDate = (field: 'startDate' | 'createdAt', format = "DD/MM/YYYY") => (_: unknown, r: EmployeeRecord) =>
     r[field] ? dayjs(r[field]).format(format) : "";
 
   // ================= COLUMNS =================
-  const columns = [
+  const columns: Column<EmployeeRecord>[] = [
     { title: "Mã NV", dataIndex: "code" },
     { title: "Họ tên", render: renderUserField("fullName") },
     { title: "Email", render: renderUserField("email") },
@@ -130,22 +181,31 @@ const EmployeeManagementPage = () => {
     { title: "Ngày tạo", render: renderDate("createdAt") },
     {
       title: "Hành động",
-      render: (_: any, r: any) => (
-        <Space>
-          <Button icon={<EditOutlined />} onClick={() => openModal(r)} />
-
-          <Popconfirm
-            title="Bạn có chắc muốn khóa?"
-            onConfirm={() => remove(r.id)}
+      render: (_: unknown, r: EmployeeRecord) => (
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" iconOnly ariaLabel="Sửa" startIcon={(
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          )} onClick={() => openModal(r)}>Sửa</Button>
+          <Button
+            size="sm"
+            variant="danger"
+            iconOnly
+            ariaLabel="Khóa"
+            startIcon={(
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 11c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 20a7 7 0 0114 0" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M18 6l4 4m0-4l-4 4" />
+              </svg>
+            )}
             disabled={r.user?.status === 0}
+            onClick={() => setDeleteTarget(r)}
           >
-            <Button
-              danger
-              icon={<DeleteOutlined />}
-              disabled={r.user?.status === 0}
-            />
-          </Popconfirm>
-        </Space>
+            Khóa
+          </Button>
+        </div>
       )
     }
   ];
@@ -154,75 +214,138 @@ const EmployeeManagementPage = () => {
     <div>
 
       {/* HEADER */}
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 20 }}>
-        <h2>Quản lý nhân viên</h2>
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-xl font-semibold text-gray-900">Quản lý nhân viên</h2>
 
         <Button
-          type="primary"
-          icon={<PlusOutlined />}
+          variant="primary"
+          iconOnly
+          ariaLabel="Thêm mới"
           onClick={() => openModal()}
+          startIcon={(
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+          )}
         >
           Thêm mới
         </Button>
       </div>
 
       {/* TABLE */}
-      <Table
+      <DataTable
         rowKey="id"
         columns={columns}
         dataSource={data}
         loading={loading}
+        pagination={false}
       />
+
+      <Modal
+        isOpen={!!deleteTarget}
+        onClose={() => {
+          if (!deleting) setDeleteTarget(null);
+        }}
+        title="Xác nhận khóa tài khoản nhân viên"
+        width="max-w-md"
+        footer={(
+          <>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>Hủy</Button>
+            <Button variant="danger" onClick={remove} loading={deleting}>Khóa tài khoản</Button>
+          </>
+        )}
+      >
+        <p className="text-sm text-gray-700">
+          Bạn có chắc muốn khóa tài khoản nhân viên
+          {' '}
+          <span className="font-semibold text-gray-900">{deleteTarget?.user?.fullName || deleteTarget?.code}</span>
+          ?
+        </p>
+      </Modal>
 
       {/* MODAL */}
       <Modal
+        isOpen={open}
+        onClose={() => setOpen(false)}
         title={editing ? "Sửa nhân viên" : "Thêm nhân viên"}
-        open={open}
-        onOk={handleSubmit}
-        onCancel={() => setOpen(false)}
+        footer={(
+          <>
+            <Button variant="outline" onClick={() => setOpen(false)}>Hủy</Button>
+            <Button variant="primary" onClick={handleSubmit}>{editing ? 'Cập nhật' : 'Tạo mới'}</Button>
+          </>
+        )}
       >
-        <Form layout="vertical" form={form}>
-
-          <Form.Item name="code" label="Mã NV" rules={[{ required: true, message: "Vui lòng nhập mã nhân viên" }]}>
-            <Input />
-          </Form.Item>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Mã NV</label>
+            <input
+              type="text"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              value={formData.code}
+              onChange={(e) => setFormData((prev) => ({ ...prev, code: e.target.value }))}
+            />
+          </div>
 
           {!editing && (
             <>
-              <Form.Item name="username" label="Username" rules={[{ required: true, message: "Vui lòng nhập tên đăng nhập" }]}>
-                <Input />
-              </Form.Item>
-
-              <Form.Item name="password" label="Password" rules={[{ required: true, message: "Vui lòng nhập mật khẩu" }]}>
-                <Input.Password />
-              </Form.Item>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                <input
+                  type="text"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  value={formData.username}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, username: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <input
+                  type="password"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  value={formData.password}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
+                />
+              </div>
             </>
           )}
 
-          <Form.Item name="fullName" label="Họ tên" rules={[{ required: true, message: "Vui lòng nhập họ tên" }]}>
-            <Input />
-          </Form.Item>
-
-          <Form.Item
-            name="email"
-            label="Email"
-            rules={[
-              { required: true, message: "Vui lòng nhập email" },
-              { type: "email", message: "Email không đúng định dạng" },
-            ]}
-          >
-            <Input />
-          </Form.Item>
-
-          <Form.Item name="phone" label="SĐT" rules={[{ required: true, message: "Vui lòng nhập số điện thoại" }]}>
-            <Input />
-          </Form.Item>
-
-          <Form.Item name="startDate" label="Ngày vào">
-            <DatePicker style={{ width: "100%" }} />
-          </Form.Item>
-
-        </Form>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Họ tên</label>
+            <input
+              type="text"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              value={formData.fullName}
+              onChange={(e) => setFormData((prev) => ({ ...prev, fullName: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input
+              type="email"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              value={formData.email}
+              onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">SĐT</label>
+            <input
+              type="text"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              value={formData.phone}
+              onChange={(e) => setFormData((prev) => ({ ...prev, phone: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Ngày vào</label>
+            <input
+              type="date"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              value={formData.startDate}
+              onChange={(e) => setFormData((prev) => ({ ...prev, startDate: e.target.value }))}
+            />
+          </div>
+        </div>
       </Modal>
 
     </div>
