@@ -1,49 +1,42 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-    Badge,
-    Button,
-    Card,
-    Form,
-    Input,
-    message,
-    Modal,
-    Select,
-    Space,
-    Table,
-    Tag,
-    Typography,
-} from 'antd';
-import type { ColumnsType } from 'antd/es/table';
-import { CheckCircleOutlined, ReloadOutlined } from '@ant-design/icons';
+import { toast } from 'react-hot-toast';
 import { appointmentApi } from '@/api';
 import type { Appointment } from '@/types';
 import {
     APPOINTMENT_ACTUAL_STATUS,
     APPOINTMENT_ACTUAL_STATUS_LABELS,
+    APPOINTMENT_STATUS,
     APPOINTMENT_STATUS_LABELS,
+    DEFAULT_PAGE_SIZE,
 } from '@/constants';
 import { formatDateTime } from '@/utils';
+import { Badge, Button, DataTable, Modal } from '@/components/ui';
+import type { Column } from '@/components/ui';
 
-const { Title, Text } = Typography;
-const { TextArea } = Input;
+const STATUS_COLOR: Record<number, 'warning' | 'success' | 'error'> = {
+    [APPOINTMENT_STATUS.PENDING]: 'warning',
+    [APPOINTMENT_STATUS.APPROVED]: 'success',
+    [APPOINTMENT_STATUS.REJECTED]: 'error',
+};
 
-const STATUS_COLOR: Record<number, string> = { 0: 'orange', 1: 'green', 2: 'red' };
-const ACTUAL_STATUS_COLOR: Record<number, string> = {
-    [APPOINTMENT_ACTUAL_STATUS.NOT_MET]: 'gold',
-    [APPOINTMENT_ACTUAL_STATUS.MET]: 'green',
-    [APPOINTMENT_ACTUAL_STATUS.CUSTOMER_NO_SHOW]: 'volcano',
-    [APPOINTMENT_ACTUAL_STATUS.UNABLE_TO_PROCEED]: 'red',
+const ACTUAL_STATUS_COLOR: Record<number, 'warning' | 'success' | 'error' | 'light'> = {
+    [APPOINTMENT_ACTUAL_STATUS.NOT_MET]: 'warning',
+    [APPOINTMENT_ACTUAL_STATUS.MET]: 'success',
+    [APPOINTMENT_ACTUAL_STATUS.CUSTOMER_NO_SHOW]: 'error',
+    [APPOINTMENT_ACTUAL_STATUS.UNABLE_TO_PROCEED]: 'error',
 };
 
 const EmployeeAppointmentPage: React.FC = () => {
     const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [loading, setLoading] = useState(false);
+    const [page, setPage] = useState(1);
     const [statusFilter, setStatusFilter] = useState<'all' | 'updated' | 'pending'>('all');
 
     const [updateModalOpen, setUpdateModalOpen] = useState(false);
     const [currentAppointment, setCurrentAppointment] = useState<Appointment | null>(null);
+    const [actualStatus, setActualStatus] = useState<number | ''>('');
+    const [cancelReason, setCancelReason] = useState('');
     const [submitting, setSubmitting] = useState(false);
-    const [form] = Form.useForm();
 
     const loadAppointments = useCallback(async () => {
         setLoading(true);
@@ -51,7 +44,7 @@ const EmployeeAppointmentPage: React.FC = () => {
             const res = await appointmentApi.getMyAssigned();
             setAppointments(res.data || []);
         } catch {
-            message.error('Không thể tải danh sách lịch hẹn');
+            toast.error('Không thể tải danh sách lịch hẹn');
         } finally {
             setLoading(false);
         }
@@ -71,37 +64,63 @@ const EmployeeAppointmentPage: React.FC = () => {
         return appointments;
     }, [appointments, statusFilter]);
 
+    const pagedAppointments = useMemo(() => {
+        const start = (page - 1) * DEFAULT_PAGE_SIZE;
+        return filteredAppointments.slice(start, start + DEFAULT_PAGE_SIZE);
+    }, [filteredAppointments, page]);
+
     const openUpdateModal = (record: Appointment) => {
         setCurrentAppointment(record);
-        form.setFieldsValue({
-            actualStatus: record.actualStatus,
-            cancelReason: record.cancelReason || '',
-        });
+        setActualStatus(record.actualStatus ?? '');
+        setCancelReason(record.cancelReason || '');
         setUpdateModalOpen(true);
     };
 
     const handleUpdateActualStatus = async () => {
         if (!currentAppointment) return;
-        const values = await form.validateFields();
+
+        if (actualStatus === '') {
+            toast.error('Vui lòng chọn trạng thái thực tế');
+            return;
+        }
+
+        const needReason = actualStatus !== APPOINTMENT_ACTUAL_STATUS.MET;
+        if (needReason && !cancelReason.trim()) {
+            toast.error('Vui lòng nhập ghi chú hoặc lý do');
+            return;
+        }
+
         setSubmitting(true);
         try {
             await appointmentApi.updateActualStatus(currentAppointment.id, {
-                actualStatus: values.actualStatus,
-                cancelReason: values.cancelReason || undefined,
+                actualStatus,
+                cancelReason: needReason ? cancelReason.trim() : undefined,
             });
-            message.success('Cập nhật trạng thái thực tế thành công');
+            toast.success('Cập nhật trạng thái thực tế thành công');
             setUpdateModalOpen(false);
             setCurrentAppointment(null);
-            form.resetFields();
+            setActualStatus('');
+            setCancelReason('');
             await loadAppointments();
-        } catch (error: any) {
-            message.error(error?.response?.data?.message || 'Cập nhật thất bại');
+        } catch (error: unknown) {
+            const e = error as { response?: { data?: { message?: string } } };
+            toast.error(e?.response?.data?.message || 'Cập nhật thất bại');
         } finally {
             setSubmitting(false);
         }
     };
 
-    const columns: ColumnsType<Appointment> = [
+    const closeUpdateModal = () => {
+        setUpdateModalOpen(false);
+        setCurrentAppointment(null);
+        setActualStatus('');
+        setCancelReason('');
+    };
+
+    const isActualStatusUpdated = (record: Appointment) =>
+        record.actualStatus !== undefined && record.actualStatus !== null;
+
+    const columns: Column<Appointment>[] = [
         {
             title: 'ID',
             dataIndex: 'id',
@@ -120,7 +139,7 @@ const EmployeeAppointmentPage: React.FC = () => {
                 <div>
                     <div>{record.customer?.user?.fullName || record.customer?.code || 'N/A'}</div>
                     {record.customer?.user?.phone && (
-                        <div style={{ fontSize: 12, color: '#888' }}>{record.customer.user.phone}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">{record.customer.user.phone}</div>
                     )}
                 </div>
             ),
@@ -138,10 +157,9 @@ const EmployeeAppointmentPage: React.FC = () => {
             key: 'status',
             width: 150,
             render: (status: number) => (
-                <Badge
-                    status={status === 0 ? 'processing' : status === 1 ? 'success' : 'error'}
-                    text={<Tag color={STATUS_COLOR[status]}>{APPOINTMENT_STATUS_LABELS[status]}</Tag>}
-                />
+                <Badge color={STATUS_COLOR[status] || 'light'}>
+                    {APPOINTMENT_STATUS_LABELS[status]}
+                </Badge>
             ),
         },
         {
@@ -149,16 +167,17 @@ const EmployeeAppointmentPage: React.FC = () => {
             key: 'actualStatus',
             width: 230,
             render: (_, record) => {
-                if (record.actualStatus === undefined || record.actualStatus === null) {
-                    return <Tag color="default">Chưa cập nhật</Tag>;
+                if (!isActualStatusUpdated(record)) {
+                    return <Badge color="light">Chưa cập nhật</Badge>;
                 }
+                const actualStatusValue = record.actualStatus as number;
                 return (
                     <div>
-                        <Tag color={ACTUAL_STATUS_COLOR[record.actualStatus] || 'default'}>
-                            {APPOINTMENT_ACTUAL_STATUS_LABELS[record.actualStatus] || `Không rõ (${record.actualStatus})`}
-                        </Tag>
+                        <Badge color={ACTUAL_STATUS_COLOR[actualStatusValue] || 'light'}>
+                            {APPOINTMENT_ACTUAL_STATUS_LABELS[actualStatusValue] || `Không rõ (${actualStatusValue})`}
+                        </Badge>
                         {record.cancelReason && (
-                            <div style={{ fontSize: 12, color: '#777', marginTop: 2 }}>{record.cancelReason}</div>
+                            <div className="text-xs text-gray-500 mt-1">{record.cancelReason}</div>
                         )}
                     </div>
                 );
@@ -170,8 +189,13 @@ const EmployeeAppointmentPage: React.FC = () => {
             width: 160,
             render: (_, record) => (
                 <Button
-                    type="primary"
-                    icon={<CheckCircleOutlined />}
+                    size="sm"
+                    variant="primary"
+                    startIcon={(
+                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                    )}
                     onClick={() => openUpdateModal(record)}
                 >
                     Cập nhật
@@ -180,83 +204,108 @@ const EmployeeAppointmentPage: React.FC = () => {
         },
     ];
 
+    const statusFilterOptions: Array<{ value: 'all' | 'pending' | 'updated'; label: string }> = [
+        { value: 'all', label: 'Tất cả' },
+        { value: 'pending', label: 'Chưa cập nhật' },
+        { value: 'updated', label: 'Đã cập nhật' },
+    ];
+
+    const needReason = actualStatus !== '' && actualStatus !== APPOINTMENT_ACTUAL_STATUS.MET;
+
     return (
-        <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <Title level={3} style={{ margin: 0 }}>Lịch hẹn của tôi</Title>
-                <Space>
-                    <Select
+        <div className="space-y-4">
+            <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-xl font-semibold text-gray-900">Lịch hẹn của tôi</h3>
+                <div className="flex items-center gap-2">
+                    <select
                         value={statusFilter}
-                        style={{ width: 180 }}
-                        onChange={setStatusFilter}
-                        options={[
-                            { value: 'all', label: 'Tất cả' },
-                            { value: 'pending', label: 'Chưa cập nhật' },
-                            { value: 'updated', label: 'Đã cập nhật' },
-                        ]}
-                    />
-                    <Button icon={<ReloadOutlined />} onClick={loadAppointments}>Tải lại</Button>
-                </Space>
+                        className="admin-control rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        onChange={(e) => {
+                            setStatusFilter(e.target.value as 'all' | 'pending' | 'updated');
+                            setPage(1);
+                        }}
+                    >
+                        {statusFilterOptions.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                    </select>
+                    <Button
+                        variant="outline"
+                        startIcon={(
+                            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582M20 20v-5h-.581M5.65 18.35A9 9 0 1018.35 5.65l-.58.58" />
+                            </svg>
+                        )}
+                        onClick={loadAppointments}
+                    >
+                        Tải lại
+                    </Button>
+                </div>
             </div>
 
-            <Card>
-                <Space direction="vertical" size={4} style={{ marginBottom: 16 }}>
-                    <Text type="secondary">Chỉ hiển thị các lịch hẹn đã được duyệt và đang được phân công cho bạn.</Text>
-                    <Text type="secondary">Cập nhật trạng thái thực tế ngay sau khi đã gặp khách để admin theo dõi.</Text>
-                </Space>
-                <Table
+            <div className="admin-form-surface p-6">
+                <div className="mb-4 space-y-1">
+                    <p className="text-sm text-gray-500">Chỉ hiển thị các lịch hẹn đã được duyệt và đang được phân công cho bạn.</p>
+                    <p className="text-sm text-gray-500">Cập nhật trạng thái thực tế ngay sau khi đã gặp khách để admin theo dõi.</p>
+                </div>
+
+                <DataTable
                     rowKey="id"
                     columns={columns}
-                    dataSource={filteredAppointments}
+                    dataSource={pagedAppointments}
                     loading={loading}
-                    pagination={{ pageSize: 10, showSizeChanger: false }}
+                    pagination={{
+                        current: page,
+                        total: filteredAppointments.length,
+                        pageSize: DEFAULT_PAGE_SIZE,
+                        onChange: setPage,
+                        showTotal: (t) => `Tổng ${t} bản ghi`,
+                    }}
                 />
-            </Card>
+            </div>
 
             <Modal
                 title={currentAppointment ? `Cập nhật thực tế lịch #${currentAppointment.id}` : 'Cập nhật thực tế'}
-                open={updateModalOpen}
-                onCancel={() => {
-                    setUpdateModalOpen(false);
-                    setCurrentAppointment(null);
-                }}
-                onOk={handleUpdateActualStatus}
-                okText="Lưu"
-                confirmLoading={submitting}
-                cancelText="Hủy"
+                isOpen={updateModalOpen}
+                onClose={closeUpdateModal}
+                footer={(
+                    <>
+                        <Button variant="outline" onClick={closeUpdateModal}>Hủy</Button>
+                        <Button variant="primary" onClick={handleUpdateActualStatus} loading={submitting}>Lưu</Button>
+                    </>
+                )}
             >
-                <Form form={form} layout="vertical">
-                    <Form.Item
-                        label="Trạng thái thực tế"
-                        name="actualStatus"
-                        rules={[{ required: true, message: 'Vui lòng chọn trạng thái thực tế' }]}
-                    >
-                        <Select
-                            options={Object.entries(APPOINTMENT_ACTUAL_STATUS_LABELS).map(([value, label]) => ({
-                                value: Number(value),
-                                label,
-                            }))}
-                        />
-                    </Form.Item>
-                    <Form.Item
-                        shouldUpdate={(prev, next) => prev.actualStatus !== next.actualStatus}
-                        noStyle
-                    >
-                        {({ getFieldValue }) => {
-                            const actualStatus = getFieldValue('actualStatus');
-                            const needReason = actualStatus !== undefined && actualStatus !== APPOINTMENT_ACTUAL_STATUS.MET;
-                            return (
-                                <Form.Item
-                                    label="Ghi chú / lý do"
-                                    name="cancelReason"
-                                    rules={needReason ? [{ required: true, message: 'Vui lòng nhập ghi chú hoặc lý do' }] : []}
-                                >
-                                    <TextArea rows={3} placeholder="Nhập thông tin thực tế sau buổi hẹn..." />
-                                </Form.Item>
-                            );
-                        }}
-                    </Form.Item>
-                </Form>
+                <div className="space-y-4">
+                    <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Trạng thái thực tế</label>
+                        <select
+                            value={actualStatus}
+                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                            onChange={(e) => {
+                                const value = e.target.value;
+                                setActualStatus(value === '' ? '' : Number(value));
+                            }}
+                        >
+                            <option value="">Chọn trạng thái thực tế</option>
+                            {Object.entries(APPOINTMENT_ACTUAL_STATUS_LABELS).map(([value, label]) => (
+                                <option key={value} value={value}>{label}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {needReason && (
+                        <div>
+                            <label className="mb-1 block text-sm font-medium text-gray-700">Ghi chú / lý do</label>
+                            <textarea
+                                rows={3}
+                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                                placeholder="Nhập thông tin thực tế sau buổi hẹn..."
+                                value={cancelReason}
+                                onChange={(e) => setCancelReason(e.target.value)}
+                            />
+                        </div>
+                    )}
+                </div>
             </Modal>
         </div>
     );

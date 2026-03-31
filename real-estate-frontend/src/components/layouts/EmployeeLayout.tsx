@@ -1,43 +1,104 @@
-import { useState } from 'react';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Avatar, Dropdown, Button, theme } from 'antd';
-import {
-    CalendarOutlined,
-    UserOutlined,
-    MenuFoldOutlined,
-    MenuUnfoldOutlined,
-    LogoutOutlined,
-    SettingOutlined,
-} from '@ant-design/icons';
-import type { MenuProps } from 'antd';
+import { useCallback, useState } from 'react';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 import { useAuthStore } from '@/stores/authStore';
+import { SidebarProvider, useSidebar } from '@/context/SidebarContext';
+import { Dropdown, DropdownItem } from '@/components/ui';
 
-const { Header, Sider, Content } = Layout;
+const ChevronDownIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg className={className} viewBox="0 0 20 20" fill="currentColor">
+        <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+    </svg>
+);
 
-const menuItems: MenuProps['items'] = [
+type EmployeeNavItem = {
+    name: string;
+    path: string;
+    icon: React.ReactNode;
+};
+
+const menuItems: EmployeeNavItem[] = [
     {
-        key: '/employee/appointments',
-        icon: <CalendarOutlined />,
-        label: 'Lịch hẹn của tôi',
+        name: 'Lịch hẹn của tôi',
+        path: '/employee/appointments',
+        icon: (
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+            </svg>
+        ),
     },
     {
-        key: '/employee/profile',
-        icon: <UserOutlined />,
-        label: 'Hồ sơ cá nhân',
+        name: 'Hồ sơ cá nhân',
+        path: '/employee/profile',
+        icon: (
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+            </svg>
+        ),
     },
 ];
 
-const EmployeeLayout: React.FC = () => {
-    const [collapsed, setCollapsed] = useState(false);
+const EmployeeSidebar: React.FC = () => {
+    const { isExpanded, isHovered, isMobileOpen, setIsHovered } = useSidebar();
     const navigate = useNavigate();
     const location = useLocation();
-    const { user, logout } = useAuthStore();
-    const {
-        token: { colorBgContainer, borderRadiusLG },
-    } = theme.useToken();
+    const sidebarExpanded = isExpanded || isHovered || isMobileOpen;
 
-    const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
-        navigate(key);
+    const isActive = useCallback((path: string) => location.pathname === path, [location.pathname]);
+
+    return (
+        <aside
+            className={`fixed top-0 left-0 flex flex-col h-screen bg-gray-950 text-white transition-all duration-300 ease-in-out z-50 border-r border-gray-800/80 shadow-theme-md
+                ${sidebarExpanded ? 'w-[260px]' : 'w-[80px]'}
+                ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}
+            onMouseEnter={() => !isExpanded && setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+        >
+            <div className={`flex items-center h-16 px-5 border-b border-gray-800/80 ${!sidebarExpanded ? 'justify-center' : ''}`}>
+                <button onClick={() => navigate('/employee')} className="text-white font-bold text-lg tracking-tight">
+                    {sidebarExpanded ? 'Nhân viên BĐS' : 'NV'}
+                </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto py-4 px-3">
+                <nav className="flex flex-col gap-1">
+                    {menuItems.map((item) => (
+                        <button
+                            key={item.path}
+                            onClick={() => navigate(item.path)}
+                            className={`flex items-center w-full gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors ${isActive(item.path)
+                                ? 'bg-brand-500 text-white shadow-theme-sm'
+                                : 'text-gray-300 hover:bg-white/5 hover:text-white'
+                                } ${!sidebarExpanded ? 'justify-center' : ''}`}
+                        >
+                            <span className="flex-shrink-0">{item.icon}</span>
+                            {sidebarExpanded && <span>{item.name}</span>}
+                        </button>
+                    ))}
+                </nav>
+            </div>
+        </aside>
+    );
+};
+
+const EmployeeBackdrop: React.FC = () => {
+    const { isMobileOpen, toggleMobileSidebar } = useSidebar();
+    if (!isMobileOpen) return null;
+    return <div className="fixed inset-0 z-40 bg-gray-900/50 lg:hidden" onClick={toggleMobileSidebar} />;
+};
+
+const EmployeeHeader: React.FC = () => {
+    const { isMobileOpen, toggleSidebar, toggleMobileSidebar } = useSidebar();
+    const navigate = useNavigate();
+    const { user, logout } = useAuthStore();
+    const [dropdownOpen, setDropdownOpen] = useState(false);
+
+    const handleToggle = () => {
+        if (window.innerWidth >= 1024) {
+            toggleSidebar();
+        } else {
+            toggleMobileSidebar();
+        }
     };
 
     const handleLogout = () => {
@@ -45,109 +106,95 @@ const EmployeeLayout: React.FC = () => {
         navigate('/login');
     };
 
-    const userMenuItems: MenuProps['items'] = [
-        {
-            key: 'profile',
-            icon: <UserOutlined />,
-            label: 'Hồ sơ cá nhân',
-            onClick: () => navigate('/employee/profile'),
-        },
-        {
-            key: 'view-user-page',
-            icon: <SettingOutlined />,
-            label: 'Qua trang người dùng',
-            onClick: () => navigate('/'),
-        },
-        { type: 'divider' },
-        {
-            key: 'logout',
-            icon: <LogoutOutlined />,
-            label: 'Đăng xuất',
-            onClick: handleLogout,
-        },
-    ];
+    return (
+        <header className="sticky top-0 z-[9999] flex items-center justify-between h-16 px-4 lg:px-6 bg-white/80 backdrop-blur-xl border-b border-gray-200 shadow-theme-xs">
+            <button
+                className="flex items-center justify-center w-10 h-10 text-gray-500 rounded-lg hover:bg-gray-100 lg:border lg:border-gray-200"
+                onClick={handleToggle}
+                aria-label="Toggle Sidebar"
+            >
+                {isMobileOpen ? (
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                ) : (
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                    </svg>
+                )}
+            </button>
+
+            <div className="relative">
+                <button
+                    onClick={() => setDropdownOpen(!dropdownOpen)}
+                    className="dropdown-toggle flex items-center gap-2 cursor-pointer text-gray-700 hover:text-gray-900"
+                >
+                    <div className="flex items-center justify-center w-9 h-9 rounded-full bg-brand-100 text-brand-600 font-semibold text-sm">
+                        {(user?.fullName || user?.username || 'N').charAt(0).toUpperCase()}
+                    </div>
+                    <span className="hidden sm:inline text-sm font-semibold">
+                        {user?.fullName || user?.username || 'Nhân viên'}
+                    </span>
+                    <ChevronDownIcon className="w-4 h-4 text-gray-400" />
+                </button>
+
+                <Dropdown isOpen={dropdownOpen} onClose={() => setDropdownOpen(false)} className="w-52">
+                    <div className="py-1">
+                        <DropdownItem onClick={() => { navigate('/employee/profile'); setDropdownOpen(false); }}>
+                            <span className="flex items-center gap-2">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                                </svg>
+                                Hồ sơ cá nhân
+                            </span>
+                        </DropdownItem>
+                        <DropdownItem onClick={() => { navigate('/'); setDropdownOpen(false); }}>
+                            <span className="flex items-center gap-2">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                                </svg>
+                                Xem trang người dùng
+                            </span>
+                        </DropdownItem>
+                        <div className="border-t border-gray-100 my-1" />
+                        <DropdownItem onClick={handleLogout} danger>
+                            <span className="flex items-center gap-2">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+                                </svg>
+                                Đăng xuất
+                            </span>
+                        </DropdownItem>
+                    </div>
+                </Dropdown>
+            </div>
+        </header>
+    );
+};
+
+const EmployeeLayoutContent: React.FC = () => {
+    const { isExpanded, isHovered } = useSidebar();
 
     return (
-        <Layout style={{ minHeight: '100vh' }}>
-            <Sider
-                trigger={null}
-                collapsible
-                collapsed={collapsed}
-                width={260}
-                style={{
-                    overflow: 'auto',
-                    height: '100vh',
-                    position: 'fixed',
-                    left: 0,
-                    top: 0,
-                    bottom: 0,
-                }}
-            >
-                <div
-                    style={{
-                        height: 64,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: '#fff',
-                        fontSize: collapsed ? 14 : 18,
-                        fontWeight: 'bold',
-                        borderBottom: '1px solid rgba(255,255,255,0.1)',
-                    }}
-                >
-                    {collapsed ? 'NV' : 'Nhân viên BĐS'}
-                </div>
-                <Menu
-                    theme="dark"
-                    mode="inline"
-                    selectedKeys={[location.pathname]}
-                    items={menuItems}
-                    onClick={handleMenuClick}
-                />
-            </Sider>
-
-            <Layout style={{ marginLeft: collapsed ? 80 : 260, transition: 'all 0.2s' }}>
-                <Header
-                    style={{
-                        padding: '0 24px',
-                        background: colorBgContainer,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-                        position: 'sticky',
-                        top: 0,
-                        zIndex: 10,
-                    }}
-                >
-                    <Button
-                        type="text"
-                        icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-                        onClick={() => setCollapsed(!collapsed)}
-                        style={{ fontSize: 16 }}
-                    />
-
-                    <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
-                        <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <Avatar icon={<UserOutlined />} />
-                            <span>{user?.fullName || user?.username || 'Nhân viên'}</span>
-                        </div>
-                    </Dropdown>
-                </Header>
-
-                <Content
-                    style={{
-                        margin: 24,
-                        padding: 24,
-                        background: colorBgContainer,
-                        borderRadius: borderRadiusLG,
-                        minHeight: 280,
-                    }}
-                >
+        <div className="admin-shell min-h-screen">
+            <EmployeeSidebar />
+            <EmployeeBackdrop />
+            <div className={`flex-1 transition-all duration-300 ease-in-out ${isExpanded || isHovered ? 'lg:ml-[260px]' : 'lg:ml-[80px]'}`}>
+                <EmployeeHeader />
+                <main className="p-4 md:p-6 lg:p-7 max-w-[1600px] mx-auto">
                     <Outlet />
-                </Content>
-            </Layout>
-        </Layout>
+                </main>
+                <Toaster position="top-right" />
+            </div>
+        </div>
+    );
+};
+
+const EmployeeLayout: React.FC = () => {
+    return (
+        <SidebarProvider>
+            <EmployeeLayoutContent />
+        </SidebarProvider>
     );
 };
 

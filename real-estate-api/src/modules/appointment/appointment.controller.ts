@@ -43,8 +43,11 @@ export class AppointmentController {
         @Query('page') page = 1,
         @Query('limit') limit = 10,
         @Query('search') search?: string,
+        @Query('status') status?: string,
     ) {
-        return this.appointmentService.findAll(+page, +limit, search);
+        const parsedStatus = status === undefined || status === '' ? undefined : Number(status);
+        const safeStatus = Number.isNaN(parsedStatus) ? undefined : parsedStatus;
+        return this.appointmentService.findAll(+page, +limit, search, safeStatus);
     }
 
     // Admin get one

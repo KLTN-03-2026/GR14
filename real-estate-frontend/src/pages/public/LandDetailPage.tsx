@@ -6,7 +6,6 @@ import {
     HeartOutlined,
     HeartFilled,
     CalendarOutlined,
-    EnvironmentOutlined,
 } from '@ant-design/icons';
 import { landApi, favoriteApi, recommendationApi } from '@/api';
 import { Loading } from '@/components/common';
@@ -31,7 +30,7 @@ const LandDetailPage: React.FC = () => {
     // Track view behavior for AI recommendations
     useEffect(() => {
         if (!land || !isAuthenticated) return;
-        recommendationApi.trackBehavior({ action: 'view', landId: land.id }).catch(() => {});
+        recommendationApi.trackBehavior({ action: 'view', landId: land.id }).catch(() => { });
     }, [land, isAuthenticated]);
 
     const loadLand = async (landId: number) => {

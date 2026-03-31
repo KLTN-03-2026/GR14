@@ -146,8 +146,8 @@ export interface Appointment {
     cancelReason?: string;
     createdAt: string;
     updatedAt: string;
-    house?: Pick<House, 'id' | 'title' | 'city' | 'district'>;
-    land?: Pick<Land, 'id' | 'title' | 'city' | 'district'>;
+    house?: Pick<House, 'id' | 'title' | 'city' | 'district'> & { images?: Pick<HouseImage, 'id' | 'url'>[] };
+    land?: Pick<Land, 'id' | 'title' | 'city' | 'district'> & { images?: Pick<LandImage, 'id' | 'url'>[] };
     customer?: Customer;
     employee?: Employee;
 }
@@ -170,6 +170,7 @@ export interface Post {
     vipExpiry?: string;
     vipPackageName?: string;
     vipPriorityLevel?: number;
+    vipSubscriptionStatus?: number | null;
     userId: number;
     postedAt: string;
     approvedAt?: string;

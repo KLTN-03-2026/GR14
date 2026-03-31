@@ -6,7 +6,6 @@ import {
     HeartOutlined,
     HeartFilled,
     CalendarOutlined,
-    EnvironmentOutlined,
 } from '@ant-design/icons';
 import { houseApi, favoriteApi, recommendationApi } from '@/api';
 import { Loading } from '@/components/common';
@@ -31,7 +30,7 @@ const HouseDetailPage: React.FC = () => {
     // Track view behavior for AI recommendations
     useEffect(() => {
         if (!house || !isAuthenticated) return;
-        recommendationApi.trackBehavior({ action: 'view', houseId: house.id }).catch(() => {});
+        recommendationApi.trackBehavior({ action: 'view', houseId: house.id }).catch(() => { });
     }, [house, isAuthenticated]);
 
     const loadHouse = async (houseId: number) => {

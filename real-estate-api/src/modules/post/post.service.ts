@@ -112,12 +112,32 @@ export class PostService {
     }
 
     async findAll() {
-        return this.prisma.post.findMany({
+        const posts = await this.prisma.post.findMany({
             include: {
                 user: { select: { id: true, username: true, fullName: true, phone: true } },
                 images: { select: { id: true, url: true, position: true }, orderBy: { position: 'asc' } },
+                vipSubscriptions: {
+                    include: {
+                        package: { select: { name: true, priorityLevel: true, durationDays: true } },
+                    },
+                    orderBy: { endDate: 'desc' },
+                    take: 1,
+                },
             },
             orderBy: { postedAt: 'desc' },
+        });
+
+        return posts.map((post) => {
+            const vip = post.vipSubscriptions?.[0];
+            return {
+                ...post,
+                isVip: Boolean(post.isVip || vip),
+                vipPackageName: vip?.package?.name || null,
+                vipPriorityLevel: vip?.package?.priorityLevel || null,
+                vipSubscriptionStatus: vip?.status ?? null,
+                vipExpiry: vip?.endDate || post.vipExpiry || null,
+                vipSubscriptions: undefined,
+            };
         });
     }
 

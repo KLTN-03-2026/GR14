@@ -16,8 +16,24 @@ import {
 const appointmentInclude = {
     employee: { include: { user: { select: { id: true, fullName: true, phone: true } } } },
     customer: { include: { user: { select: { id: true, fullName: true, phone: true, email: true } } } },
-    house: { select: { id: true, title: true, city: true, district: true } },
-    land: { select: { id: true, title: true, city: true, district: true } },
+    house: {
+        select: {
+            id: true,
+            title: true,
+            city: true,
+            district: true,
+            images: { select: { id: true, url: true }, orderBy: { position: 'asc' as const }, take: 1 },
+        },
+    },
+    land: {
+        select: {
+            id: true,
+            title: true,
+            city: true,
+            district: true,
+            images: { select: { id: true, url: true }, orderBy: { position: 'asc' as const }, take: 1 },
+        },
+    },
 };
 
 type AppointmentActor = {
@@ -45,24 +61,41 @@ export class AppointmentService {
         return employee.id;
     }
 
-    async findAll(page = 1, limit = 10, search?: string) {
-        const skip = (page - 1) * limit;
-        const where = search
-            ? {
-                OR: [
-                    { customer: { user: { fullName: { contains: search } } } },
-                    { customer: { user: { email: { contains: search } } } },
-                    { customer: { user: { phone: { contains: search } } } },
-                    { guestName: { contains: search } },
-                    { guestPhone: { contains: search } },
-                    { guestEmail: { contains: search } },
-                    { house: { title: { contains: search } } },
-                    { land: { title: { contains: search } } },
-                ],
-            }
-            : {};
+    private buildFindAllWhere(search?: string, status?: number) {
+        const andConditions: any[] = [];
 
-        const [appointments, total] = await Promise.all([
+        if (typeof status === 'number' && [0, 1, 2].includes(status)) {
+            andConditions.push({ status });
+        }
+
+        if (search?.trim()) {
+            const keyword = search.trim();
+            andConditions.push({
+                OR: [
+                    { customer: { user: { fullName: { contains: keyword } } } },
+                    { customer: { user: { email: { contains: keyword } } } },
+                    { customer: { user: { phone: { contains: keyword } } } },
+                    { guestName: { contains: keyword } },
+                    { guestPhone: { contains: keyword } },
+                    { guestEmail: { contains: keyword } },
+                    { house: { title: { contains: keyword } } },
+                    { land: { title: { contains: keyword } } },
+                ],
+            });
+        }
+
+        if (andConditions.length === 0) return {};
+        if (andConditions.length === 1) return andConditions[0];
+
+        return { AND: andConditions };
+    }
+
+    async findAll(page = 1, limit = 10, search?: string, status?: number) {
+        const skip = (page - 1) * limit;
+        const where = this.buildFindAllWhere(search, status);
+        const statusCountWhere = this.buildFindAllWhere(search);
+
+        const [appointments, total, groupedStatusCounts] = await Promise.all([
             this.prisma.appointment.findMany({
                 where,
                 skip,
@@ -71,13 +104,34 @@ export class AppointmentService {
                 orderBy: { createdAt: 'desc' },
             }),
             this.prisma.appointment.count({ where }),
+            this.prisma.appointment.groupBy({
+                by: ['status'],
+                where: statusCountWhere,
+                _count: { _all: true },
+            }),
         ]);
+
+        const statusCounts = {
+            all: 0,
+            pending: 0,
+            approved: 0,
+            rejected: 0,
+        };
+
+        for (const item of groupedStatusCounts) {
+            const count = item._count._all;
+            statusCounts.all += count;
+            if (item.status === 0) statusCounts.pending = count;
+            if (item.status === 1) statusCounts.approved = count;
+            if (item.status === 2) statusCounts.rejected = count;
+        }
 
         return {
             data: appointments,
             currentPage: page,
             totalPages: Math.ceil(total / limit),
             totalItems: total,
+            statusCounts,
         };
     }
 

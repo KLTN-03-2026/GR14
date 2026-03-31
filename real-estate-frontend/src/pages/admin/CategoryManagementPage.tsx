@@ -1,18 +1,17 @@
-import { useEffect, useState } from 'react';
-import { Table, Button, Space, Popconfirm, message, Typography, Modal, Form, Input } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
-import type { ColumnsType } from 'antd/es/table';
+import { useEffect, useMemo, useState } from 'react';
+import { toast } from 'react-hot-toast';
 import { propertyCategoryApi } from '@/api';
 import type { PropertyCategory } from '@/types';
-
-const { Title } = Typography;
+import { Button, Modal, DataTable } from '@/components/ui';
+import type { Column } from '@/components/ui';
 
 const CategoryManagementPage: React.FC = () => {
     const [categories, setCategories] = useState<PropertyCategory[]>([]);
     const [loading, setLoading] = useState(false);
     const [modalOpen, setModalOpen] = useState(false);
     const [editingCategory, setEditingCategory] = useState<PropertyCategory | null>(null);
-    const [form] = Form.useForm();
+    const [formData, setFormData] = useState({ code: '', name: '' });
+    const [search, setSearch] = useState('');
 
     useEffect(() => {
         loadCategories();
@@ -24,7 +23,7 @@ const CategoryManagementPage: React.FC = () => {
             const res = await propertyCategoryApi.getAll();
             setCategories(res.data.data || res.data);
         } catch {
-            message.error('Lỗi tải dữ liệu');
+            toast.error('Lỗi tải dữ liệu');
         } finally {
             setLoading(false);
         }
@@ -33,29 +32,33 @@ const CategoryManagementPage: React.FC = () => {
     const handleDelete = async (id: number) => {
         try {
             await propertyCategoryApi.delete(id);
-            message.success('Xóa thành công');
+            toast.success('Xóa thành công');
             loadCategories();
         } catch {
-            message.error('Xóa thất bại');
+            toast.error('Xóa thất bại');
         }
     };
 
     const handleOpenModal = (cat?: PropertyCategory) => {
         setEditingCategory(cat || null);
-        form.resetFields();
-        if (cat) form.setFieldsValue(cat);
+        if (cat) {
+            setFormData({ code: cat.code || '', name: cat.name || '' });
+        } else {
+            setFormData({ code: '', name: '' });
+        }
         setModalOpen(true);
     };
 
     const handleSubmit = async () => {
+        if (!formData.code || !formData.name) return;
         try {
-            const values = await form.validateFields();
+            const values = { ...formData };
             if (editingCategory) {
                 await propertyCategoryApi.update(editingCategory.id, values);
-                message.success('Cập nhật thành công');
+                toast.success('Cập nhật thành công');
             } else {
                 await propertyCategoryApi.create(values);
-                message.success('Tạo mới thành công');
+                toast.success('Tạo mới thành công');
             }
             setModalOpen(false);
             loadCategories();
@@ -64,7 +67,7 @@ const CategoryManagementPage: React.FC = () => {
         }
     };
 
-    const columns: ColumnsType<PropertyCategory> = [
+    const columns: Column<PropertyCategory>[] = [
         { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
         { title: 'Mã', dataIndex: 'code', key: 'code' },
         { title: 'Tên danh mục', dataIndex: 'name', key: 'name' },
@@ -73,43 +76,106 @@ const CategoryManagementPage: React.FC = () => {
             key: 'action',
             width: 150,
             render: (_, record) => (
-                <Space>
-                    <Button size="small" type="primary" icon={<EditOutlined />} onClick={() => handleOpenModal(record)} />
-                    <Popconfirm title="Bạn có chắc muốn xóa?" onConfirm={() => handleDelete(record.id)}>
-                        <Button size="small" danger icon={<DeleteOutlined />} />
-                    </Popconfirm>
-                </Space>
+                <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" iconOnly ariaLabel="Sửa" startIcon={(
+                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                    )} onClick={() => handleOpenModal(record)}>
+                        Sửa
+                    </Button>
+                    <Button
+                        size="sm"
+                        variant="danger"
+                        iconOnly
+                        ariaLabel="Xóa"
+                        startIcon={(
+                            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                        )}
+                        onClick={() => {
+                            if (window.confirm('Bạn có chắc muốn xóa?')) handleDelete(record.id);
+                        }}
+                    >
+                        Xóa
+                    </Button>
+                </div>
             ),
         },
     ];
 
+    const filteredCategories = useMemo(() => {
+        const keyword = search.trim().toLowerCase();
+        if (!keyword) return categories;
+        return categories.filter((item) => {
+            const code = item.code?.toLowerCase() || '';
+            const name = item.name?.toLowerCase() || '';
+            return code.includes(keyword) || name.includes(keyword);
+        });
+    }, [categories, search]);
+
     return (
         <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                <Title level={3} style={{ margin: 0 }}>Danh mục bất động sản</Title>
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpenModal()}>
+            <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-semibold text-gray-900">Danh mục bất động sản</h3>
+                <Button variant="primary" iconOnly ariaLabel="Thêm mới" onClick={() => handleOpenModal()} startIcon={(
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                    </svg>
+                )}>
                     Thêm mới
                 </Button>
             </div>
 
-            <Table columns={columns} dataSource={categories} rowKey="id" loading={loading} pagination={false} />
+            <div className="mb-4 w-full min-w-0 sm:max-w-[400px]">
+                <input
+                    type="text"
+                    placeholder="Tìm kiếm..."
+                    className="admin-control admin-filter-input w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                />
+            </div>
+
+            <DataTable columns={columns} dataSource={filteredCategories} rowKey="id" loading={loading} pagination={false} />
 
             <Modal
+                isOpen={modalOpen}
+                onClose={() => setModalOpen(false)}
                 title={editingCategory ? 'Chỉnh sửa danh mục' : 'Thêm danh mục mới'}
-                open={modalOpen}
-                onOk={handleSubmit}
-                onCancel={() => setModalOpen(false)}
-                okText={editingCategory ? 'Cập nhật' : 'Tạo mới'}
-                cancelText="Hủy"
+                footer={
+                    <>
+                        <Button variant="outline" onClick={() => setModalOpen(false)}>
+                            Hủy
+                        </Button>
+                        <Button variant="primary" onClick={handleSubmit}>
+                            {editingCategory ? 'Cập nhật' : 'Tạo mới'}
+                        </Button>
+                    </>
+                }
             >
-                <Form form={form} layout="vertical">
-                    <Form.Item name="code" label="Mã danh mục" rules={[{ required: true }]}>
-                        <Input disabled={!!editingCategory} />
-                    </Form.Item>
-                    <Form.Item name="name" label="Tên danh mục" rules={[{ required: true }]}>
-                        <Input />
-                    </Form.Item>
-                </Form>
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Mã danh mục <span className="text-error-500">*</span></label>
+                        <input
+                            type="text"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none disabled:bg-gray-100 disabled:text-gray-500"
+                            value={formData.code}
+                            onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                            disabled={!!editingCategory}
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Tên danh mục <span className="text-error-500">*</span></label>
+                        <input
+                            type="text"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                            value={formData.name}
+                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        />
+                    </div>
+                </div>
             </Modal>
         </div>
     );

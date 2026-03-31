@@ -1,52 +1,91 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CKEditor } from '@ckeditor/ckeditor5-react';
-import {
-    Table, Button, Space, Tag, Input, Popconfirm,
-    message, Typography, Image, Form, Modal, Upload, Tabs
-} from 'antd';
 import ClassicEditor from '@ckeditor/ckeditor5-build-classic/build/ckeditor';
-import {
-    EditOutlined, 
-    DeleteOutlined, 
-    SearchOutlined, 
-    PlusOutlined,
-    AppstoreOutlined,
-    ClockCircleOutlined,
-    CheckCircleOutlined,
-    CloseCircleOutlined
-} from '@ant-design/icons';
-import type { ColumnsType } from 'antd/es/table';
+import { toast } from 'react-hot-toast';
 import { postApi } from '@/api';
 import { formatCurrency, formatDateTime } from '@/utils';
 import type { Post } from '@/types';
 import { DEFAULT_PAGE_SIZE, POST_STATUS_LABELS } from '@/constants';
+import { Button, Badge, Modal, DataTable, ImageLightbox } from '@/components/ui';
+import type { Column } from '@/components/ui';
 
-const { Title } = Typography;
-const { TabPane } = Tabs;
+type UploadImage = {
+    uid: string;
+    name: string;
+    status: 'done';
+    url: string;
+    originFileObj?: File;
+};
+
+type PostFormData = {
+    title: string;
+    city: string;
+    district: string;
+    ward: string;
+    address: string;
+    price: string | number;
+    area: string | number;
+    direction: string;
+    description: string;
+};
+
+type ApiError = {
+    response?: {
+        data?: {
+            message?: string | string[];
+        };
+    };
+};
+
+type VipTooltipState = {
+    visible: boolean;
+    x: number;
+    y: number;
+    packageName: string;
+    statusText: string;
+};
 
 const PostManagementPage: React.FC = () => {
     const [allPosts, setAllPosts] = useState<Post[]>([]);
-    const [filteredPosts, setFilteredPosts] = useState<Post[]>([]);
     const [loading, setLoading] = useState(false);
 
-    const [activeTab, setActiveTab] = useState<"all" | "pending" | "approved" | "rejected">("all");
+    const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'vip'>('all');
     const [search, setSearch] = useState('');
     const [page, setPage] = useState(1);
 
     const [modalOpen, setModalOpen] = useState(false);
     const [editingPost, setEditingPost] = useState<Post | null>(null);
-    const [fileList, setFileList] = useState<any[]>([]);
-    const [form] = Form.useForm();
+    const [fileList, setFileList] = useState<UploadImage[]>([]);
+    const [previewOpen, setPreviewOpen] = useState(false);
+    const [previewImages, setPreviewImages] = useState<string[]>([]);
+    const [previewIndex, setPreviewIndex] = useState(0);
+    const [vipTooltip, setVipTooltip] = useState<VipTooltipState>({
+        visible: false,
+        x: 0,
+        y: 0,
+        packageName: '',
+        statusText: '',
+    });
+    const [formData, setFormData] = useState<PostFormData>({
+        title: '',
+        city: '',
+        district: '',
+        ward: '',
+        address: '',
+        price: '',
+        area: '',
+        direction: '',
+        description: '',
+    });
 
-    // Load dữ liệu
     const loadPosts = async () => {
         setLoading(true);
         try {
             const res = await postApi.getAll();
             setAllPosts(res.data || []);
         } catch (err) {
-            console.error("Load posts error:", err);
-            message.error('Lỗi tải dữ liệu');
+            console.error('Load posts error:', err);
+            toast.error('Lỗi tải dữ liệu');
         } finally {
             setLoading(false);
         }
@@ -56,85 +95,151 @@ const PostManagementPage: React.FC = () => {
         loadPosts();
     }, []);
 
-    // Lọc và phân trang
-    useEffect(() => {
+    const isVipPost = (post: Post) => Boolean(post.isVip || post.vipPackageName || post.vipExpiry);
+
+    const getVipStatusText = (post: Post) => {
+        if (!post.vipExpiry) return 'Chưa có thông tin hết hạn';
+        const expiry = new Date(post.vipExpiry);
+        if (Number.isNaN(expiry.getTime())) return 'Ngày hết hạn không hợp lệ';
+        const isActive = expiry.getTime() >= Date.now();
+        return `${isActive ? 'Còn hạn đến' : 'Đã hết hạn ngày'} ${formatDateTime(post.vipExpiry)}`;
+    };
+
+    const openVipTooltip = (event: React.MouseEvent, post: Post) => {
+        setVipTooltip({
+            visible: true,
+            x: event.clientX + 12,
+            y: event.clientY + 12,
+            packageName: post.vipPackageName || 'Gói VIP',
+            statusText: getVipStatusText(post),
+        });
+    };
+
+    const moveVipTooltip = (event: React.MouseEvent) => {
+        setVipTooltip((prev) => ({
+            ...prev,
+            x: event.clientX + 12,
+            y: event.clientY + 12,
+        }));
+    };
+
+    const closeVipTooltip = () => {
+        setVipTooltip((prev) => ({ ...prev, visible: false }));
+    };
+
+    const filteredByTabAndSearch = useMemo(() => {
         let result = [...allPosts];
 
-        if (activeTab === "pending") result = result.filter(p => p.status === 1);
-        else if (activeTab === "approved") result = result.filter(p => p.status === 2);
-        else if (activeTab === "rejected") result = result.filter(p => p.status === 3);
+        if (activeTab === 'pending') result = result.filter((p) => p.status === 1);
+        else if (activeTab === 'approved') result = result.filter((p) => p.status === 2);
+        else if (activeTab === 'rejected') result = result.filter((p) => p.status === 3);
+        else if (activeTab === 'vip') result = result.filter((p) => isVipPost(p));
 
         if (search.trim()) {
             const keyword = search.toLowerCase().trim();
-            result = result.filter(p =>
-                p.title?.toLowerCase().includes(keyword) ||
-                p.address?.toLowerCase().includes(keyword)
+            result = result.filter(
+                (p) => p.title?.toLowerCase().includes(keyword) || p.address?.toLowerCase().includes(keyword),
             );
         }
 
+        return result;
+    }, [allPosts, activeTab, search]);
+
+    const pagedPosts = useMemo(() => {
         const start = (page - 1) * DEFAULT_PAGE_SIZE;
-        setFilteredPosts(result.slice(start, start + DEFAULT_PAGE_SIZE));
-    }, [allPosts, activeTab, search, page]);
+        return filteredByTabAndSearch.slice(start, start + DEFAULT_PAGE_SIZE);
+    }, [filteredByTabAndSearch, page]);
 
     const openModal = (record?: Post) => {
         setEditingPost(record || null);
-        form.resetFields();
         setFileList([]);
 
         if (record) {
-            form.setFieldsValue(record);
+            setFormData({
+                title: record.title || '',
+                city: record.city || '',
+                district: record.district || '',
+                ward: record.ward || '',
+                address: record.address || '',
+                price: record.price || '',
+                area: record.area || '',
+                direction: record.direction || '',
+                description: record.description || '',
+            });
             if (record.images?.length) {
-                setFileList(record.images.map(img => ({
-                    uid: img.id.toString(),
-                    name: `image-${img.id}`,
-                    status: 'done',
-                    url: img.url,
-                })));
+                setFileList(
+                    record.images.map((img) => ({
+                        uid: img.id.toString(),
+                        name: `image-${img.id}`,
+                        status: 'done',
+                        url: img.url,
+                    })),
+                );
             }
+        } else {
+            setFormData({
+                title: '',
+                city: '',
+                district: '',
+                ward: '',
+                address: '',
+                price: '',
+                area: '',
+                direction: '',
+                description: '',
+            });
         }
         setModalOpen(true);
     };
 
     const handleSubmit = async () => {
         try {
-            const values = await form.validateFields();
-            const formData = new FormData();
+            if (!formData.title || !formData.description) {
+                toast.error('Vui lòng nhập tiêu đề và mô tả');
+                return;
+            }
 
-            Object.keys(values).forEach(key => {
-                if (key !== 'images' && values[key] !== undefined && values[key] !== null && values[key] !== '') {
-                    formData.append(key, String(values[key]));
+            const submitData = new FormData();
+
+            Object.entries(formData).forEach(([key, value]) => {
+                if (value !== undefined && value !== null && value !== '') {
+                    submitData.append(key, String(value));
                 }
             });
 
             fileList
-                .filter(file => file.originFileObj)
-                .forEach(file => formData.append("images", file.originFileObj!));
+                .filter((file) => file.originFileObj)
+                .forEach((file) => {
+                    if (file.originFileObj) {
+                        submitData.append('images', file.originFileObj);
+                    }
+                });
 
             if (editingPost) {
-                await postApi.update(editingPost.id, formData);
-                message.success("Cập nhật bài đăng thành công");
+                await postApi.update(editingPost.id, submitData);
+                toast.success('Cập nhật bài đăng thành công');
             } else {
-                await postApi.create(formData);
-                message.success("Thêm bài đăng thành công");
+                await postApi.create(submitData);
+                toast.success('Thêm bài đăng thành công');
             }
 
             loadPosts();
             setModalOpen(false);
             setFileList([]);
-        } catch (err: any) {
-            if (err.errorFields) return;
-            const errorMsg = err.response?.data?.message || "Có lỗi xảy ra";
-            message.error(Array.isArray(errorMsg) ? errorMsg[0] : errorMsg);
+        } catch (err: unknown) {
+            const error = err as ApiError;
+            const errorMsg = error.response?.data?.message || 'Có lỗi xảy ra';
+            toast.error(Array.isArray(errorMsg) ? errorMsg[0] : errorMsg);
         }
     };
 
     const handleDelete = async (id: number) => {
         try {
             await postApi.delete(id);
-            message.success('Xóa thành công');
+            toast.success('Xóa thành công');
             loadPosts();
         } catch {
-            message.error('Xóa thất bại');
+            toast.error('Xóa thất bại');
         }
     };
 
@@ -142,199 +247,294 @@ const PostManagementPage: React.FC = () => {
         try {
             if (status === 2) await postApi.approve(id);
             if (status === 3) await postApi.reject(id);
-            message.success('Cập nhật trạng thái thành công');
+            toast.success('Cập nhật trạng thái thành công');
             loadPosts();
         } catch {
-            message.error('Thất bại');
+            toast.error('Thất bại');
         }
     };
 
-    const columns: ColumnsType<Post> = [
-        { title: 'Ảnh', width: 80, render: (_, r) => r.images?.length ? <Image src={r.images[0].url} width={60} height={50} /> : '—' },
+    const columns: Column<Post>[] = [
+        {
+            title: 'Ảnh',
+            key: 'image',
+            width: 90,
+            render: (_, r) =>
+                r.images?.length ? (
+                    <img
+                        src={r.images[0].url}
+                        alt=""
+                        className="h-[50px] w-[60px] rounded object-cover cursor-zoom-in"
+                        onClick={() => {
+                            setPreviewImages((r.images || []).map((img) => img.url));
+                            setPreviewIndex(0);
+                            setPreviewOpen(true);
+                        }}
+                    />
+                ) : (
+                    '—'
+                ),
+        },
         {
             title: 'Tiêu đề',
-            width: 220,
+            key: 'title',
+            width: 240,
             render: (_, r) => (
-                <Space>
-                    {r.title}
-                    {r.isVip && <Tag color="gold">VIP</Tag>}
-                </Space>
-            )
+                <div className="flex items-center gap-2">
+                    <span>{r.title}</span>
+                    {isVipPost(r) && (
+                        <span
+                            className="inline-flex cursor-help"
+                            onMouseEnter={(e) => openVipTooltip(e, r)}
+                            onMouseMove={moveVipTooltip}
+                            onMouseLeave={closeVipTooltip}
+                        >
+                            <Badge color="warning">VIP</Badge>
+                        </span>
+                    )}
+                </div>
+            ),
         },
         {
             title: 'Mô tả',
             dataIndex: 'description',
             key: 'description',
-            width: 550,                    // Tăng rộng hơn nữa
-            render: (text: string) => !text ? '—' : (
-                <div 
-                    dangerouslySetInnerHTML={{ __html: text }}
-                    style={{
-                        lineHeight: '1.6',
-                        fontSize: '13.5px',
-                        whiteSpace: 'normal',
-                        wordBreak: 'break-word'
-                    }}
-                />
-            )
+            width: 550,
+            render: (text: string) =>
+                !text ? (
+                    '—'
+                ) : (
+                    <div
+                        dangerouslySetInnerHTML={{ __html: text }}
+                        style={{ lineHeight: '1.6', fontSize: '13.5px', whiteSpace: 'normal', wordBreak: 'break-word' }}
+                    />
+                ),
         },
         { title: 'Địa chỉ', dataIndex: 'address', width: 280 },
-        { title: 'Giá', width: 160, render: (_, r) => formatCurrency(r.price) },
-        { title: 'Ngày đăng', width: 150, render: (_, r) => formatDateTime(r.postedAt) },
+        { title: 'Giá', key: 'price', width: 160, render: (_, r) => formatCurrency(r.price) },
+        { title: 'Ngày đăng', key: 'postedAt', width: 150, render: (_, r) => formatDateTime(r.postedAt) },
         {
             title: 'Trạng thái',
+            key: 'status',
             width: 120,
             render: (_, r) => (
-                <Tag color={r.status === 1 ? 'orange' : r.status === 2 ? 'green' : 'red'}>
+                <Badge color={r.status === 1 ? 'warning' : r.status === 2 ? 'success' : 'error'}>
                     {POST_STATUS_LABELS[r.status]}
-                </Tag>
-            )
+                </Badge>
+            ),
         },
         {
             title: 'Hành động',
-            width: 240,
+            key: 'action',
+            width: 260,
             render: (_, r) => (
-                <Space size="middle">
+                <div className="flex flex-wrap items-center gap-2">
                     {r.status === 1 && (
                         <>
-                            <Button type="primary" onClick={() => handleStatusChange(r.id, 2)}>Duyệt</Button>
-                            <Button danger onClick={() => handleStatusChange(r.id, 3)}>Từ chối</Button>
+                            <Button size="sm" variant="primary" iconOnly ariaLabel="Duyệt" onClick={() => handleStatusChange(r.id, 2)} startIcon={(
+                                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                </svg>
+                            )}>
+                                Duyệt
+                            </Button>
+                            <Button size="sm" variant="danger" iconOnly ariaLabel="Từ chối" onClick={() => handleStatusChange(r.id, 3)} startIcon={(
+                                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            )}>
+                                Từ chối
+                            </Button>
                         </>
                     )}
-                    <Button icon={<EditOutlined />} onClick={() => openModal(r)}>Sửa</Button>
-                    <Popconfirm title="Bạn có chắc muốn xóa bài đăng này?" onConfirm={() => handleDelete(r.id)}>
-                        <Button danger icon={<DeleteOutlined />}>Xóa</Button>
-                    </Popconfirm>
-                </Space>
-            )
-        }
+                    <Button size="sm" variant="outline" iconOnly ariaLabel="Sửa" onClick={() => openModal(r)} startIcon={(
+                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                    )}>
+                        Sửa
+                    </Button>
+                    <Button
+                        size="sm"
+                        variant="danger"
+                        iconOnly
+                        ariaLabel="Xóa"
+                        startIcon={(
+                            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                        )}
+                        onClick={() => {
+                            if (window.confirm('Bạn có chắc muốn xóa bài đăng này?')) {
+                                handleDelete(r.id);
+                            }
+                        }}
+                    >
+                        Xóa
+                    </Button>
+                </div>
+            ),
+        },
     ];
+
+    const tabButtonClass = (active: boolean) =>
+        `inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${active
+            ? 'border-brand-500 bg-brand-50 text-brand-600'
+            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+        }`;
 
     return (
         <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                <Title level={3}>Quản lý bài đăng</Title>
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
+            <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-xl font-semibold text-gray-900">Quản lý bài đăng</h3>
+                <Button variant="primary" iconOnly ariaLabel="Thêm bài đăng" onClick={() => openModal()} startIcon={(
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                    </svg>
+                )}>
                     Thêm bài đăng
                 </Button>
             </div>
 
-            <Tabs
-                activeKey={activeTab}
-                onChange={(key) => { 
-                    setActiveTab(key as any); 
-                    setPage(1); 
-                }}
-                style={{ marginBottom: 16 }}
-                tabBarStyle={{ marginBottom: 0 }}
-            >
-                <TabPane 
-                    tab={
-                        <span style={{ fontSize: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <AppstoreOutlined style={{ fontSize: '18px' }} /> 
-                            Tất cả ({allPosts.length})
-                        </span>
-                    } 
-                    key="all" 
-                />
-                
-                <TabPane 
-                    tab={
-                        <span style={{ fontSize: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <ClockCircleOutlined style={{ fontSize: '18px', color: '#faad14' }} /> 
-                            Chờ duyệt ({allPosts.filter(p => p.status === 1).length})
-                        </span>
-                    } 
-                    key="pending" 
-                />
-                
-                <TabPane 
-                    tab={
-                        <span style={{ fontSize: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <CheckCircleOutlined style={{ fontSize: '18px', color: '#52c41a' }} /> 
-                            Đã duyệt ({allPosts.filter(p => p.status === 2).length})
-                        </span>
-                    } 
-                    key="approved" 
-                />
-                
-                <TabPane 
-                    tab={
-                        <span style={{ fontSize: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <CloseCircleOutlined style={{ fontSize: '18px', color: '#f5222d' }} /> 
-                            Đã từ chối ({allPosts.filter(p => p.status === 3).length})
-                        </span>
-                    } 
-                    key="rejected" 
-                />
-            </Tabs>
+            <div className="mb-4 flex flex-wrap gap-2">
+                <button
+                    className={tabButtonClass(activeTab === 'all')}
+                    onClick={() => {
+                        setActiveTab('all');
+                        setPage(1);
+                    }}
+                >
+                    Tất cả ({allPosts.length})
+                </button>
+                <button
+                    className={tabButtonClass(activeTab === 'vip')}
+                    onClick={() => {
+                        setActiveTab('vip');
+                        setPage(1);
+                    }}
+                >
+                    Tin VIP ({allPosts.filter((p) => isVipPost(p)).length})
+                </button>
+                <button
+                    className={tabButtonClass(activeTab === 'pending')}
+                    onClick={() => {
+                        setActiveTab('pending');
+                        setPage(1);
+                    }}
+                >
+                    Chờ duyệt ({allPosts.filter((p) => p.status === 1).length})
+                </button>
+                <button
+                    className={tabButtonClass(activeTab === 'approved')}
+                    onClick={() => {
+                        setActiveTab('approved');
+                        setPage(1);
+                    }}
+                >
+                    Đã duyệt ({allPosts.filter((p) => p.status === 2).length})
+                </button>
+                <button
+                    className={tabButtonClass(activeTab === 'rejected')}
+                    onClick={() => {
+                        setActiveTab('rejected');
+                        setPage(1);
+                    }}
+                >
+                    Đã từ chối ({allPosts.filter((p) => p.status === 3).length})
+                </button>
+            </div>
 
-            <Input
-                placeholder="Tìm kiếm theo tiêu đề hoặc địa chỉ..."
-                prefix={<SearchOutlined />}
-                style={{ marginBottom: 16, maxWidth: 400 }}
-                value={search}
-                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                allowClear
-            />
+            <div className="mb-4 w-full min-w-0 sm:max-w-[400px]">
+                <input
+                    type="text"
+                    placeholder="Tìm kiếm theo tiêu đề hoặc địa chỉ..."
+                    className="admin-control admin-filter-input w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    value={search}
+                    onChange={(e) => {
+                        setSearch(e.target.value);
+                        setPage(1);
+                    }}
+                />
+            </div>
 
-            <Table
+            <DataTable
                 rowKey="id"
                 columns={columns}
-                dataSource={filteredPosts}
+                dataSource={pagedPosts}
                 loading={loading}
-                scroll={{ x: 'max-content' }}
-                style={{ width: '100%' }}               
                 pagination={{
                     current: page,
-                    total: allPosts.filter(p => {
-                        if (activeTab === "pending") return p.status === 1;
-                        if (activeTab === "approved") return p.status === 2;
-                        if (activeTab === "rejected") return p.status === 3;
-                        return true;
-                    }).length,
+                    total: filteredByTabAndSearch.length,
                     pageSize: DEFAULT_PAGE_SIZE,
                     onChange: setPage,
                 }}
             />
 
+            <ImageLightbox
+                isOpen={previewOpen}
+                images={previewImages}
+                initialIndex={previewIndex}
+                onClose={() => setPreviewOpen(false)}
+            />
+
+            {vipTooltip.visible && (
+                <div
+                    className="pointer-events-none fixed z-[9999] w-64 rounded-lg border border-amber-200 bg-white p-3 text-xs text-gray-700 shadow-lg"
+                    style={{ left: vipTooltip.x, top: vipTooltip.y }}
+                >
+                    <div className="mb-1 font-semibold text-gray-900">{vipTooltip.packageName}</div>
+                    <div>{vipTooltip.statusText}</div>
+                </div>
+            )}
+
             <Modal
-                title={editingPost ? "Sửa bài đăng" : "Thêm bài đăng"}
-                open={modalOpen}
-                onOk={handleSubmit}
-                onCancel={() => setModalOpen(false)}
-                width={850}
-                okText="Lưu"
-                cancelText="Hủy"
+                title={editingPost ? 'Sửa bài đăng' : 'Thêm bài đăng'}
+                isOpen={modalOpen}
+                onClose={() => setModalOpen(false)}
+                width="max-w-4xl"
+                footer={(
+                    <>
+                        <Button variant="outline" onClick={() => setModalOpen(false)}>
+                            Hủy
+                        </Button>
+                        <Button variant="primary" onClick={handleSubmit}>
+                            Lưu
+                        </Button>
+                    </>
+                )}
             >
-                <Form layout="vertical" form={form}>
-                    <Form.Item name="title" label="Tiêu đề" rules={[{ required: true }]}>
-                        <Input placeholder="Nhập tiêu đề bài đăng" />
-                    </Form.Item>
+                <div className="space-y-4">
+                    <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Tiêu đề</label>
+                        <input
+                            type="text"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                            placeholder="Nhập tiêu đề bài đăng"
+                            value={formData.title || ''}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, title: e.target.value }))}
+                        />
+                    </div>
 
-                    <Form.Item name="city" label="Tỉnh"><Input /></Form.Item>
-                    <Form.Item name="district" label="Quận"><Input /></Form.Item>
-                    <Form.Item name="ward" label="Phường"><Input /></Form.Item>
-                    <Form.Item name="address" label="Địa chỉ"><Input /></Form.Item>
-                    <Form.Item name="price" label="Giá"><Input type="number" /></Form.Item>
-                    <Form.Item name="area" label="Diện tích"><Input type="number" /></Form.Item>
-                    <Form.Item name="direction" label="Hướng"><Input /></Form.Item>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Tỉnh" value={formData.city || ''} onChange={(e) => setFormData((p) => ({ ...p, city: e.target.value }))} />
+                        <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Quận" value={formData.district || ''} onChange={(e) => setFormData((p) => ({ ...p, district: e.target.value }))} />
+                        <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Phường" value={formData.ward || ''} onChange={(e) => setFormData((p) => ({ ...p, ward: e.target.value }))} />
+                        <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Địa chỉ" value={formData.address || ''} onChange={(e) => setFormData((p) => ({ ...p, address: e.target.value }))} />
+                        <input type="number" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Giá" value={formData.price || ''} onChange={(e) => setFormData((p) => ({ ...p, price: e.target.value }))} />
+                        <input type="number" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Diện tích" value={formData.area || ''} onChange={(e) => setFormData((p) => ({ ...p, area: e.target.value }))} />
+                        <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm md:col-span-2" placeholder="Hướng" value={formData.direction || ''} onChange={(e) => setFormData((p) => ({ ...p, direction: e.target.value }))} />
+                    </div>
 
-                    <Form.Item 
-                        name="description" 
-                        label="Mô tả" 
-                        rules={[{ required: true, message: 'Vui lòng nhập mô tả' }]}
-                    >
-                        <div style={{ border: '1px solid #d9d9d9', borderRadius: '6px', overflow: 'hidden' }}>
-                            <style>{`
-                                .ck-editor__editable_inline:not(.ck-comment__input *) {
-                                    min-height: 200px !important;
-                                }
-                            `}</style>
+                    <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Mô tả</label>
+                        <div style={{ border: '1px solid #d1d5db', borderRadius: '6px', overflow: 'hidden' }}>
+                            <style>{`.ck-editor__editable_inline:not(.ck-comment__input *) { min-height: 200px !important; }`}</style>
                             <CKEditor
-                                editor={ClassicEditor as any}
-                                data={form.getFieldValue('description') || ''}
-                                onChange={(_, editor) => form.setFieldsValue({ description: editor.getData() || '' })}
+                                editor={ClassicEditor as unknown as never}
+                                data={String(formData.description || '')}
+                                onChange={(_, editor) =>
+                                    setFormData((prev) => ({ ...prev, description: editor.getData() || '' }))
+                                }
                                 onReady={(editor) => {
                                     setTimeout(() => {
                                         if (editor?.ui?.view?.editable?.element) {
@@ -346,45 +546,63 @@ const PostManagementPage: React.FC = () => {
                                     licenseKey: 'GPL',
                                     placeholder: 'Nhập mô tả chi tiết về bất động sản...',
                                     toolbar: [
-                                        'sourceEditing', '|', 'heading', '|',
-                                        'bold', 'italic', '|', 'link', '|',
-                                        'bulletedList', 'numberedList', '|',
-                                        'blockQuote', '|', 'undo', 'redo'
-                                    ]
+                                        'sourceEditing',
+                                        '|',
+                                        'heading',
+                                        '|',
+                                        'bold',
+                                        'italic',
+                                        '|',
+                                        'link',
+                                        '|',
+                                        'bulletedList',
+                                        'numberedList',
+                                        '|',
+                                        'blockQuote',
+                                        '|',
+                                        'undo',
+                                        'redo',
+                                    ],
                                 }}
                             />
                         </div>
-                    </Form.Item>
+                    </div>
 
-                    <Form.Item label="Ảnh">
-    <Upload
-        multiple
-        listType="picture-card"           // Đổi sang picture-card để đẹp hơn
-        fileList={fileList}
-        onChange={({ fileList: newFileList }) => setFileList(newFileList)}
-        onRemove={async (file) => {
-            // Nếu là ảnh cũ (có url) và đang sửa bài
-            if (file.url && editingPost) {
-                // Bạn có thể gọi API xóa ảnh nếu backend hỗ trợ
-                // Hiện tại chỉ xóa khỏi danh sách hiển thị
-                console.log("Xóa ảnh cũ:", file.url);
-            }
-            return true; // Cho phép xóa
-        }}
-        beforeUpload={() => false}        // Không tự upload lên server ngay
-    >
-        <div>
-            <PlusOutlined />
-            <div style={{ marginTop: 8 }}>Thêm ảnh</div>
-        </div>
-    </Upload>
-    
-    <div style={{ marginTop: 8, color: '#999', fontSize: '12px' }}>
-        • Có thể chọn nhiều ảnh<br />
-        • Khi sửa: ảnh cũ sẽ hiển thị, bạn có thể xóa ảnh cũ hoặc thêm ảnh mới
-    </div>
-</Form.Item>
-                </Form>
+                    <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Ảnh</label>
+                        <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            onChange={(e) => {
+                                if (!e.target.files) return;
+                                const incoming = Array.from(e.target.files).map((f, index) => ({
+                                    uid: `new-${Date.now()}-${index}`,
+                                    name: f.name,
+                                    status: 'done' as const,
+                                    originFileObj: f,
+                                    url: URL.createObjectURL(f),
+                                }));
+                                setFileList((prev) => [...prev, ...incoming]);
+                                e.target.value = '';
+                            }}
+                        />
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            {fileList.map((file) => (
+                                <div key={file.uid} className="relative h-[84px] w-[84px] overflow-hidden rounded border border-gray-200">
+                                    <img src={file.url} alt={file.name} className="h-full w-full object-cover" />
+                                    <button
+                                        type="button"
+                                        className="absolute right-0 top-0 bg-black/50 px-1 text-xs text-white"
+                                        onClick={() => setFileList((prev) => prev.filter((f) => f.uid !== file.uid))}
+                                    >
+                                        x
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
             </Modal>
         </div>
     );

@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -252,4 +254,75 @@ input[type="range"]::-moz-range-thumb {
   height: 4px;
   background: #ff6a00;
   border-radius: 999px;
+}
+
+/* ===== Admin Tail Theme (scoped) ===== */
+.admin-shell {
+  font-family: "Outfit", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(1200px 300px at 20% -10%, rgba(70, 95, 255, 0.08), transparent 50%),
+    radial-gradient(900px 280px at 85% -20%, rgba(11, 165, 236, 0.08), transparent 55%),
+    #f8fafc;
+}
+
+.admin-shell .admin-page-title {
+  letter-spacing: -0.02em;
+}
+
+.admin-shell .admin-form-surface {
+  border: 1px solid #e4e7ec;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 8px 20px rgba(16, 24, 40, 0.04);
+}
+
+.admin-shell .admin-section-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #667085;
+  margin-bottom: 12px;
+  font-weight: 700;
+}
+
+.admin-shell .admin-control,
+.admin-shell input.admin-control,
+.admin-shell select.admin-control,
+.admin-shell textarea.admin-control {
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid #d0d5dd;
+  background: #fff;
+  padding: 10px 12px;
+  font-size: 14px;
+  color: #344054;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.admin-shell textarea.admin-control {
+  min-height: 120px;
+  height: auto;
+}
+
+.admin-shell .admin-control:focus {
+  border-color: #465fff;
+  box-shadow: 0 0 0 4px rgba(70, 95, 255, 0.12);
+}
+
+.admin-shell .admin-control::placeholder {
+  color: #98a2b3;
+}
+
+.admin-shell .admin-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.admin-shell .admin-filter-input {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }

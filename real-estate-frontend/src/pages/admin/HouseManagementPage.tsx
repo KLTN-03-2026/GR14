@@ -1,14 +1,15 @@
-import { useEffect, useState } from 'react';
-import { Table, Button, Space, Tag, Input, Popconfirm, message, Typography, Image } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { ColumnsType /* TablePaginationConfig */ } from 'antd/es/table';
+import { toast } from 'react-hot-toast';
 import { houseApi } from '@/api';
 import { formatCurrency, formatArea } from '@/utils';
 import type { House } from '@/types';
 import { DEFAULT_PAGE_SIZE } from '@/constants';
-
-const { Title } = Typography;
+import Button from '@/components/ui/Button';
+import Badge from '@/components/ui/Badge';
+import { DataTable } from '@/components/ui/Table';
+import ImageLightbox from '@/components/ui/ImageLightbox';
+import type { Column } from '@/components/ui/Table';
 
 const HouseManagementPage: React.FC = () => {
     const navigate = useNavigate();
@@ -17,12 +18,11 @@ const HouseManagementPage: React.FC = () => {
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(1);
     const [search, setSearch] = useState('');
+    const [previewOpen, setPreviewOpen] = useState(false);
+    const [previewImages, setPreviewImages] = useState<string[]>([]);
+    const [previewIndex, setPreviewIndex] = useState(0);
 
-    useEffect(() => {
-        loadHouses();
-    }, [page, search]);
-
-    const loadHouses = async () => {
+    const loadHouses = useCallback(async () => {
         setLoading(true);
         try {
             const params: Record<string, unknown> = { page, limit: DEFAULT_PAGE_SIZE };
@@ -32,23 +32,27 @@ const HouseManagementPage: React.FC = () => {
             setHouses(data.data || data);
             setTotal(data.totalItems || data.meta?.total || 0);
         } catch {
-            message.error('Lỗi tải dữ liệu');
+            toast.error('Lỗi tải dữ liệu');
         } finally {
             setLoading(false);
         }
-    };
+    }, [page, search]);
+
+    useEffect(() => {
+        loadHouses();
+    }, [loadHouses]);
 
     const handleDelete = async (id: number) => {
         try {
             await houseApi.delete(id);
-            message.success('Xóa thành công');
+            toast.success('Xóa thành công');
             loadHouses();
         } catch {
-            message.error('Xóa thất bại');
+            toast.error('Xóa thất bại');
         }
     };
 
-    const columns: ColumnsType<House> = [
+    const columns: Column<House>[] = [
         { title: 'Mã', dataIndex: 'code', key: 'code', width: 100 },
         {
             title: 'Ảnh',
@@ -56,26 +60,25 @@ const HouseManagementPage: React.FC = () => {
             key: 'images',
             width: 110,
             render: (images: House['images']) => {
-                if (!images?.length) return <span style={{ color: '#ccc', fontSize: 12 }}>Chưa có</span>;
+                if (!images?.length) return <span className="text-gray-300 text-xs">Chưa có</span>;
                 return (
-                    <Image.PreviewGroup items={images.map(img => ({ src: img.url }))}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <Image
-                                src={images[0].url}
-                                width={60}
-                                height={50}
-                                style={{ objectFit: 'cover', borderRadius: 4, cursor: 'pointer' }}
-                            />
-                            {images.length > 1 && (
-                                <span style={{
-                                    fontSize: 11, color: '#fff', background: '#1677ff',
-                                    borderRadius: 10, padding: '1px 6px', whiteSpace: 'nowrap',
-                                }}>
-                                    +{images.length - 1}
-                                </span>
-                            )}
-                        </div>
-                    </Image.PreviewGroup>
+                    <div className="flex items-center gap-1">
+                        <img
+                            src={images[0].url}
+                            alt=""
+                            className="w-[60px] h-[50px] object-cover rounded cursor-zoom-in"
+                            onClick={() => {
+                                setPreviewImages(images.map((img) => img.url));
+                                setPreviewIndex(0);
+                                setPreviewOpen(true);
+                            }}
+                        />
+                        {images.length > 1 && (
+                            <span className="text-[11px] text-white bg-brand-500 rounded-full px-1.5 py-0.5 whitespace-nowrap">
+                                +{images.length - 1}
+                            </span>
+                        )}
+                    </div>
                 );
             },
         },
@@ -94,7 +97,7 @@ const HouseManagementPage: React.FC = () => {
         },
         {
             title: 'Danh mục',
-            dataIndex: ['category', 'name'],
+            render: (_: unknown, record: House) => record.category?.name || '—',
             key: 'category',
         },
         {
@@ -102,57 +105,78 @@ const HouseManagementPage: React.FC = () => {
             dataIndex: 'status',
             key: 'status',
             render: (status: number) => (
-                <Tag color={status === 1 ? 'green' : 'red'}>
+                <Badge color={status === 1 ? 'success' : 'error'}>
                     {status === 1 ? 'Hoạt động' : 'Ẩn'}
-                </Tag>
+                </Badge>
             ),
         },
         {
             title: 'Hành động',
             key: 'action',
             width: 200,
-            render: (_, record) => (
-                <Space>
+            render: (_: unknown, record: House) => (
+                <div className="flex items-center gap-2">
                     <Button
-                        size="small"
-                        icon={<EditOutlined />}
-                        type="primary"
+                        size="sm"
+                        variant="outline"
+                        iconOnly
+                        ariaLabel="Sửa"
                         onClick={() => navigate(`/admin/houses/${record.id}/edit`)}
+                        startIcon={
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                        }
                     />
-                    <Popconfirm
-                        title="Bạn có chắc muốn xóa?"
-                        onConfirm={() => handleDelete(record.id)}
-                    >
-                        <Button size="small" danger icon={<DeleteOutlined />} />
-                    </Popconfirm>
-                </Space>
+                    <Button
+                        size="sm"
+                        variant="danger"
+                        iconOnly
+                        ariaLabel="Xóa"
+                        onClick={() => {
+                            if (window.confirm('Bạn có chắc muốn xóa?')) {
+                                handleDelete(record.id);
+                            }
+                        }}
+                        startIcon={
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                        }
+                    />
+                </div>
             ),
         },
     ];
 
     return (
         <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                <Title level={3} style={{ margin: 0 }}>Quản lý nhà</Title>
+            <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-semibold text-gray-800 m-0">Quản lý nhà</h3>
                 <Button
-                    type="primary"
-                    icon={<PlusOutlined />}
+                    variant="primary"
+                    iconOnly
+                    ariaLabel="Thêm mới"
                     onClick={() => navigate('/admin/houses/create')}
-                >
-                    Thêm mới
-                </Button>
+                    startIcon={
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                        </svg>
+                    }
+                />
             </div>
 
-            <Input
-                placeholder="Tìm kiếm..."
-                prefix={<SearchOutlined />}
-                style={{ marginBottom: 16, maxWidth: 400 }}
-                value={search}
-                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                allowClear
-            />
+            <div className="mb-4 w-full min-w-0 sm:max-w-[400px]">
+                <input
+                    type="text"
+                    placeholder="Tìm kiếm..."
+                    className="admin-control admin-filter-input w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    value={search}
+                    onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                />
+            </div>
 
-            <Table
+            <DataTable
                 columns={columns}
                 dataSource={houses}
                 rowKey="id"
@@ -162,8 +186,15 @@ const HouseManagementPage: React.FC = () => {
                     total,
                     pageSize: DEFAULT_PAGE_SIZE,
                     onChange: setPage,
-                    showTotal: (total) => `Tổng ${total} bản ghi`,
+                    showTotal: (total: number) => `Tổng ${total} bản ghi`,
                 }}
+            />
+
+            <ImageLightbox
+                isOpen={previewOpen}
+                images={previewImages}
+                initialIndex={previewIndex}
+                onClose={() => setPreviewOpen(false)}
             />
         </div>
     );
