@@ -5,10 +5,10 @@ import { RedisService } from '../../common/redis/redis.service';
 import { CreateHouseDto, UpdateHouseDto } from './dto/house.dto';
 import { validateFieldsNoSpecialChars } from '../../common/utils/validators';
 
-// Cache TTL (seconds)
-const HOUSE_LIST_TTL = 600;   // 10 minutes
-const HOUSE_DETAIL_TTL = 900;  // 15 minutes
-const HOUSE_SEARCH_TTL = 300;   // 5 minutes
+
+const HOUSE_LIST_TTL = 600;  
+const HOUSE_DETAIL_TTL = 900;  
+const HOUSE_SEARCH_TTL = 300;  
 
 const houseListKey = (page: number, limit: number) => `houses:list:${page}:${limit}`;
 const houseDetailKey = (id: number) => `house:${id}`;
@@ -24,10 +24,8 @@ export class HouseService {
         private redis: RedisService,
     ) { }
 
-    async findAll(page = 1, limit = 10) {
+    async findAll(page = 1, limit = 8) {
         const cacheKey = houseListKey(page, limit);
-
-        // Try cache first
         const cached = await this.redis.get(cacheKey).catch(() => null);
         if (cached) {
             this.logger.debug(`Cache HIT: ${cacheKey}`);
@@ -59,7 +57,6 @@ export class HouseService {
             totalItems: total,
         };
 
-        // Set cache
         await this.redis.set(cacheKey, result, HOUSE_LIST_TTL).catch(() => {
             this.logger.warn(`Failed to cache ${cacheKey}`);
         });
@@ -70,7 +67,7 @@ export class HouseService {
     async findById(id: number) {
         const cacheKey = houseDetailKey(id);
 
-        // Try cache first
+
         const cached = await this.redis.get(cacheKey).catch(() => null);
         if (cached) {
             this.logger.debug(`Cache HIT: ${cacheKey}`);
@@ -90,7 +87,7 @@ export class HouseService {
         });
         if (!house) throw new NotFoundException('House not found');
 
-        // Set cache
+
         await this.redis.set(cacheKey, house, HOUSE_DETAIL_TTL).catch(() => {
             this.logger.warn(`Failed to cache ${cacheKey}`);
         });
@@ -140,7 +137,6 @@ export class HouseService {
             });
         }
 
-        // Invalidate cache
         await this.invalidateHouseCache();
 
         return {
@@ -187,13 +183,11 @@ export class HouseService {
         });
 
         if (files?.length || dto.keepImageIds !== undefined) {
-            // Parse danh sách ID ảnh cần giữ
             const keepIds: number[] = dto.keepImageIds
                 ? (Array.isArray(dto.keepImageIds) ? dto.keepImageIds : [dto.keepImageIds])
                     .map(Number).filter((n) => !isNaN(n))
                 : [];
 
-            // Xóa ảnh không nằm trong keepIds
             await this.prisma.houseImage.deleteMany({
                 where: {
                     houseId: id,
@@ -232,7 +226,7 @@ export class HouseService {
         });
         if (!house) throw new NotFoundException('House not found');
 
-        // Delete cloudinary images
+
         for (const img of house.images) {
             const publicId = img.url.split('/').pop()?.split('.')[0];
             if (publicId) await this.cloudinaryService.deleteImage(publicId);
@@ -241,7 +235,6 @@ export class HouseService {
         await this.prisma.houseImage.deleteMany({ where: { houseId: id } });
         await this.prisma.house.delete({ where: { id } });
 
-        // Invalidate cache
         await this.invalidateHouseCache();
         await this.redis.del(houseDetailKey(id)).catch(() => { });
 
@@ -251,7 +244,7 @@ export class HouseService {
     async search(query: string, page = 1, limit = 10) {
         const cacheKey = houseSearchKey(query, page, limit);
 
-        // Try cache first
+
         const cached = await this.redis.get(cacheKey).catch(() => null);
         if (cached) {
             this.logger.debug(`Cache HIT: ${cacheKey}`);

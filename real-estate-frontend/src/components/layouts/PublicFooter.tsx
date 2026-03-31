@@ -1,114 +1,137 @@
 import React from 'react';
 import group from "../../assets/logo.png";
-import gps from "../../assets/gps.png"; 
-import phone from "../../assets/phone.png"; 
-import email from "../../assets/mail.png"; 
+import gps from "../../assets/icons8-gps-16.png";
+import phone from "../../assets/icons8-phone-16.png";
+import email from "../../assets/icons8-mail-16.png";
 
 const PublicFooter: React.FC = () => {
+
   const exploreLinks = ["Trang Chủ", "Về Chúng Tôi", "Tin Tức", "Đăng Bài Viết"];
   const navigationLinks = ["Liên Hệ", "Nhà Đất", "Đất Đai", "Dịch Vụ"];
 
   return (
-    <footer className="w-full bg-[#0f172a] text-gray-300 pt-16 pb-6 px-4">
-      <div className="max-w-[1290px] mx-auto grid grid-cols-1 md:grid-cols-4 gap-10">
+    <footer className="relative w-full bg-[#080f1e] text-gray-300 overflow-hidden">
 
-        {/* Cột 1 */}
-        <div className="flex flex-col gap-5">
-          <div className="flex items-center gap-2">
-            <img className="w-[120px] h-auto brightness-200 contrast-150 bg=white" alt="logo" src={group} />
-            <h2 className="text-white text-xl font-bold">
-              Black'S City
-            </h2>
-          </div>
+      {/* Top accent line */}
+      <div className="w-full h-px bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-60" />
 
-          <p className="text-sm leading-6 text-gray-400">
-            Nền tảng bất động sản uy tín giúp bạn tìm kiếm, mua bán và đầu tư 
-            nhà đất một cách nhanh chóng, minh bạch và hiệu quả.
-          </p>
+      {/* Background grid pattern */}
+      <div
+        className="absolute inset-0 opacity-[0.03]"
+        style={{
+          backgroundImage: `linear-gradient(rgba(99,179,237,1) 1px, transparent 1px),
+                            linear-gradient(90deg, rgba(99,179,237,1) 1px, transparent 1px)`,
+          backgroundSize: '60px 60px',
+        }}
+      />
 
-          <address className="flex flex-col gap-3 not-italic text-sm">
+      {/* Glow blobs */}
+      <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-600 opacity-5 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-0 right-1/4 w-72 h-72 bg-cyan-500 opacity-5 rounded-full blur-3xl pointer-events-none" />
 
-            <div className="flex items-start gap-3">
-              <img src={gps} className="w-5 h-5 mt-1" />
-              <p>8386 Nguyễn Văn Linh, Thanh Khê, Đà Nẵng</p>
-            </div>
+      <div className="relative max-w-[1290px] mx-auto px-6 pt-16 pb-6">
 
+        {/* Main grid */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-12 mb-12">
+
+          {/* Col 1 — Brand */}
+          <div className="md:col-span-4 flex flex-col gap-6">
             <div className="flex items-center gap-3">
-              <img src={phone} className="w-5 h-5" />
-              <p>0987 654 456</p>
+              <div className="relative">
+                <div className="absolute inset-0 bg-blue-500 opacity-20 rounded-xl blur-md" />
+                <img
+                  className="relative w-[52px] h-[52px] object-contain brightness-110"
+                  alt="logo"
+                  src={group}
+                />
+              </div>
+              <div>
+                <h2 className="text-white text-xl font-bold tracking-wide" style={{ fontFamily: "'Sora', sans-serif" }}>
+                  Black<span className="text-blue-400">'</span>S City
+                </h2>
+                <p className="text-xs text-blue-400/70 tracking-widest uppercase">Real Estate Platform</p>
+              </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              <img src={email} className="w-5 h-5" />
-              <p>blackcity@gmail.com</p>
-            </div>
-
-          </address>
-        </div>
-
-        {/* Cột 2 */}
-        <div className="flex flex-col gap-5">
-          <h4 className="text-white text-lg font-semibold">Khám phá</h4>
-          <nav className="flex flex-col gap-3 text-sm">
-            {exploreLinks.map((link, index) => (
-              <a 
-                key={index} 
-                href="#" 
-                className="hover:text-blue-400 transition"
-              >
-                {link}
-              </a>
-            ))}
-          </nav>
-        </div>
-
-        {/* Cột 3 */}
-        <div className="flex flex-col gap-5">
-          <h4 className="text-white text-lg font-semibold">Danh mục</h4>
-          <nav className="flex flex-col gap-3 text-sm">
-            {navigationLinks.map((link, index) => (
-              <a 
-                key={index} 
-                href="#" 
-                className="hover:text-blue-400 transition"
-              >
-                {link}
-              </a>
-            ))}
-          </nav>
-        </div>
-
-        {/* Cột 4 */}
-        <div className="flex flex-col gap-5">
-          <h4 className="text-white text-lg font-semibold">Nhận tin mới</h4>
-          <p className="text-sm text-gray-400">
-            Đăng ký để nhận thông tin bất động sản mới nhất mỗi ngày.
-          </p>
-
-          <div className="flex w-full mt-2">
-            <input
-              type="email"
-              placeholder="Nhập email..."
-              className="flex-1 h-11 px-4 bg-white text-black rounded-l-lg outline-none"
-            />
-            <button className="h-11 px-5 bg-blue-600 text-white rounded-r-lg hover:bg-blue-700 transition">
-              Gửi
-            </button>
+            <p className="text-sm leading-7 text-gray-300 border-l-2 border-blue-500/30 pl-4">
+              Nền tảng bất động sản uy tín giúp bạn tìm kiếm, mua bán và đầu tư
+              nhà đất một cách nhanh chóng, minh bạch và hiệu quả.
+            </p>
           </div>
 
-          {/* Social */}
-          <div className="flex gap-4 mt-3 text-sm">
-            <span className="cursor-pointer hover:text-blue-400">Facebook</span>
-            <span className="cursor-pointer hover:text-blue-400">Zalo</span>
-            <span className="cursor-pointer hover:text-blue-400">Youtube</span>
+          {/* Col 2 — Explore */}
+          <div className="md:col-span-2 flex flex-col gap-5">
+            <h4 className="text-white text-sm font-semibold tracking-widest uppercase flex items-center gap-2">
+              <span className="w-4 h-px bg-blue-500 inline-block" />
+              Khám phá
+            </h4>
+            <nav className="flex flex-col gap-3">
+              {exploreLinks.map((link, i) => (
+                <a
+                  key={i}
+                  href="#"
+                  className="text-sm text-gray-300 hover:text-white transition-all duration-200 flex items-center gap-2 group"
+                >
+                  <span className="w-0 h-px bg-blue-400 group-hover:w-3 transition-all duration-200 inline-block" />
+                  {link}
+                </a>
+              ))}
+            </nav>
+          </div>
+
+          {/* Col 3 — Categories */}
+          <div className="md:col-span-2 flex flex-col gap-5">
+            <h4 className="text-white text-sm font-semibold tracking-widest uppercase flex items-center gap-2">
+              <span className="w-4 h-px bg-blue-500 inline-block" />
+              Danh mục
+            </h4>
+            <nav className="flex flex-col gap-3">
+              {navigationLinks.map((link, i) => (
+                <a
+                  key={i}
+                  href="#"
+                  className="text-sm text-gray-300 hover:text-white transition-all duration-200 flex items-center gap-2 group"
+                >
+                  <span className="w-0 h-px bg-blue-400 group-hover:w-3 transition-all duration-200 inline-block" />
+                  {link}
+                </a>
+              ))}
+            </nav>
+          </div>
+
+          {/* Col 4 — Contact */}
+          <div className="md:col-span-4 flex flex-col gap-5">
+            <h4 className="text-white text-sm font-semibold tracking-widest uppercase flex items-center gap-2">
+              <span className="w-4 h-px bg-blue-500 inline-block" />
+              Liên hệ
+            </h4>
+            <address className="flex flex-col gap-4 not-italic text-sm">
+              {[
+                { icon: gps, text: '8386 Nguyễn Văn Linh, Thanh Khê, Đà Nẵng', align: 'items-start' },
+                { icon: phone, text: '0987 654 456', align: 'items-center' },
+                { icon: email, text: 'blackcity@gmail.com', align: 'items-center' },
+              ].map(({ icon, text, align }, i) => (
+                <div key={i} className={`flex ${align} gap-3 group cursor-pointer`}>
+                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-500/20 transition-colors duration-200">
+                    <img src={icon} className="w-4 h-4 opacity-90" alt="" />
+                  </div>
+                  <span className="text-gray-200 group-hover:text-white transition-colors duration-200 leading-5">{text}</span>
+                </div>
+              ))}
+            </address>
           </div>
         </div>
 
-      </div>
+        {/* Bottom bar */}
+        <div className="border-t border-gray-800 pt-6 flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-gray-400">
+          <p>© 2026 <span className="text-gray-400">Black'S City</span>. All rights reserved.</p>
+          <div className="flex gap-5">
+            {['Chính sách bảo mật', 'Điều khoản sử dụng', 'Hỗ trợ'].map((item, i) => (
+              <a key={i} href="#" className="hover:text-white transition-colors duration-200">{item}</a>
+            ))}
+          </div>
+        </div>
 
-      {/* Bottom */}
-      <div className="border-t border-gray-700 mt-10 pt-5 text-center text-sm text-gray-400">
-        © 2026 Black'S City. All rights reserved.
       </div>
     </footer>
   );
