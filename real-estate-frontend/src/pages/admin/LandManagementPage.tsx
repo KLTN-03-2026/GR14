@@ -7,15 +7,22 @@ import type { Land } from '@/types';
 import { DEFAULT_PAGE_SIZE } from '@/constants';
 import { Button, Badge, DataTable, ImageLightbox } from '@/components/ui';
 import Modal from '@/components/ui/Modal';
+import LoadingOverlay from '@/components/ui/LoadingOverlay';
 import type { Column } from '@/components/ui';
 
 const LandManagementPage: React.FC = () => {
+    const ACTIVE_STATUS = 1;
+    const SOLD_STATUS = 0;
+
     const navigate = useNavigate();
     const [lands, setLands] = useState<Land[]>([]);
     const [loading, setLoading] = useState(false);
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(1);
     const [search, setSearch] = useState('');
+    const [statusFilter, setStatusFilter] = useState<number>(ACTIVE_STATUS);
+    const [activeCount, setActiveCount] = useState(0);
+    const [soldCount, setSoldCount] = useState(0);
     const [previewOpen, setPreviewOpen] = useState(false);
     const [previewImages, setPreviewImages] = useState<string[]>([]);
     const [previewIndex, setPreviewIndex] = useState(0);
@@ -26,18 +33,44 @@ const LandManagementPage: React.FC = () => {
     const loadLands = useCallback(async () => {
         setLoading(true);
         try {
-            const params: Record<string, unknown> = { page, limit: DEFAULT_PAGE_SIZE };
-            if (search) params.search = search;
-            const res = await landApi.getAll(params);
-            const data = res.data;
+            const listParams: Record<string, unknown> = {
+                page,
+                limit: DEFAULT_PAGE_SIZE,
+                status: statusFilter,
+            };
+            if (search) listParams.search = search;
+
+            const countParams = (status: number): Record<string, unknown> => {
+                const params: Record<string, unknown> = { page: 1, limit: 1, status };
+                if (search) params.search = search;
+                return params;
+            };
+
+            const [listRes, activeRes, soldRes] = await Promise.all([
+                landApi.getAll(listParams),
+                landApi.getAll(countParams(ACTIVE_STATUS)),
+                landApi.getAll(countParams(SOLD_STATUS)),
+            ]);
+
+            const data = listRes.data;
+            const activeData = activeRes.data;
+            const soldData = soldRes.data;
+
+            const getTotalItems = (responseData: unknown): number => {
+                const payload = responseData as { totalItems?: number; meta?: { total?: number } };
+                return payload.totalItems || payload.meta?.total || 0;
+            };
+
             setLands(data.data || data);
-            setTotal(data.totalItems || data.meta?.total || 0);
+            setTotal(getTotalItems(data));
+            setActiveCount(getTotalItems(activeData));
+            setSoldCount(getTotalItems(soldData));
         } catch {
             toast.error('Lỗi tải dữ liệu');
         } finally {
             setLoading(false);
         }
-    }, [page, search]);
+    }, [page, search, statusFilter]);
 
     useEffect(() => {
         loadLands();
@@ -81,7 +114,7 @@ const LandManagementPage: React.FC = () => {
                             }}
                         />
                         {images.length > 1 && (
-                            <span className="text-[11px] text-white bg-brand-500 rounded-full px-1.5 py-px whitespace-nowrap">
+                            <span className="text-[11px] text-white bg-brand-500 rounded-full px-1.5 py-0.5 whitespace-nowrap">
                                 +{images.length - 1}
                             </span>
                         )}
@@ -90,6 +123,26 @@ const LandManagementPage: React.FC = () => {
             },
         },
         { title: 'Tiêu đề', dataIndex: 'title', key: 'title', ellipsis: true },
+        {
+            title: 'Địa chỉ',
+            key: 'address',
+            width: 280,
+            render: (_: unknown, record: Land) => {
+                const line1 = [record.plotNumber, record.street].filter(Boolean).join(' ');
+                const line2 = record.ward || '';
+                const line3 = [record.district, record.city].filter(Boolean).join(', ');
+
+                if (!line1 && !line2 && !line3) return '—';
+
+                return (
+                    <div className="leading-6">
+                        {line1 && <div>{line1}</div>}
+                        {line2 && <div>{line2}</div>}
+                        {line3 && <div>{line3}</div>}
+                    </div>
+                );
+            },
+        },
         {
             title: 'Giá',
             dataIndex: 'price',
@@ -172,29 +225,55 @@ const LandManagementPage: React.FC = () => {
                 />
             </div>
 
-            <div className="mb-4 w-full min-w-0 sm:max-w-[400px]">
-                <input
-                    type="text"
-                    placeholder="Tìm kiếm..."
-                    className="admin-control admin-filter-input w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                    value={search}
-                    onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                />
+            <div className="mb-6 space-y-3">
+                <div className="flex gap-2 flex-wrap">
+                    <button
+                        onClick={() => { setStatusFilter(ACTIVE_STATUS); setPage(1); }}
+                        className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${statusFilter === ACTIVE_STATUS
+                            ? 'bg-brand-500 text-white'
+                            : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                            }`}
+                    >
+                        Hoạt động ({activeCount})
+                    </button>
+                    <button
+                        onClick={() => { setStatusFilter(SOLD_STATUS); setPage(1); }}
+                        className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${statusFilter === SOLD_STATUS
+                            ? 'bg-brand-500 text-white'
+                            : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                            }`}
+                    >
+                        Đã bán ({soldCount})
+                    </button>
+                </div>
+                <div className="w-full min-w-0 sm:max-w-[400px]">
+                    <input
+                        type="text"
+                        placeholder="Tìm kiếm..."
+                        className="admin-control admin-filter-input w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        value={search}
+                        onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                    />
+                </div>
             </div>
 
-            <DataTable
-                columns={columns}
-                dataSource={lands}
-                rowKey="id"
-                loading={loading}
-                pagination={{
-                    current: page,
-                    total,
-                    pageSize: DEFAULT_PAGE_SIZE,
-                    onChange: setPage,
-                    showTotal: (total) => `Tổng ${total} bản ghi`,
-                }}
-            />
+            <div className="overflow-x-auto">
+                <div className="min-w-[1280px]">
+                    <DataTable
+                        columns={columns}
+                        dataSource={lands}
+                        rowKey="id"
+                        loading={loading}
+                        pagination={{
+                            current: page,
+                            total,
+                            pageSize: DEFAULT_PAGE_SIZE,
+                            onChange: setPage,
+                            showTotal: (total: number) => `Tổng ${total} bản ghi`,
+                        }}
+                    />
+                </div>
+            </div>
 
             <ImageLightbox
                 isOpen={previewOpen}
@@ -238,6 +317,12 @@ const LandManagementPage: React.FC = () => {
                     ?
                 </p>
             </Modal>
+
+            <LoadingOverlay
+                visible={deleting}
+                title="Đang xóa đất"
+                description="Vui lòng đợi hệ thống xử lý ảnh và dữ liệu..."
+            />
         </div>
     );
 };

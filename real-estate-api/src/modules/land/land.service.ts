@@ -11,9 +11,9 @@ const LAND_LIST_TTL = 600;   // 10 minutes
 const LAND_DETAIL_TTL = 900;  // 15 minutes
 const LAND_SEARCH_TTL = 300;   // 5 minutes
 
-const landListKey = (page: number, limit: number) => `lands:list:${page}:${limit}`;
+const landListKey = (page: number, limit: number, status?: number) => `lands:list:${page}:${limit}:${status ?? 'all'}`;
 const landDetailKey = (id: number) => `land:${id}`;
-const landSearchKey = (query: string, page: number, limit: number) => `lands:search:${query}:${page}:${limit}`;
+const landSearchKey = (query: string, page: number, limit: number, status?: number) => `lands:search:${query}:${page}:${limit}:${status ?? 'all'}`;
 
 @Injectable()
 export class LandService {
@@ -26,8 +26,8 @@ export class LandService {
         private aiService: AiService,
     ) { }
 
-    async findAll(page = 1, limit = 10) {
-        const cacheKey = landListKey(page, limit);
+    async findAll(page = 1, limit = 10, status?: number) {
+        const cacheKey = landListKey(page, limit, status);
 
         // Try cache first
         const cached = await this.redis.get(cacheKey).catch(() => null);
@@ -38,8 +38,11 @@ export class LandService {
 
         this.logger.debug(`Cache MISS: ${cacheKey}`);
         const skip = (page - 1) * limit;
+        const where = status !== undefined ? { status } : undefined;
+
         const [lands, total] = await Promise.all([
             this.prisma.land.findMany({
+                where,
                 skip,
                 take: limit,
                 include: {
@@ -51,7 +54,7 @@ export class LandService {
                 },
                 orderBy: { createdAt: 'desc' },
             }),
-            this.prisma.land.count(),
+            this.prisma.land.count({ where }),
         ]);
 
         const result = {
@@ -261,8 +264,8 @@ export class LandService {
         return { message: 'Land deleted successfully' };
     }
 
-    async search(query: string, page = 1, limit = 10) {
-        const cacheKey = landSearchKey(query, page, limit);
+    async search(query: string, page = 1, limit = 10, status?: number) {
+        const cacheKey = landSearchKey(query, page, limit, status);
 
         // Try cache first
         const cached = await this.redis.get(cacheKey).catch(() => null);
@@ -281,6 +284,7 @@ export class LandService {
                 { ward: { contains: query } },
                 { description: { contains: query } },
             ],
+            ...(status !== undefined ? { status } : {}),
         };
 
         const [lands, total] = await Promise.all([

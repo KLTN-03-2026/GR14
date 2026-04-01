@@ -9,6 +9,7 @@ import HouseDetailPage from '@/pages/public/HouseDetailPage';
 import LandListPage from '@/pages/public/LandListPage';
 import LandDetailPage from '@/pages/public/LandDetailPage';
 import MyPostsPage from '@/pages/public/MyPostsPage';
+import CreatePostPage from '@/pages/public/CreatePostPage';
 import NewsPage from '@/pages/public/NewsPage';
 import NewsDetailPage from '@/pages/public/NewsDetailPage';
 import FavoritesPage from '@/pages/public/FavoritesPage';
@@ -96,6 +97,14 @@ const router = createBrowserRouter([
                 element: (
                     <ProtectedRoute>
                         <MyPostsPage />
+                    </ProtectedRoute>
+                ),
+            },
+            {
+                path: 'create-post',
+                element: (
+                    <ProtectedRoute>
+                        <CreatePostPage />
                     </ProtectedRoute>
                 ),
             },

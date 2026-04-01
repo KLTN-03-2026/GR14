@@ -156,26 +156,61 @@ export interface Appointment {
 
 export interface Post {
     id: number;
+    postType: string;
     title: string;
-    city: string;
-    district: string;
-    ward: string;
-    address: string;
+
+    // Common fields
+    city?: string;
+    district?: string;
+    ward?: string;
+    address?: string;
+    contactPhone?: string;
+    contactLink?: string;
     description: string;
-    price: number;
-    area: number;
     direction?: string;
+
+    // BĐS fields (SELL/RENT HOUSE/LAND)
+    price?: number;
+    area?: number;
+
+    // House fields (SELL_HOUSE, RENT_HOUSE)
+    bedrooms?: number;
+    bathrooms?: number;
+    floors?: number;
+
+    // Land fields (SELL_LAND, RENT_LAND)
+    frontWidth?: number;
+    landLength?: number;
+    landType?: string;
+    legalStatus?: string;
+
+    // NEED_BUY/NEED_RENT fields
+    minPrice?: number;
+    maxPrice?: number;
+    minArea?: number;
+    maxArea?: number;
+
+    // NEWS/PROMOTION fields
+    startDate?: string;
+    endDate?: string;
+    discountCode?: string;
+
+    // Status and VIP
     status: number;
     isVip?: boolean;
     vipExpiry?: string;
     vipPackageName?: string;
     vipPriorityLevel?: number;
     vipSubscriptionStatus?: number | null;
+
+    // User and timestamps
     userId: number;
     postedAt: string;
     approvedAt?: string;
     createdAt: string;
     updatedAt: string;
+
+    // Relations
     user?: User;
     images?: PostImage[];
 }

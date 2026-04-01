@@ -85,7 +85,7 @@ export function DataTable<T extends object>({
                             {columns.map((col, i) => (
                                 <th
                                     key={col.key || col.dataIndex || i}
-                                    className="px-4 py-3.5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-[0.06em]"
+                                    className="px-4 py-3.5 text-left text-[11px] font-bold text-gray-500 uppercase tracking-[0.06em] whitespace-nowrap"
                                     style={col.width ? { width: typeof col.width === 'number' ? `${col.width}px` : col.width } : undefined}
                                 >
                                     {col.title}

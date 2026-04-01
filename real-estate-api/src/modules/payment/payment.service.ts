@@ -115,17 +115,9 @@ export class PaymentService {
     }
 
     async handleVNPayCallback(vnp_Params: any) {
-        console.log('==================== VNPay CALLBACK RECEIVED ====================');
-        console.log('Raw vnp_Params:', JSON.stringify(vnp_Params, null, 2));
-
         const verification = this.vnpayService.verifyReturnUrl(vnp_Params);
-        console.log('Verification result:', verification);
-
         const transactionId = vnp_Params.vnp_TxnRef;
         const responseCode = vnp_Params.vnp_ResponseCode;
-
-        console.log('Transaction ID:', transactionId);
-        console.log('Response Code:', responseCode);
 
         // Tìm payment
         const payment = await this.prisma.payment.findUnique({

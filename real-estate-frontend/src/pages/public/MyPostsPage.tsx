@@ -1,16 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { Table, Tag, Button, message, Spin, Empty, Popconfirm } from 'antd';
 import { EditOutlined, DeleteOutlined, PlusOutlined, EyeOutlined } from '@ant-design/icons';
-import { houseApi } from '@/api';
-import { Link } from 'react-router-dom';
+import { postApi } from '@/api';
+import { Link, useNavigate } from 'react-router-dom';
+import { POST_TYPE_LABELS, POST_STATUS_LABELS } from '@/types/post';
 
 const MyPostsPage: React.FC = () => {
+    const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [posts, setPosts] = useState([]);
 
     const fetchMyPosts = async () => {
         try {
-            const res = await houseApi.getMyHouses();
+            const res = await postApi.getMyPosts();
             setPosts(res.data);
         } catch (error) {
             message.error('Không thể tải danh sách bài đăng');
@@ -25,7 +27,7 @@ const MyPostsPage: React.FC = () => {
 
     const handleDelete = async (id: number) => {
         try {
-            await houseApi.delete(id);
+            await postApi.delete(id);
             message.success('Xóa bài đăng thành công');
             setPosts(prev => prev.filter((item: any) => item.id !== id));
         } catch (error) {
@@ -43,32 +45,46 @@ const MyPostsPage: React.FC = () => {
             ),
         },
         {
+            title: 'Loại',
+            dataIndex: 'postType',
+            key: 'postType',
+            render: (postType: string) => (
+                <Tag color="blue">{POST_TYPE_LABELS[postType as keyof typeof POST_TYPE_LABELS] || postType}</Tag>
+            ),
+        },
+        {
             title: 'Tiêu đề',
             dataIndex: 'title',
             key: 'title',
             className: 'font-semibold text-[#254b86]',
-            render: (text: string, record: any) => <Link to={`/houses/${record.id}`} className="hover:underline">{text}</Link>
+            render: (text: string, record: any) => <Link to={`/posts/${record.id}`} className="hover:underline">{text}</Link>
         },
         {
             title: 'Giá',
             dataIndex: 'price',
             key: 'price',
-            render: (price: number) => <span className="text-red-600 font-medium">{price?.toLocaleString()} đ</span>
+            render: (price: number) => price ? <span className="text-red-600 font-medium">{price?.toLocaleString()} đ</span> : '—'
         },
         {
             title: 'Trạng thái',
             dataIndex: 'status',
             key: 'status',
-            render: (status: number) => (
-                <Tag color={status === 1 ? 'green' : 'volcano'}>{status === 1 ? 'Đang hiển thị' : 'Đã ẩn'}</Tag>
-            ),
+            render: (status: number) => {
+                const statusConfig: Record<number, { color: string; label: string }> = {
+                    1: { color: 'orange', label: 'Chờ duyệt' },
+                    2: { color: 'green', label: 'Đã duyệt' },
+                    3: { color: 'red', label: 'Từ chối' },
+                };
+                const config = statusConfig[status] || { color: 'default', label: 'Không xác định' };
+                return <Tag color={config.color}>{config.label}</Tag>;
+            },
         },
         {
             title: 'Thao tác',
             key: 'action',
             render: (_: any, record: any) => (
                 <div className="flex gap-2">
-                    <Link to={`/houses/${record.id}`}><Button icon={<EyeOutlined />} size="small" /></Link>
+                    <Link to={`/posts/${record.id}`}><Button icon={<EyeOutlined />} size="small" /></Link>
                     <Button icon={<EditOutlined />} size="small" className="text-blue-600" />
                     <Popconfirm title="Xóa bài đăng này?" onConfirm={() => handleDelete(record.id)}>
                         <Button icon={<DeleteOutlined />} danger size="small" />
@@ -84,15 +100,22 @@ const MyPostsPage: React.FC = () => {
                 <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
                     <div className="flex justify-between items-center mb-8">
                         <h1 className="text-2xl font-bold text-gray-800">Bài viết của tôi</h1>
-                        <Button type="primary" icon={<PlusOutlined />} className="bg-[#254b86] h-10 px-6 font-semibold">Đăng bài mới</Button>
+                        <Button
+                            type="primary"
+                            icon={<PlusOutlined />}
+                            className="bg-[#254b86] h-10 px-6 font-semibold"
+                            onClick={() => navigate('/create-post')}
+                        >
+                            Đăng bài mới
+                        </Button>
                     </div>
 
                     {loading ? (
                         <div className="flex justify-center py-20"><Spin size="large" /></div>
                     ) : (
-                        <Table 
-                            dataSource={posts} 
-                            columns={columns} 
+                        <Table
+                            dataSource={posts}
+                            columns={columns}
                             rowKey="id"
                             pagination={{ pageSize: 8 }}
                             className="border border-gray-50 rounded-lg overflow-hidden"
