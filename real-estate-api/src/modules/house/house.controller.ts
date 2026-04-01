@@ -19,9 +19,11 @@ export class HouseController {
         @Query('page') page = 1,
         @Query('limit') limit = 10,
         @Query('search') search?: string,
+        @Query('status') status?: string,
     ) {
-        if (search) return this.houseService.search(search, +page, +limit);
-        return this.houseService.findAll(+page, +limit);
+        const parsedStatus = status ? Number(status) : undefined;
+        if (search) return this.houseService.search(search, +page, +limit, parsedStatus);
+        return this.houseService.findAll(+page, +limit, parsedStatus);
     }
 
     @Get('search')

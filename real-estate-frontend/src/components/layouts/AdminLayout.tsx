@@ -345,7 +345,13 @@ const LayoutContent: React.FC = () => {
                 <main className="p-4 md:p-6 lg:p-7 max-w-[1600px] mx-auto">
                     <Outlet />
                 </main>
-                <Toaster position="top-right" />
+                <Toaster
+                    position="top-right"
+                    containerStyle={{ zIndex: 110000 }}
+                    toastOptions={{
+                        style: { zIndex: 110000 },
+                    }}
+                />
             </div>
         </div>
     );

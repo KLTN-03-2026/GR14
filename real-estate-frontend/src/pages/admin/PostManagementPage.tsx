@@ -1,33 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CKEditor } from '@ckeditor/ckeditor5-react';
-import ClassicEditor from '@ckeditor/ckeditor5-build-classic/build/ckeditor';
 import { toast } from 'react-hot-toast';
+import DOMPurify from 'dompurify';
 import { postApi } from '@/api';
 import { formatCurrency, formatDateTime } from '@/utils';
 import type { Post } from '@/types';
+import { PostType } from '@/types/post';
 import { DEFAULT_PAGE_SIZE, POST_STATUS_LABELS } from '@/constants';
-import { Button, Badge, Modal, DataTable, ImageLightbox } from '@/components/ui';
+import { Button, Badge, Modal, DataTable, ImageLightbox, LoadingOverlay } from '@/components/ui';
 import type { Column } from '@/components/ui';
-
-type UploadImage = {
-    uid: string;
-    name: string;
-    status: 'done';
-    url: string;
-    originFileObj?: File;
-};
-
-type PostFormData = {
-    title: string;
-    city: string;
-    district: string;
-    ward: string;
-    address: string;
-    price: string | number;
-    area: string | number;
-    direction: string;
-    description: string;
-};
+import PostForm from '@/components/common/PostForm';
 
 type ApiError = {
     response?: {
@@ -55,29 +36,18 @@ const PostManagementPage: React.FC = () => {
 
     const [modalOpen, setModalOpen] = useState(false);
     const [editingPost, setEditingPost] = useState<Post | null>(null);
-    const [fileList, setFileList] = useState<UploadImage[]>([]);
     const [previewOpen, setPreviewOpen] = useState(false);
     const [previewImages, setPreviewImages] = useState<string[]>([]);
     const [previewIndex, setPreviewIndex] = useState(0);
     const [deletePost, setDeletePost] = useState<Post | null>(null);
     const [deleting, setDeleting] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
     const [vipTooltip, setVipTooltip] = useState<VipTooltipState>({
         visible: false,
         x: 0,
         y: 0,
         packageName: '',
         statusText: '',
-    });
-    const [formData, setFormData] = useState<PostFormData>({
-        title: '',
-        city: '',
-        district: '',
-        ward: '',
-        address: '',
-        price: '',
-        area: '',
-        direction: '',
-        description: '',
     });
 
     const loadPosts = async () => {
@@ -154,69 +124,12 @@ const PostManagementPage: React.FC = () => {
 
     const openModal = (record?: Post) => {
         setEditingPost(record || null);
-        setFileList([]);
-
-        if (record) {
-            setFormData({
-                title: record.title || '',
-                city: record.city || '',
-                district: record.district || '',
-                ward: record.ward || '',
-                address: record.address || '',
-                price: record.price || '',
-                area: record.area || '',
-                direction: record.direction || '',
-                description: record.description || '',
-            });
-            if (record.images?.length) {
-                setFileList(
-                    record.images.map((img) => ({
-                        uid: img.id.toString(),
-                        name: `image-${img.id}`,
-                        status: 'done',
-                        url: img.url,
-                    })),
-                );
-            }
-        } else {
-            setFormData({
-                title: '',
-                city: '',
-                district: '',
-                ward: '',
-                address: '',
-                price: '',
-                area: '',
-                direction: '',
-                description: '',
-            });
-        }
         setModalOpen(true);
     };
 
-    const handleSubmit = async () => {
+    const handleSubmit = async (submitData: FormData) => {
+        setSubmitting(true);
         try {
-            if (!formData.title || !formData.description) {
-                toast.error('Vui lòng nhập tiêu đề và mô tả');
-                return;
-            }
-
-            const submitData = new FormData();
-
-            Object.entries(formData).forEach(([key, value]) => {
-                if (value !== undefined && value !== null && value !== '') {
-                    submitData.append(key, String(value));
-                }
-            });
-
-            fileList
-                .filter((file) => file.originFileObj)
-                .forEach((file) => {
-                    if (file.originFileObj) {
-                        submitData.append('images', file.originFileObj);
-                    }
-                });
-
             if (editingPost) {
                 await postApi.update(editingPost.id, submitData);
                 toast.success('Cập nhật bài đăng thành công');
@@ -227,11 +140,12 @@ const PostManagementPage: React.FC = () => {
 
             loadPosts();
             setModalOpen(false);
-            setFileList([]);
         } catch (err: unknown) {
             const error = err as ApiError;
             const errorMsg = error.response?.data?.message || 'Có lỗi xảy ra';
             toast.error(Array.isArray(errorMsg) ? errorMsg[0] : errorMsg);
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -265,19 +179,26 @@ const PostManagementPage: React.FC = () => {
         {
             title: 'Ảnh',
             key: 'image',
-            width: 90,
+            width: 110,
             render: (_, r) =>
                 r.images?.length ? (
-                    <img
-                        src={r.images[0].url}
-                        alt=""
-                        className="h-[50px] w-[60px] rounded object-cover cursor-zoom-in"
+                    <div
+                        className="flex items-center gap-1"
                         onClick={() => {
                             setPreviewImages((r.images || []).map((img) => img.url));
                             setPreviewIndex(0);
                             setPreviewOpen(true);
                         }}
-                    />
+                    >
+                        <img
+                            src={r.images[0].url}
+                            alt=""
+                            className="h-[44px] w-[56px] rounded object-cover cursor-zoom-in"
+                        />
+                        {r.images.length > 1 && (
+                            <span className="rounded-full bg-brand-500 px-1.5 py-0.5 text-[11px] text-white whitespace-nowrap">+{r.images.length - 1}</span>
+                        )}
+                    </div>
                 ) : (
                     '—'
                 ),
@@ -312,7 +233,7 @@ const PostManagementPage: React.FC = () => {
                     '—'
                 ) : (
                     <div
-                        dangerouslySetInnerHTML={{ __html: text }}
+                        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(text) }}
                         style={{ lineHeight: '1.6', fontSize: '13.5px', whiteSpace: 'normal', wordBreak: 'break-word' }}
                     />
                 ),
@@ -523,118 +444,51 @@ const PostManagementPage: React.FC = () => {
                 isOpen={modalOpen}
                 onClose={() => setModalOpen(false)}
                 width="max-w-4xl"
-                footer={(
-                    <>
-                        <Button variant="outline" onClick={() => setModalOpen(false)}>
-                            Hủy
-                        </Button>
-                        <Button variant="primary" onClick={handleSubmit}>
-                            Lưu
-                        </Button>
-                    </>
-                )}
             >
-                <div className="space-y-4">
-                    <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">Tiêu đề</label>
-                        <input
-                            type="text"
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                            placeholder="Nhập tiêu đề bài đăng"
-                            value={formData.title || ''}
-                            onChange={(e) => setFormData((prev) => ({ ...prev, title: e.target.value }))}
-                        />
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                        <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Tỉnh" value={formData.city || ''} onChange={(e) => setFormData((p) => ({ ...p, city: e.target.value }))} />
-                        <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Quận" value={formData.district || ''} onChange={(e) => setFormData((p) => ({ ...p, district: e.target.value }))} />
-                        <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Phường" value={formData.ward || ''} onChange={(e) => setFormData((p) => ({ ...p, ward: e.target.value }))} />
-                        <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Địa chỉ" value={formData.address || ''} onChange={(e) => setFormData((p) => ({ ...p, address: e.target.value }))} />
-                        <input type="number" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Giá" value={formData.price || ''} onChange={(e) => setFormData((p) => ({ ...p, price: e.target.value }))} />
-                        <input type="number" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Diện tích" value={formData.area || ''} onChange={(e) => setFormData((p) => ({ ...p, area: e.target.value }))} />
-                        <input className="rounded-lg border border-gray-300 px-3 py-2 text-sm md:col-span-2" placeholder="Hướng" value={formData.direction || ''} onChange={(e) => setFormData((p) => ({ ...p, direction: e.target.value }))} />
-                    </div>
-
-                    <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">Mô tả</label>
-                        <div style={{ border: '1px solid #d1d5db', borderRadius: '6px', overflow: 'hidden' }}>
-                            <style>{`.ck-editor__editable_inline:not(.ck-comment__input *) { min-height: 200px !important; }`}</style>
-                            <CKEditor
-                                editor={ClassicEditor as unknown as never}
-                                data={String(formData.description || '')}
-                                onChange={(_, editor) =>
-                                    setFormData((prev) => ({ ...prev, description: editor.getData() || '' }))
-                                }
-                                onReady={(editor) => {
-                                    setTimeout(() => {
-                                        if (editor?.ui?.view?.editable?.element) {
-                                            editor.ui.view.editable.element.style.minHeight = '420px';
-                                        }
-                                    }, 300);
-                                }}
-                                config={{
-                                    licenseKey: 'GPL',
-                                    placeholder: 'Nhập mô tả chi tiết về bất động sản...',
-                                    toolbar: [
-                                        'sourceEditing',
-                                        '|',
-                                        'heading',
-                                        '|',
-                                        'bold',
-                                        'italic',
-                                        '|',
-                                        'link',
-                                        '|',
-                                        'bulletedList',
-                                        'numberedList',
-                                        '|',
-                                        'blockQuote',
-                                        '|',
-                                        'undo',
-                                        'redo',
-                                    ],
-                                }}
-                            />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">Ảnh</label>
-                        <input
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            onChange={(e) => {
-                                if (!e.target.files) return;
-                                const incoming = Array.from(e.target.files).map((f, index) => ({
-                                    uid: `new-${Date.now()}-${index}`,
-                                    name: f.name,
-                                    status: 'done' as const,
-                                    originFileObj: f,
-                                    url: URL.createObjectURL(f),
-                                }));
-                                setFileList((prev) => [...prev, ...incoming]);
-                                e.target.value = '';
-                            }}
-                        />
-                        <div className="mt-3 flex flex-wrap gap-2">
-                            {fileList.map((file) => (
-                                <div key={file.uid} className="relative h-[84px] w-[84px] overflow-hidden rounded border border-gray-200">
-                                    <img src={file.url} alt={file.name} className="h-full w-full object-cover" />
-                                    <button
-                                        type="button"
-                                        className="absolute right-0 top-0 bg-black/50 px-1 text-xs text-white"
-                                        onClick={() => setFileList((prev) => prev.filter((f) => f.uid !== file.uid))}
-                                    >
-                                        x
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
+                <div className="max-h-[70vh] overflow-y-auto pr-2">
+                    <PostForm
+                        initialData={editingPost ? {
+                            postType: editingPost.postType as PostType,
+                            title: editingPost.title,
+                            city: editingPost.city,
+                            district: editingPost.district,
+                            ward: editingPost.ward,
+                            address: editingPost.address,
+                            contactPhone: editingPost.contactPhone,
+                            contactLink: editingPost.contactLink,
+                            price: editingPost.price,
+                            area: editingPost.area,
+                            direction: editingPost.direction,
+                            description: editingPost.description,
+                            bedrooms: editingPost.bedrooms,
+                            bathrooms: editingPost.bathrooms,
+                            floors: editingPost.floors,
+                            frontWidth: editingPost.frontWidth,
+                            landLength: editingPost.landLength,
+                            landType: editingPost.landType,
+                            legalStatus: editingPost.legalStatus,
+                            minPrice: editingPost.minPrice,
+                            maxPrice: editingPost.maxPrice,
+                            minArea: editingPost.minArea,
+                            maxArea: editingPost.maxArea,
+                            startDate: editingPost.startDate,
+                            endDate: editingPost.endDate,
+                            discountCode: editingPost.discountCode,
+                            images: editingPost.images,
+                        } : undefined}
+                        onSubmit={handleSubmit}
+                        onCancel={() => setModalOpen(false)}
+                        submitLabel={editingPost ? 'Cập nhật' : 'Thêm mới'}
+                        isLoading={submitting}
+                    />
                 </div>
             </Modal>
+
+            <LoadingOverlay
+                visible={submitting || deleting}
+                title="Đang xử lý bài đăng"
+                description="Hệ thống đang tải ảnh và lưu dữ liệu, vui lòng đợi..."
+            />
         </div>
     );
 };

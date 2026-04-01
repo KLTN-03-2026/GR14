@@ -61,10 +61,7 @@ export class VNPayService {
             .map(key => `${key}=${sortedParams[key]}`)
             .join('&');
 
-        console.log('🔍 VNPay SignData:', signData);
-        console.log('🔑 VNPay HashSecret:', this.vnp_HashSecret);
         const secureHash = this.createHmacSha512(signData, this.vnp_HashSecret);
-        console.log('🔐 VNPay SecureHash:', secureHash);
 
         // Nối thẳng chuỗi truy vấn, KHÔNG DÙNG URLSearchParams nữa
         const paymentUrl = `${this.vnp_Url}?${signData}&vnp_SecureHash=${secureHash}`;
@@ -72,7 +69,7 @@ export class VNPayService {
         return paymentUrl;
     }
 
-    verifyReturnUrl(vnp_Params: any): { isValid: boolean; responseCode: string } {
+    verifyReturnUrl(vnp_Params: Record<string, string>): { isValid: boolean; responseCode: string } {
         const secureHash = vnp_Params['vnp_SecureHash'];
 
         // Xóa các field hash ra khỏi params trước khi verify
@@ -104,7 +101,7 @@ export class VNPayService {
         return `${year}${month}${day}${hour}${minute}${second}`;
     }
 
-    private sortObject(obj: Record<string, any>): Record<string, string> {
+    private sortObject(obj: Record<string, string | number>): Record<string, string> {
         const sorted: Record<string, string> = {};
 
         // Lấy danh sách các key, sắp xếp theo bảng chữ cái

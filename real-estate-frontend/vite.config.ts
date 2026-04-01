@@ -8,6 +8,13 @@ export default defineConfig({
   build: {
     sourcemap: false,
     cssCodeSplit: true,
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true,
+        drop_debugger: true,
+      },
+    } as Record<string, unknown>,
     rollupOptions: {
       output: {
         manualChunks(id) {
@@ -21,6 +28,14 @@ export default defineConfig({
 
           if (id.includes('antd') || id.includes('@ant-design')) {
             return 'vendor-antd';
+          }
+
+          if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
+            return 'vendor-react';
+          }
+
+          if (id.includes('@tanstack')) {
+            return 'vendor-query';
           }
 
           return undefined;

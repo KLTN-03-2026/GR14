@@ -11,9 +11,9 @@ const HOUSE_LIST_TTL = 600;   // 10 minutes
 const HOUSE_DETAIL_TTL = 900;  // 15 minutes
 const HOUSE_SEARCH_TTL = 300;   // 5 minutes
 
-const houseListKey = (page: number, limit: number) => `houses:list:${page}:${limit}`;
+const houseListKey = (page: number, limit: number, status?: number) => `houses:list:${page}:${limit}:${status ?? 'all'}`;
 const houseDetailKey = (id: number) => `house:${id}`;
-const houseSearchKey = (query: string, page: number, limit: number) => `houses:search:${query}:${page}:${limit}`;
+const houseSearchKey = (query: string, page: number, limit: number, status?: number) => `houses:search:${query}:${page}:${limit}:${status ?? 'all'}`;
 
 @Injectable()
 export class HouseService {
@@ -26,8 +26,8 @@ export class HouseService {
         private aiService: AiService,
     ) { }
 
-    async findAll(page = 1, limit = 10) {
-        const cacheKey = houseListKey(page, limit);
+    async findAll(page = 1, limit = 10, status?: number) {
+        const cacheKey = houseListKey(page, limit, status);
 
         // Try cache first
         const cached = await this.redis.get(cacheKey).catch(() => null);
@@ -38,8 +38,11 @@ export class HouseService {
 
         this.logger.debug(`Cache MISS: ${cacheKey}`);
         const skip = (page - 1) * limit;
+        const where = status !== undefined ? { status } : undefined;
+
         const [houses, total] = await Promise.all([
             this.prisma.house.findMany({
+                where,
                 skip,
                 take: limit,
                 include: {
@@ -51,7 +54,7 @@ export class HouseService {
                 },
                 orderBy: { createdAt: 'desc' },
             }),
-            this.prisma.house.count(),
+            this.prisma.house.count({ where }),
         ]);
 
         const result = {
@@ -260,8 +263,8 @@ export class HouseService {
         return { message: 'House deleted successfully' };
     }
 
-    async search(query: string, page = 1, limit = 10) {
-        const cacheKey = houseSearchKey(query, page, limit);
+    async search(query: string, page = 1, limit = 10, status?: number) {
+        const cacheKey = houseSearchKey(query, page, limit, status);
 
         // Try cache first
         const cached = await this.redis.get(cacheKey).catch(() => null);
@@ -280,6 +283,7 @@ export class HouseService {
                 { ward: { contains: query } },
                 { description: { contains: query } },
             ],
+            ...(status !== undefined ? { status } : {}),
         };
 
         const [houses, total] = await Promise.all([

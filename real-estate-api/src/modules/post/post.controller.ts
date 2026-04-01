@@ -17,37 +17,41 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { PostService } from './post.service';
-import { CreatePostDto, UpdatePostDto } from './dto/post.dto';
+import { CreatePostDto, UpdatePostDto, PostType } from './dto/post.dto';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('posts')
 export class PostController {
-    constructor(private readonly postService: PostService) {}
+    constructor(private readonly postService: PostService) { }
 
     @Get('approved')
-    findApproved(@Query('page') page = 1, @Query('limit') limit = 6) {
-        return this.postService.findApproved(+page, +limit);
+    findApproved(
+        @Query('page') page = 1,
+        @Query('limit') limit = 6,
+        @Query('postType') postType?: PostType,
+    ) {
+        return this.postService.findApproved(+page, +limit, postType);
     }
 
     @Get('pending')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @Roles('ADMIN')
-    findPending() {
-        return this.postService.findPending();
+    findPending(@Query('postType') postType?: PostType) {
+        return this.postService.findPending(postType);
     }
 
     @Get('all')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @Roles('ADMIN')
-    findAll() {
-        return this.postService.findAll();
+    findAll(@Query('postType') postType?: PostType) {
+        return this.postService.findAll(postType);
     }
 
     @Get('my-posts')
     @UseGuards(AuthGuard('jwt'))
-    findByUser(@Req() req: any) {
-        return this.postService.findByUser(req.user.id);
+    findByUser(@Req() req: any, @Query('postType') postType?: PostType) {
+        return this.postService.findByUser(req.user.id, postType);
     }
 
     @Get(':id')
@@ -59,23 +63,23 @@ export class PostController {
     @UseGuards(AuthGuard('jwt'))
     @UseInterceptors(FilesInterceptor('images', 10))
     create(
-        @Body() dto: CreatePostDto,
+        @Body(new ValidationPipe({ transform: true, whitelist: true })) dto: CreatePostDto,
         @Req() req: any,
         @UploadedFiles() files: Express.Multer.File[],
     ) {
-        return this.postService.create(dto, req.user.id, files);
+        return this.postService.create(dto, req.user.id, files, req.user.roles);
     }
 
     @Put(':id')
     @UseInterceptors(FilesInterceptor('images', 10))
     update(
         @Param('id', ParseIntPipe) id: number,
-        @Body(new ValidationPipe({ 
+        @Body(new ValidationPipe({
             transform: true,
             whitelist: true,
-            forbidNonWhitelisted: true 
+            forbidNonWhitelisted: true
         })) dto: UpdatePostDto,
-        @UploadedFiles() files: Express.Multer.File[],   // vẫn giữ nguyên
+        @UploadedFiles() files: Express.Multer.File[],
     ) {
         console.log('📸 Số ảnh nhận được:', files?.length || 0);
         console.log('📝 DTO:', dto);

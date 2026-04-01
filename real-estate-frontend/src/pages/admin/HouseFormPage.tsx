@@ -5,6 +5,7 @@ import { houseApi, propertyCategoryApi, employeeApi } from '@/api';
 import { DIRECTIONS } from '@/constants';
 import type { PropertyCategory, Employee } from '@/types';
 import Button from '@/components/ui/Button';
+import LoadingOverlay from '@/components/ui/LoadingOverlay';
 
 interface FileItem {
     uid: string;
@@ -446,6 +447,12 @@ const HouseFormPage: React.FC = () => {
                     </div>
                 </form>
             </div>
+
+            <LoadingOverlay
+                visible={loading}
+                title={isEdit ? 'Đang cập nhật nhà' : 'Đang tạo nhà mới'}
+                description="Đang tải ảnh và lưu dữ liệu, vui lòng đợi..."
+            />
         </div>
     );
 };
