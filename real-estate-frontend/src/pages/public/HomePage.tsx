@@ -5,8 +5,8 @@ import { useNavigate } from 'react-router-dom';
 import { featuredApi, recommendationApi } from '@/api';
 import { PropertyCard } from '@/components/common';
 import { useAuthStore } from '@/stores/authStore';
-import { formatCurrency, formatArea, getFullAddress } from '@/utils';
-import type { House, Land, AIRecommendation } from '@/types';
+import { formatCurrency, formatArea, formatDate, getFullAddress } from '@/utils';
+import type { House, Land, AIRecommendation, Post } from '@/types';
 import banner1 from '@/assets/ABbn1.jpg';
 import banner2 from '@/assets/ABbn2.jpg';
 import banner3 from '@/assets/ABbn3.jpg';
@@ -16,6 +16,19 @@ import cantho from '@/assets/cantho.jpeg';
 import binhduong from '@/assets/binhduong.jpg';
 const { Title, Paragraph } = Typography;
 
+const toPlainText = (value?: string) => {
+    if (!value) return '';
+
+    return value
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/\s+/g, ' ')
+        .trim();
+};
+
 const HomePage: React.FC = () => {
     const navigate = useNavigate();
     const { isAuthenticated } = useAuthStore();
@@ -23,6 +36,7 @@ const HomePage: React.FC = () => {
     const [lands, setLands] = useState<Land[]>([]);
     const [currentSlide, setCurrentSlide] = useState(0);
     const [aiRecs, setAiRecs] = useState<AIRecommendation[]>([]);
+    const [featuredPosts, setFeaturedPosts] = useState<Post[]>([]);
 
     useEffect(() => {
         loadData();
@@ -37,10 +51,17 @@ const HomePage: React.FC = () => {
 
     const loadData = async () => {
         try {
-            const featuredRes = await featuredApi.getAll();
+            const [featuredRes, featuredPostsRes] = await Promise.all([
+                featuredApi.getAll(),
+                featuredApi.getPosts(4),
+            ]);
+
             const payload = featuredRes.data?.data || featuredRes.data || {};
+            const postsPayload = featuredPostsRes.data?.data || featuredPostsRes.data || [];
+
             setHouses(payload.houses || []);
             setLands(payload.lands || []);
+            setFeaturedPosts(postsPayload || []);
         } catch (error) {
             console.error('Error loading data:', error);
         }
@@ -311,54 +332,52 @@ const HomePage: React.FC = () => {
                 }}>
                     <Title level={2}>Bài viết nổi bật</Title>
 
-                    <Button type="link">
+                    <Button type="link" onClick={() => navigate('/posts')}>
                         Xem tất cả →
                     </Button>
                 </div>
 
                 <Row gutter={[16, 16]}>
+                    {featuredPosts.map((post) => (
+                        <Col xs={24} sm={12} lg={6} key={post.id}>
+                            <Card
+                                hoverable
+                                onClick={() => navigate(`/posts/${post.id}`)}
+                                style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+                                bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+                                cover={
+                                    <img
+                                        src={post.images?.[0]?.url || 'https://via.placeholder.com/600x400?text=No+Image'}
+                                        alt={post.title}
+                                        style={{ height: 220, objectFit: 'cover' }}
+                                    />
+                                }
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                                    <Tag color="gold">VIP</Tag>
+                                    <Tag color="blue">{formatDate(post.postedAt || post.createdAt)}</Tag>
+                                </div>
 
-                    <Col xs={24} md={8}>
-                        <Card
-                            hoverable
-                            cover={<img src="/images/blog1.jpg" alt="blog1" />}
-                        >
-                            <Title level={4}>
-                                5 kinh nghiệm mua nhà lần đầu
-                            </Title>
-                            <Paragraph>
-                                Những lưu ý quan trọng khi mua nhà để tránh rủi ro.
-                            </Paragraph>
-                        </Card>
-                    </Col>
+                                <Title level={4} ellipsis={{ rows: 2 }} style={{ marginBottom: 8, minHeight: 64 }}>
+                                    {post.title}
+                                </Title>
 
-                    <Col xs={24} md={8}>
-                        <Card
-                            hoverable
-                            cover={<img src="/images/blog2.jpg" alt="blog2" />}
-                        >
-                            <Title level={4}>
-                                Thị trường bất động sản 2026
-                            </Title>
-                            <Paragraph>
-                                Dự đoán xu hướng đầu tư trong năm tới.
-                            </Paragraph>
-                        </Card>
-                    </Col>
+                                <Paragraph ellipsis={{ rows: 4 }} style={{ marginBottom: 0, minHeight: 88 }}>
+                                    {toPlainText(post.description)}
+                                </Paragraph>
+                            </Card>
+                        </Col>
+                    ))}
 
-                    <Col xs={24} md={8}>
-                        <Card
-                            hoverable
-                            cover={<img src="/images/blog3.jpg" alt="blog3" />}
-                        >
-                            <Title level={4}>
-                                Những khu vực đáng đầu tư tại Đà Nẵng
-                            </Title>
-                            <Paragraph>
-                                Các khu vực có tiềm năng tăng giá cao.
-                            </Paragraph>
-                        </Card>
-                    </Col>
+                    {featuredPosts.length === 0 && (
+                        <Col span={24}>
+                            <Card>
+                                <Paragraph style={{ margin: 0, textAlign: 'center', color: '#888' }}>
+                                    Chưa có bài viết VIP nổi bật.
+                                </Paragraph>
+                            </Card>
+                        </Col>
+                    )}
 
                 </Row>
 

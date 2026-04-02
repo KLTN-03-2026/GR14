@@ -26,7 +26,7 @@ const HouseDetailPage: React.FC = () => {
     const [isFavorited, setIsFavorited] = useState(false);
     const [activeImg, setActiveImg] = useState(0);
 
-   
+
     useEffect(() => {
         if (id) loadHouse(Number(id));
     }, [id]);
@@ -74,7 +74,7 @@ const HouseDetailPage: React.FC = () => {
     const images = getImages(house);
     const fullAddress = getFullAddress(house);
 
-    
+
     return (
         <div className="w-full bg-white pb-20">
 
@@ -184,7 +184,7 @@ const HouseDetailPage: React.FC = () => {
                     </div>
 
                 ) : (
-        
+
                     <div className="grid grid-cols-4 grid-rows-2 gap-2 mb-10" style={{ height: 420 }}>
                         <div
                             className="col-span-2 row-span-2 rounded-tl-2xl rounded-bl-2xl overflow-hidden cursor-pointer"
@@ -235,21 +235,21 @@ const HouseDetailPage: React.FC = () => {
                                     </tr>
                                     <tr className="border-b border-gray-100">
                                         <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Số Phòng ngủ</td>
-                                        <td className="px-4 py-3 text-[#1a1a1a]">{house.bedrooms || 'N/A'}</td>
+                                        <td className="px-4 py-3 text-[#1a1a1a]">{house.bedrooms || 'Chưa cập nhật'}</td>
                                         <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Số Tầng</td>
-                                        <td className="px-4 py-3 text-[#1a1a1a]">{house.floors || 'N/A'}</td>
+                                        <td className="px-4 py-3 text-[#1a1a1a]">{house.floors || 'Chưa cập nhật'}</td>
                                     </tr>
                                     <tr className="border-b border-gray-100">
                                         <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Mã</td>
                                         <td className="px-4 py-3 text-[#1a1a1a]">{house.code}</td>
                                         <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Phòng tắm</td>
-                                        <td className="px-4 py-3 text-[#1a1a1a]">{house.bathrooms || 'N/A'}</td>
+                                        <td className="px-4 py-3 text-[#1a1a1a]">{house.bathrooms || 'Chưa cập nhật'}</td>
                                     </tr>
                                     <tr className="border-b border-gray-100">
                                         <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Hướng</td>
-                                        <td className="px-4 py-3 text-[#1a1a1a]">{house.direction || 'N/A'}</td>
+                                        <td className="px-4 py-3 text-[#1a1a1a]">{house.direction || 'Chưa cập nhật'}</td>
                                         <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Danh mục</td>
-                                        <td className="px-4 py-3 text-[#1a1a1a]">{house.category?.name || 'N/A'}</td>
+                                        <td className="px-4 py-3 text-[#1a1a1a]">{house.category?.name || 'Chưa cập nhật'}</td>
                                     </tr>
                                     <tr>
                                         <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Ngày đăng</td>
@@ -298,11 +298,10 @@ const HouseDetailPage: React.FC = () => {
                             {/* Nút Yêu thích — giữ nguyên logic + icon */}
                             <button
                                 onClick={handleFavorite}
-                                className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border text-[14px] font-semibold mb-3 transition-all duration-200 ${
-                                    isFavorited
+                                className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border text-[14px] font-semibold mb-3 transition-all duration-200 ${isFavorited
                                         ? 'bg-red-500 border-red-500 text-white hover:bg-red-600'
                                         : 'bg-white border-gray-300 text-gray-700 hover:border-[#254b86] hover:text-[#254b86]'
-                                }`}
+                                    }`}
                             >
                                 {isFavorited ? <HeartFilled className="text-[15px]" /> : <HeartOutlined className="text-[15px]" />}
                                 {isFavorited ? 'Đã yêu thích' : 'Yêu thích'}

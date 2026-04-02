@@ -54,6 +54,9 @@ export const favoriteApi = {
 export const featuredApi = {
     getAll: () =>
         apiClient.get('/featured'),
+
+    getPosts: (limit = 4) =>
+        apiClient.get('/featured/posts', { params: { limit } }),
 };
 
 export const profileApi = {

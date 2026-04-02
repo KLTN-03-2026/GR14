@@ -131,7 +131,7 @@ const LandDetailPage: React.FC = () => {
                     </div>
 
                 ) : images.length === 1 ? (
-  
+
                     <div className="flex justify-center mb-10">
                         <div className="rounded-2xl overflow-hidden" style={{ height: 420, maxWidth: 640, width: '100%' }}>
                             <img
@@ -186,7 +186,7 @@ const LandDetailPage: React.FC = () => {
                     </div>
 
                 ) : (
- 
+
                     <div className="grid grid-cols-4 grid-rows-2 gap-2 mb-10" style={{ height: 420 }}>
                         <div
                             className="col-span-2 row-span-2 rounded-tl-2xl rounded-bl-2xl overflow-hidden cursor-pointer"
@@ -237,25 +237,25 @@ const LandDetailPage: React.FC = () => {
                                     </tr>
                                     <tr className="border-b border-gray-100">
                                         <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Mặt tiền</td>
-                                        <td className="px-4 py-3 text-[#1a1a1a]">{land.frontWidth ? `${land.frontWidth}m` : 'N/A'}</td>
+                                        <td className="px-4 py-3 text-[#1a1a1a]">{land.frontWidth ? `${land.frontWidth}m` : 'Chưa cập nhật'}</td>
                                         <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Chiều dài</td>
-                                        <td className="px-4 py-3 text-[#1a1a1a]">{land.landLength ? `${land.landLength}m` : 'N/A'}</td>
+                                        <td className="px-4 py-3 text-[#1a1a1a]">{land.landLength ? `${land.landLength}m` : 'Chưa cập nhật'}</td>
                                     </tr>
                                     <tr className="border-b border-gray-100">
                                         <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Mã</td>
                                         <td className="px-4 py-3 text-[#1a1a1a]">{land.code}</td>
                                         <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Hướng</td>
-                                        <td className="px-4 py-3 text-[#1a1a1a]">{land.direction || 'N/A'}</td>
+                                        <td className="px-4 py-3 text-[#1a1a1a]">{land.direction || 'Chưa cập nhật'}</td>
                                     </tr>
                                     <tr className="border-b border-gray-100">
                                         <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Loại đất</td>
-                                        <td className="px-4 py-3 text-[#1a1a1a]">{land.landType || 'N/A'}</td>
+                                        <td className="px-4 py-3 text-[#1a1a1a]">{land.landType || 'Chưa cập nhật'}</td>
                                         <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Pháp lý</td>
-                                        <td className="px-4 py-3 text-[#1a1a1a]">{land.legalStatus || 'N/A'}</td>
+                                        <td className="px-4 py-3 text-[#1a1a1a]">{land.legalStatus || 'Chưa cập nhật'}</td>
                                     </tr>
                                     <tr className="border-b border-gray-100">
                                         <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Danh mục</td>
-                                        <td className="px-4 py-3 text-[#1a1a1a]">{land.category?.name || 'N/A'}</td>
+                                        <td className="px-4 py-3 text-[#1a1a1a]">{land.category?.name || 'Chưa cập nhật'}</td>
                                         <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Ngày đăng</td>
                                         <td className="px-4 py-3 text-[#1a1a1a]">{formatDateTime(land.createdAt)}</td>
                                     </tr>
@@ -274,7 +274,7 @@ const LandDetailPage: React.FC = () => {
                         )}
                     </div>
 
-                    
+
                     <div className="lg:col-span-1">
                         <div className="text-[18px] font-bold mb-4 invisible select-none">Thông Tin Chi Tiết</div>
                         <div className="border border-gray-200 rounded-xl p-5 shadow-sm sticky top-6">
@@ -302,11 +302,10 @@ const LandDetailPage: React.FC = () => {
                             {/* Nút Yêu thích */}
                             <button
                                 onClick={handleFavorite}
-                                className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border text-[14px] font-semibold mb-3 transition-all duration-200 ${
-                                    isFavorited
+                                className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border text-[14px] font-semibold mb-3 transition-all duration-200 ${isFavorited
                                         ? 'bg-red-500 border-red-500 text-white hover:bg-red-600'
                                         : 'bg-white border-gray-300 text-gray-700 hover:border-[#254b86] hover:text-[#254b86]'
-                                }`}
+                                    }`}
                             >
                                 {isFavorited ? <HeartFilled className="text-[15px]" /> : <HeartOutlined className="text-[15px]" />}
                                 {isFavorited ? 'Đã yêu thích' : 'Yêu thích'}

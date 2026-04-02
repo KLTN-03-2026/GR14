@@ -95,7 +95,6 @@ const NewsCard = ({ post }: Props) => {
                         {formatPrice(post.price)}
                     </span>
                     <span>{post.area} m²</span>
-                    <span>{post.direction || "Không rõ"}</span>
                 </div>
 
                 <div className="text-xs text-gray-500 mt-2">
