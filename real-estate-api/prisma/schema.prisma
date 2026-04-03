@@ -104,6 +104,11 @@ model Employee {
   id        Int       @id @default(autoincrement())
   code      String    @unique @map("employee_code") @db.VarChar(10)
   startDate DateTime? @map("start_date")
+  city      String?   @db.VarChar(100)
+  ward      String?   @map("district") @db.VarChar(100)
+  maxAppointmentsPerDay Int @default(8) @map("max_appointments_per_day")
+  isActive  Boolean   @default(true) @map("is_active")
+  lastAssignedAt DateTime? @map("last_assigned_at")
   userId    Int       @unique @map("user_id")
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -235,6 +240,13 @@ model Appointment {
   customerId      Int      @map("customer_id")
   employeeId      Int?     @map("employee_id")
   appointmentDate DateTime @map("appointment_date")
+  durationMinutes Int      @default(60) @map("duration_minutes")
+  assignedAt      DateTime? @map("assigned_at")
+  firstContactAt  DateTime? @map("first_contact_at")
+  slaAssignDeadlineAt DateTime? @map("sla_assign_deadline_at")
+  slaFirstContactDeadlineAt DateTime? @map("sla_first_contact_deadline_at")
+  slaStatus       Int      @default(0) @map("sla_status") // 0: on_track, 1: at_risk, 2: breached
+  autoAssignReason String? @map("auto_assign_reason") @db.VarChar(255)
   status          Int      @default(0) // 0: pending, 1: approved, 2: rejected
   actualStatus    Int?     @map("actual_status")
   cancelReason    String?  @map("cancel_reason") @db.Text

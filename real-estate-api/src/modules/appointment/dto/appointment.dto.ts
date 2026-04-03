@@ -12,6 +12,10 @@ export class CreateAppointmentDto {
     @IsNotEmpty()
     @IsString()
     appointmentDate: string;
+
+    @IsOptional()
+    @IsInt()
+    durationMinutes?: number;
 }
 
 export class AdminCreateAppointmentDto {
@@ -49,6 +53,10 @@ export class AdminCreateAppointmentDto {
     @IsNotEmpty()
     @IsString()
     appointmentDate: string;
+
+    @IsOptional()
+    @IsInt()
+    durationMinutes?: number;
 }
 
 export class UpdateAppointmentDto {
@@ -63,6 +71,10 @@ export class UpdateAppointmentDto {
     @IsOptional()
     @IsInt()
     status?: number;
+
+    @IsOptional()
+    @IsInt()
+    durationMinutes?: number;
 }
 
 export class ApproveAppointmentDto {
@@ -92,4 +104,34 @@ export class UpdateActualStatusDto {
     @IsOptional()
     @IsString()
     cancelReason?: string;
+}
+
+export class MarkFirstContactDto {
+    @IsOptional()
+    @IsString()
+    firstContactAt?: string;
+}
+
+export class AppointmentCalendarQueryDto {
+    @IsNotEmpty()
+    @IsString()
+    start: string;
+
+    @IsNotEmpty()
+    @IsString()
+    end: string;
+
+    @IsOptional()
+    @IsString()
+    employeeId?: string;
+}
+
+export class MoveCalendarAppointmentDto {
+    @IsNotEmpty()
+    @IsString()
+    appointmentDate: string;
+
+    @IsOptional()
+    @IsInt()
+    employeeId?: number;
 }

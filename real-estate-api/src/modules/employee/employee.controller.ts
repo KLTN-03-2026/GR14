@@ -4,7 +4,10 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { EmployeeService } from './employee.service';
-import { CreateEmployeeDto, UpdateEmployeeDto } from './dto/employee.dto';
+import {
+    CreateEmployeeDto,
+    UpdateEmployeeDto,
+} from './dto/employee.dto';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 

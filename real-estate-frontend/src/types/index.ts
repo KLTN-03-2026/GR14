@@ -49,10 +49,26 @@ export interface Employee {
     id: number;
     code: string;
     startDate?: string;
+    city?: string;
+    district?: string;
+    maxAppointmentsPerDay?: number;
+    isActive?: boolean;
+    lastAssignedAt?: string;
     userId: number;
     createdAt: string;
     updatedAt: string;
     user?: User;
+    availabilities?: EmployeeAvailability[];
+}
+
+export interface EmployeeAvailability {
+    id: number;
+    employeeId: number;
+    startAt: string;
+    endAt: string;
+    type: 'available' | 'blocked';
+    createdAt: string;
+    updatedAt: string;
 }
 
 // ==================== PROPERTY ====================
@@ -141,6 +157,13 @@ export interface Appointment {
     customerId: number;
     employeeId?: number;
     appointmentDate: string;
+    durationMinutes?: number;
+    assignedAt?: string;
+    firstContactAt?: string;
+    slaAssignDeadlineAt?: string;
+    slaFirstContactDeadlineAt?: string;
+    slaStatus?: number; // 0: on_track, 1: at_risk, 2: breached
+    autoAssignReason?: string;
     status: number; // 0: pending, 1: approved, 2: rejected
     actualStatus?: number;
     cancelReason?: string;
@@ -150,6 +173,21 @@ export interface Appointment {
     land?: Pick<Land, 'id' | 'title' | 'city' | 'district'> & { images?: Pick<LandImage, 'id' | 'url'>[] };
     customer?: Customer;
     employee?: Employee;
+}
+
+export interface AppointmentCalendarEvent {
+    id: number;
+    title: string;
+    start: string;
+    end: string;
+    allDay?: boolean;
+    extendedProps?: {
+        employeeId?: number;
+        employeeName?: string;
+        customerName?: string;
+        durationMinutes?: number;
+        location?: string;
+    };
 }
 
 // ==================== POST ====================
