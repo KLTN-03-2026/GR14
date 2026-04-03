@@ -12,7 +12,10 @@ import {
     ApproveAppointmentDto,
     CancelAppointmentDto,
     AssignEmployeeDto,
+    MarkFirstContactDto,
     UpdateActualStatusDto,
+    AppointmentCalendarQueryDto,
+    MoveCalendarAppointmentDto,
 } from './dto/appointment.dto';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -50,13 +53,6 @@ export class AppointmentController {
         return this.appointmentService.findAll(+page, +limit, search, safeStatus);
     }
 
-    // Admin get one
-    @Get(':id')
-    @Roles('ADMIN')
-    findById(@Param('id', ParseIntPipe) id: number) {
-        return this.appointmentService.findById(id);
-    }
-
     // Admin update (date, employee, status)
     @Put(':id')
     @Roles('ADMIN')
@@ -90,6 +86,43 @@ export class AppointmentController {
     @Roles('ADMIN')
     assignEmployee(@Param('id', ParseIntPipe) id: number, @Body() dto: AssignEmployeeDto) {
         return this.appointmentService.assignEmployee(id, dto);
+    }
+
+    @Put(':id/auto-assign')
+    @Roles('ADMIN')
+    autoAssign(@Param('id', ParseIntPipe) id: number) {
+        return this.appointmentService.autoAssign(id, true);
+    }
+
+    @Get(':id/suggest-slots')
+    @Roles('ADMIN')
+    suggestSlots(@Param('id', ParseIntPipe) id: number) {
+        return this.appointmentService.suggestSlots(id);
+    }
+
+    @Get('calendar/events')
+    @Roles('ADMIN')
+    getCalendarEvents(@Query() query: AppointmentCalendarQueryDto) {
+        return this.appointmentService.getCalendarEvents(query);
+    }
+
+    @Put(':id/calendar-move')
+    @Roles('ADMIN')
+    moveCalendarAppointment(@Param('id', ParseIntPipe) id: number, @Body() dto: MoveCalendarAppointmentDto) {
+        return this.appointmentService.moveCalendarAppointment(id, dto);
+    }
+
+    // Admin get one
+    @Get(':id')
+    @Roles('ADMIN')
+    findById(@Param('id', ParseIntPipe) id: number) {
+        return this.appointmentService.findById(id);
+    }
+
+    @Put(':id/first-contact')
+    @Roles('ADMIN', 'EMPLOYEE')
+    markFirstContact(@Param('id', ParseIntPipe) id: number, @Body() dto: MarkFirstContactDto) {
+        return this.appointmentService.markFirstContact(id, dto);
     }
 
     @Get('employee/:id')

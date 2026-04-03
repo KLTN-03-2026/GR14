@@ -68,6 +68,16 @@ const navItems: NavItem[] = [
         path: '/admin/appointments',
     },
     {
+        name: 'Điều phối lịch',
+        icon: (
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 8.25h18M4.5 6.75h15a1.5 1.5 0 011.5 1.5v11.25A1.5 1.5 0 0119.5 21h-15A1.5 1.5 0 013 19.5V8.25a1.5 1.5 0 011.5-1.5z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 12h3.75M8.25 15.75h7.5M14.25 12h1.5" />
+            </svg>
+        ),
+        path: '/admin/appointments/calendar',
+    },
+    {
         name: 'Danh mục BĐS',
         icon: (
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>

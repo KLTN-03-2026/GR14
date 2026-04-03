@@ -14,6 +14,7 @@ import NewsPage from '@/pages/public/NewsPage';
 import NewsDetailPage from '@/pages/public/NewsDetailPage';
 import FavoritesPage from '@/pages/public/FavoritesPage';
 import AboutMe from '@/pages/public/AboutMe';
+import AppointmentBookingPage from '@/pages/public/AppointmentBookingPage';
 
 // Auth pages
 import LoginPage from '@/pages/auth/LoginPage';
@@ -30,6 +31,7 @@ import LandFormPage from '@/pages/admin/LandFormPage';
 import PostManagementPage from '@/pages/admin/PostManagementPage';
 import AppointmentManagementPage from '@/pages/admin/AppointmentManagementPage';
 import AppointmentFormPage from '@/pages/admin/AppointmentFormPage';
+import AppointmentCalendarPage from '@/pages/admin/AppointmentCalendarPage';
 import UserManagementPage from '@/pages/admin/UserManagementPage';
 import CustomerManagementPage from '@/pages/admin/CustomerManagementPage';
 import EmployeeManagementPage from '@/pages/admin/EmployeeManagementPage';
@@ -42,6 +44,7 @@ import VipPackageManagementPage from '@/pages/admin/VipPackageManagementPage';
 import VipPackageFormPage from '@/pages/admin/VipPackageFormPage';
 import PaymentResultPage from '@/pages/public/PaymentResultPage';
 import EmployeeAppointmentPage from '@/pages/employee/EmployeeAppointmentPage';
+import EmployeeCalendarPage from '@/pages/employee/EmployeeCalendarPage';
 
 
 const router = createBrowserRouter([
@@ -84,6 +87,14 @@ const router = createBrowserRouter([
             { path: 'posts', element: <NewsPage /> },
             { path: '/posts/:id', element: <NewsDetailPage /> },
             { path: 'about', element: <AboutMe /> },
+            {
+                path: 'appointment',
+                element: (
+                    <ProtectedRoute requiredRoles={['CUSTOMER']}>
+                        <AppointmentBookingPage />
+                    </ProtectedRoute>
+                ),
+            },
             {
                 path: 'favorites',
                 element: (
@@ -151,6 +162,7 @@ const router = createBrowserRouter([
 
             // Appointments
             { path: 'appointments', element: <AppointmentManagementPage /> },
+            { path: 'appointments/calendar', element: <AppointmentCalendarPage /> },
             { path: 'appointments/create', element: <AppointmentFormPage /> },
             { path: 'appointments/:id/edit', element: <AppointmentFormPage /> },
 
@@ -186,6 +198,7 @@ const router = createBrowserRouter([
         children: [
             { index: true, element: <EmployeeAppointmentPage /> },
             { path: 'appointments', element: <EmployeeAppointmentPage /> },
+            { path: 'calendar', element: <EmployeeCalendarPage /> },
             { path: 'profile', element: <ProfilePage /> },
         ],
     },

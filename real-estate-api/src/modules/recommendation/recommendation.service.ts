@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import axios from 'axios';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
@@ -647,6 +647,10 @@ export class RecommendationService {
     // ==================== TRACK BEHAVIOR ====================
 
     async trackBehavior(userId: number, action: string, houseId?: number, landId?: number) {
+        if (!userId) {
+            throw new UnauthorizedException('Không xác định được người dùng đăng nhập');
+        }
+
         // Avoid duplicate views within 5 minutes
         if (action === 'view') {
             const recent = await this.prisma.userBehavior.findFirst({

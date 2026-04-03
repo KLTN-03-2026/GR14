@@ -36,6 +36,17 @@ async function bootstrap() {
     },
   });
 
+  app.connectMicroservice<MicroserviceOptions>({
+    transport: Transport.RMQ,
+    options: {
+      urls: [configService.get('RABBITMQ_URL') || 'amqp://guest:guest@localhost:5672'],
+      queue: 'appointment_auto_assign_queue',
+      queueOptions: {
+        durable: true,
+      },
+    },
+  });
+
   // CORS configuration
   const frontendUrl = configService.get('FRONTEND_URL') || 'http://localhost:3000';
   app.enableCors({
@@ -67,6 +78,7 @@ async function bootstrap() {
   // Khởi động microservice trước HTTP server
   await app.startAllMicroservices();
   logger.log('RabbitMQ consumer: listening on queue [mail_queue]');
+  logger.log('RabbitMQ consumer: listening on queue [appointment_auto_assign_queue]');
 
   const port = configService.get('PORT') || 5000;
   await app.listen(port);
