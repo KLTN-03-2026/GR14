@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useEffect, useState, useCallback } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { message } from 'antd';
 import { HeartOutlined, HeartFilled, CalendarOutlined } from '@ant-design/icons';
 import { houseApi, favoriteApi, recommendationApi } from '@/api';
@@ -16,16 +16,353 @@ const getImages = (house: House): string[] => {
     ).filter(Boolean);
 };
 
+/* ── Lightbox Modal ──────────────────────────────────────────────────── */
+interface LightboxProps {
+    images: string[];
+    startIndex: number;
+    title: string;
+    onClose: () => void;
+}
 
+const Lightbox: React.FC<LightboxProps> = ({ images, startIndex, title, onClose }) => {
+    const [current, setCurrent] = useState(startIndex);
+
+    const prev = useCallback(() => setCurrent(c => (c - 1 + images.length) % images.length), [images.length]);
+    const next = useCallback(() => setCurrent(c => (c + 1) % images.length), [images.length]);
+
+    useEffect(() => {
+        const handleKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
+            if (e.key === 'ArrowLeft') prev();
+            if (e.key === 'ArrowRight') next();
+        };
+        window.addEventListener('keydown', handleKey);
+        document.body.style.overflow = 'hidden';
+        return () => {
+            window.removeEventListener('keydown', handleKey);
+            document.body.style.overflow = '';
+        };
+    }, [onClose, prev, next]);
+
+    return (
+        <div
+            className="fixed inset-0 z-[9999] flex flex-col items-center justify-center"
+            style={{ background: 'rgba(0,0,0,0.93)' }}
+            onClick={onClose}
+        >
+            {/* Header */}
+            <div
+                className="absolute top-0 left-0 right-0 flex items-center justify-between px-6 py-4"
+                style={{ background: 'rgba(0,0,0,0.4)' }}
+                onClick={e => e.stopPropagation()}
+            >
+                <span className="text-white text-[14px] font-medium line-clamp-1 max-w-[70%] opacity-80">{title}</span>
+                <div className="flex items-center gap-4">
+                    <span className="text-white text-[14px] font-semibold opacity-70">
+                        {current + 1} / {images.length}
+                    </span>
+                    <button
+                        onClick={onClose}
+                        className="w-9 h-9 flex items-center justify-center rounded-full text-white transition-colors"
+                        style={{ background: 'rgba(255,255,255,0.15)' }}
+                    >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            {/* Main image */}
+            <div
+                className="flex items-center justify-center w-full px-16"
+                style={{ height: 'calc(100vh - 140px)' }}
+                onClick={e => e.stopPropagation()}
+            >
+                <img
+                    src={images[current]}
+                    alt={`${title} ${current + 1}`}
+                    className="max-w-full max-h-full object-contain rounded-lg select-none"
+                    style={{ boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }}
+                />
+            </div>
+
+            {/* Prev / Next buttons */}
+            {images.length > 1 && (
+                <>
+                    <button
+                        onClick={e => { e.stopPropagation(); prev(); }}
+                        className="absolute left-4 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center rounded-full text-white transition-all hover:scale-110"
+                        style={{ background: 'rgba(255,255,255,0.18)' }}
+                    >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <polyline points="15 18 9 12 15 6" />
+                        </svg>
+                    </button>
+                    <button
+                        onClick={e => { e.stopPropagation(); next(); }}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center rounded-full text-white transition-all hover:scale-110"
+                        style={{ background: 'rgba(255,255,255,0.18)' }}
+                    >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <polyline points="9 18 15 12 9 6" />
+                        </svg>
+                    </button>
+                </>
+            )}
+
+            {/* Thumbnail strip */}
+            {images.length > 1 && (
+                <div
+                    className="absolute bottom-0 left-0 right-0 flex items-center justify-center gap-2 px-6 py-3 overflow-x-auto"
+                    style={{ background: 'rgba(0,0,0,0.5)' }}
+                    onClick={e => e.stopPropagation()}
+                >
+                    {images.map((src, i) => (
+                        <button
+                            key={i}
+                            onClick={() => setCurrent(i)}
+                            className="flex-shrink-0 rounded overflow-hidden transition-all duration-200"
+                            style={{
+                                width: 56,
+                                height: 40,
+                                outline: i === current ? '2.5px solid #254b86' : '2px solid transparent',
+                                opacity: i === current ? 1 : 0.55,
+                            }}
+                        >
+                            <img src={src} alt="" className="w-full h-full object-cover" />
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+/* ── Gallery Grid ────────────────────────────────────────────────────── */
+interface GalleryProps {
+    images: string[];
+    title: string;
+}
+
+const Gallery: React.FC<GalleryProps> = ({ images, title }) => {
+    const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+
+    const openLightbox = (index: number) => setLightboxIndex(index);
+    const closeLightbox = () => setLightboxIndex(null);
+
+    if (images.length === 0) {
+        return (
+            <div className="w-full h-[420px] bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex flex-col items-center justify-center gap-3 mb-10">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <polyline points="21 15 16 10 5 21" />
+                </svg>
+                <span className="text-slate-400 text-sm">Chưa có hình ảnh</span>
+            </div>
+        );
+    }
+
+    if (images.length === 1) {
+        return (
+            <>
+                <div
+                    className="w-full mb-10 rounded-2xl overflow-hidden cursor-pointer"
+                    style={{ height: 480 }}
+                    onClick={() => openLightbox(0)}
+                >
+                    <img
+                        src={images[0]}
+                        alt={title}
+                        className="w-full h-full object-cover hover:scale-[1.02] transition-transform duration-500"
+                    />
+                </div>
+                {lightboxIndex !== null && (
+                    <Lightbox images={images} startIndex={lightboxIndex} title={title} onClose={closeLightbox} />
+                )}
+            </>
+        );
+    }
+
+    /* ── Special layout for exactly 3 images: 1 big left + 2 stacked right ── */
+    if (images.length === 3) {
+        return (
+            <>
+                <div className="mb-10">
+                    <div
+                        className="flex gap-2 rounded-2xl overflow-hidden"
+                        style={{ height: 400 }}
+                    >
+                        {/* Big image left (60%) */}
+                        <div
+                            className="flex-shrink-0 overflow-hidden cursor-pointer group relative"
+                            style={{ width: '60%' }}
+                            onClick={() => openLightbox(0)}
+                        >
+                            <img
+                                src={images[0]}
+                                alt={title}
+                                className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500"
+                            />
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300 pointer-events-none" />
+                        </div>
+                        {/* 2 thumbnails stacked right (40%) */}
+                        <div className="flex-1 flex flex-col gap-2">
+                            {[1, 2].map((imgIdx) => (
+                                <div
+                                    key={imgIdx}
+                                    className="flex-1 overflow-hidden cursor-pointer group relative"
+                                    onClick={() => openLightbox(imgIdx)}
+                                >
+                                    <img
+                                        src={images[imgIdx]}
+                                        alt={`${title} ${imgIdx + 1}`}
+                                        className="w-full h-full object-cover group-hover:scale-[1.05] transition-transform duration-500"
+                                    />
+                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/15 transition-colors duration-300 pointer-events-none" />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                    {/* "Xem tất cả" pill */}
+                    <div className="flex justify-end mt-2">
+                        <button
+                            onClick={() => openLightbox(0)}
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-full border border-gray-300 text-[13px] font-semibold text-gray-700 bg-white hover:bg-gray-50 hover:border-gray-400 transition-all shadow-sm"
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <rect x="3" y="3" width="18" height="18" rx="2" />
+                                <circle cx="8.5" cy="8.5" r="1.5" />
+                                <polyline points="21 15 16 10 5 21" />
+                            </svg>
+                            Xem tất cả 3 ảnh
+                        </button>
+                    </div>
+                </div>
+                {lightboxIndex !== null && (
+                    <Lightbox images={images} startIndex={lightboxIndex} title={title} onClose={closeLightbox} />
+                )}
+            </>
+        );
+    }
+
+    /* ── Layout: 1 big left + thumbnails right (Airbnb style, 4+ images) ── */
+    const thumbCount = Math.min(images.length - 1, 4);
+    const thumbIndices = Array.from({ length: thumbCount }, (_, i) => i + 1);
+    const extraCount = images.length - 5; // images beyond the displayed 5
+
+    return (
+        <>
+            <div className="mb-10">
+                {/* Main gallery grid */}
+                <div
+                    className="flex gap-2 rounded-2xl overflow-hidden"
+                    style={{ height: 400 }}
+                >
+                    {/* ── Big main image (left, 55%) ── */}
+                    <div
+                        className="flex-shrink-0 overflow-hidden cursor-pointer group relative"
+                        style={{ width: '55%' }}
+                        onClick={() => openLightbox(0)}
+                    >
+                        <img
+                            src={images[0]}
+                            alt={title}
+                            className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500"
+                        />
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300 pointer-events-none" />
+                    </div>
+
+                    {/* ── Thumbnails (right, 45%) ── */}
+                    <div
+                        className={`flex-1 grid gap-2 ${thumbCount === 1 ? '' : thumbCount === 2 ? 'grid-rows-2' : 'grid-rows-2 grid-cols-2'}`}
+                    >
+                        {thumbIndices.map((imgIdx, gridPos) => {
+                            const isLastThumb = gridPos === thumbIndices.length - 1 && extraCount > 0;
+                            return (
+                                <div
+                                    key={imgIdx}
+                                    className="relative overflow-hidden cursor-pointer group"
+                                    onClick={() => openLightbox(imgIdx)}
+                                >
+                                    <img
+                                        src={images[imgIdx]}
+                                        alt={`${title} ${imgIdx + 1}`}
+                                        className="w-full h-full object-cover group-hover:scale-[1.05] transition-transform duration-500"
+                                    />
+                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/15 transition-colors duration-300 pointer-events-none" />
+
+                                    {/* "+N more" badge on last visible thumb */}
+                                    {isLastThumb && (
+                                        <div
+                                            className="absolute inset-0 flex flex-col items-center justify-center gap-1"
+                                            style={{ background: 'rgba(0,0,0,0.52)' }}
+                                        >
+                                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                                                <rect x="3" y="3" width="18" height="18" rx="2" />
+                                                <circle cx="8.5" cy="8.5" r="1.5" fill="white" />
+                                                <polyline points="21 15 16 10 5 21" />
+                                            </svg>
+                                            <span className="text-white text-[17px] font-bold leading-none">+{extraCount + 1}</span>
+                                            <span className="text-white/80 text-[11px] font-medium">xem thêm</span>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* "Xem tất cả ảnh" pill button — bottom right */}
+                {images.length > 1 && (
+                    <div className="flex justify-end mt-2">
+                        <button
+                            onClick={() => openLightbox(0)}
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-full border border-gray-300 text-[13px] font-semibold text-gray-700 bg-white hover:bg-gray-50 hover:border-gray-400 transition-all shadow-sm"
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <rect x="3" y="3" width="18" height="18" rx="2" />
+                                <circle cx="8.5" cy="8.5" r="1.5" />
+                                <polyline points="21 15 16 10 5 21" />
+                            </svg>
+                            Xem tất cả {images.length} ảnh
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            {lightboxIndex !== null && (
+                <Lightbox images={images} startIndex={lightboxIndex} title={title} onClose={closeLightbox} />
+            )}
+        </>
+    );
+};
+
+
+/* ── Main Page ───────────────────────────────────────────────────────── */
 const HouseDetailPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
+    const location = useLocation();
     const { isAuthenticated } = useAuthStore();
     const [house, setHouse] = useState<House | null>(null);
     const [loading, setLoading] = useState(true);
     const [isFavorited, setIsFavorited] = useState(false);
-    const [activeImg, setActiveImg] = useState(0);
 
+    // Quay lại đúng trang + filter:
+    // List page truyền: navigate(`/houses/${id}?from=${encodeURIComponent(location.pathname + location.search)}`)
+    // Ví dụ: ?from=%2Fhouses%3Fpage%3D5%26category%3D1%26minPrice%3D500
+    const searchParams = new URLSearchParams(location.search);
+    const fromUrl = searchParams.get('from');
+    const handleBack = () => {
+        if (fromUrl) {
+            navigate(decodeURIComponent(fromUrl));   // khôi phục toàn bộ URL gốc kể cả filter
+        } else {
+            navigate(-1);                            // fallback: browser history
+        }
+    };
 
     useEffect(() => {
         if (id) loadHouse(Number(id));
@@ -74,28 +411,36 @@ const HouseDetailPage: React.FC = () => {
     const images = getImages(house);
     const fullAddress = getFullAddress(house);
 
-
     return (
         <div className="w-full bg-white pb-20">
 
             {/* Breadcrumb */}
             <div className="w-full bg-[#f4f5f7] py-3 mb-8">
-                <div className="max-w-[1250px] mx-auto px-4 sm:px-6 lg:px-0 flex items-center gap-1.5 text-[13px]">
+                <div className="max-w-[1250px] mx-auto px-4 sm:px-6 lg:px-0 flex items-center gap-3 text-[13px]">
                     <button
-                        onClick={() => navigate('/')}
-                        className="text-gray-700 font-medium hover:text-[#254b86] transition-colors"
+                        onClick={handleBack}
+                        className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-[13px] font-semibold text-gray-600 bg-white border border-gray-200 hover:bg-[#254b86] hover:text-white hover:border-[#254b86] transition-all duration-200 shadow-sm"
                     >
-                        Trang Chủ
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="15 18 9 12 15 6" />
+                        </svg>
+                        Quay lại
                     </button>
-                    <span className="text-gray-400">›</span>
-                    <button
-                        onClick={() => navigate('/houses')}
-                        className="text-gray-700 font-medium hover:text-[#254b86] transition-colors"
-                    >
-                        Danh Sách Nhà Ở
-                    </button>
-                    <span className="text-gray-400">›</span>
-                    <span className="text-gray-500 line-clamp-1">{house.title}</span>
+                    <div className="flex items-center gap-1.5">
+                        <button
+                            onClick={() => navigate('/')}
+                            className="text-gray-700 font-medium hover:text-[#254b86] transition-colors"
+                        >
+                            Trang Chủ
+                        </button>
+                        <span className="text-gray-400">›</span>
+                        <button
+                            onClick={() => navigate('/houses')}
+                            className="text-gray-700 font-medium hover:text-[#254b86] transition-colors"
+                        >
+                            Danh Sách Nhà Ở
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -120,110 +465,13 @@ const HouseDetailPage: React.FC = () => {
                     <span>{fullAddress}</span>
                 </div>
 
-                {/* ── Hiển thị ảnh linh hoạt theo số lượng ───────────────── */}
-                {images.length === 0 ? (
-                    <div className="w-full h-[420px] bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex flex-col items-center justify-center gap-3 mb-10">
-                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5">
-                            <rect x="3" y="3" width="18" height="18" rx="2" />
-                            <circle cx="8.5" cy="8.5" r="1.5" />
-                            <polyline points="21 15 16 10 5 21" />
-                        </svg>
-                        <span className="text-slate-400 text-sm">Chưa có hình ảnh</span>
-                    </div>
-
-                ) : images.length === 1 ? (
-                    <div className="flex justify-center mb-10">
-                        <div className="rounded-2xl overflow-hidden" style={{ height: 420, maxWidth: 640, width: '100%' }}>
-                            <img
-                                src={images[0]}
-                                alt={house.title}
-                                className="w-full h-full object-cover"
-                            />
-                        </div>
-                    </div>
-
-                ) : images.length === 2 ? (
-                    <div className="grid grid-cols-2 gap-2 mb-10" style={{ height: 420 }}>
-                        {images.map((src, i) => (
-                            <div
-                                key={i}
-                                className={`overflow-hidden cursor-pointer ${i === 0 ? 'rounded-l-2xl' : 'rounded-r-2xl'}`}
-                                onClick={() => setActiveImg(i)}
-                            >
-                                <img src={src} alt={`${house.title} ${i + 1}`} className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" />
-                            </div>
-                        ))}
-                    </div>
-
-                ) : images.length === 3 ? (
-                    <div className="grid grid-cols-2 gap-2 mb-10" style={{ height: 420 }}>
-                        <div className="rounded-l-2xl overflow-hidden cursor-pointer" onClick={() => setActiveImg(0)}>
-                            <img src={images[0]} alt={house.title} className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" />
-                        </div>
-                        <div className="grid grid-rows-2 gap-2">
-                            {[1, 2].map((i) => (
-                                <div key={i} className={`overflow-hidden cursor-pointer ${i === 1 ? 'rounded-tr-2xl' : 'rounded-br-2xl'}`} onClick={() => setActiveImg(i)}>
-                                    <img src={images[i]} alt={`${house.title} ${i + 1}`} className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" />
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                ) : images.length === 4 ? (
-                    <div className="grid grid-cols-2 gap-2 mb-10" style={{ height: 420 }}>
-                        <div className="rounded-l-2xl overflow-hidden cursor-pointer" onClick={() => setActiveImg(0)}>
-                            <img src={images[0]} alt={house.title} className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" />
-                        </div>
-                        <div className="grid grid-rows-3 gap-2">
-                            {[1, 2, 3].map((i) => (
-                                <div key={i} className={`overflow-hidden cursor-pointer ${i === 1 ? 'rounded-tr-2xl' : i === 3 ? 'rounded-br-2xl' : ''}`} onClick={() => setActiveImg(i)}>
-                                    <img src={images[i]} alt={`${house.title} ${i + 1}`} className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" />
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                ) : (
-
-                    <div className="grid grid-cols-4 grid-rows-2 gap-2 mb-10" style={{ height: 420 }}>
-                        <div
-                            className="col-span-2 row-span-2 rounded-tl-2xl rounded-bl-2xl overflow-hidden cursor-pointer"
-                            onClick={() => setActiveImg(0)}
-                        >
-                            <img
-                                src={images[activeImg] || images[0]}
-                                alt={house.title}
-                                className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
-                            />
-                        </div>
-                        {[1, 2, 3, 4].map((i) => {
-                            const isLast = i === 4 && images.length > 5;
-                            return (
-                                <div
-                                    key={i}
-                                    className={`relative overflow-hidden cursor-pointer ${i === 2 ? 'rounded-tr-2xl' : i === 4 ? 'rounded-br-2xl' : ''}`}
-                                    onClick={() => setActiveImg(i)}
-                                >
-                                    <img
-                                        src={images[i]}
-                                        alt={`${house.title} ${i + 1}`}
-                                        className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
-                                    />
-                                    {isLast && (
-                                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-br-2xl">
-                                            <span className="text-white text-xl font-bold">+{images.length - 5}</span>
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
+                {/* ── Gallery ───────────────────────────────────────────── */}
+                <Gallery images={images} title={house.title} />
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10 items-start">
 
                     <div className="lg:col-span-2">
-                        <h2 className="text-[18px] font-bold text-[#254b86] mb-4">Thông Tin Chi Tiết</h2>
+                        <h2 className="text-[18px] font-bold text-[#1a1a1a] mb-4">Thông Tin Chi Tiết</h2>
                         <div className="border border-gray-200 rounded-xl overflow-hidden">
                             <table className="w-full text-[13px]">
                                 <tbody>
@@ -262,13 +510,14 @@ const HouseDetailPage: React.FC = () => {
                         {/* Mô tả */}
                         {house.description && (
                             <div className="mt-8">
-                                <h2 className="text-[18px] font-bold text-[#254b86] mb-4 text-center">Mô Tả</h2>
-                                <p className="text-[16px] text-gray-600 leading-relaxed whitespace-pre-wrap">
+                                <h2 className="text-[18px] font-bold text-[#1a1a1a] mb-4 text-center">Mô Tả</h2>
+                                <p className="text-[13px] text-gray-600 leading-relaxed whitespace-pre-wrap">
                                     {house.description}
                                 </p>
                             </div>
                         )}
                     </div>
+
                     <div className="lg:col-span-1">
                         <div className="text-[18px] font-bold mb-4 invisible select-none">Thông Tin Chi Tiết</div>
                         <div className="border border-gray-200 rounded-xl p-5 shadow-sm sticky top-6">
@@ -295,7 +544,7 @@ const HouseDetailPage: React.FC = () => {
                                 {formatCurrency(house.price)}
                             </p>
 
-                            {/* Nút Yêu thích — giữ nguyên logic + icon */}
+                            {/* Nút Yêu thích */}
                             <button
                                 onClick={handleFavorite}
                                 className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border text-[14px] font-semibold mb-3 transition-all duration-200 ${isFavorited
@@ -307,7 +556,7 @@ const HouseDetailPage: React.FC = () => {
                                 {isFavorited ? 'Đã yêu thích' : 'Yêu thích'}
                             </button>
 
-                            {/* Nút Đặt lịch hẹn — giữ nguyên logic + icon */}
+                            {/* Nút Đặt lịch hẹn */}
                             <button
                                 onClick={() => navigate(`/appointment?houseId=${house.id}`)}
                                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-[#254b86] text-white text-[14px] font-semibold hover:bg-[#1a3660] transition-colors duration-200"
@@ -319,7 +568,7 @@ const HouseDetailPage: React.FC = () => {
                     </div>
                 </div>
 
-                {/* ── Bản đồ — full width bên dưới, span toàn bộ ─────────── */}
+                {/* ── Bản đồ ─────────────────────────────────────────── */}
                 <div className="mb-10">
                     <div className="flex items-center justify-between mb-3">
                         <h2 className="text-[18px] font-bold text-[#1a1a1a]">Vị Trí</h2>

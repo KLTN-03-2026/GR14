@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import group from "../../assets/logo.png";
 import gps from "../../assets/icons8-gps-16.png";
 import phone from "../../assets/icons8-phone-16.png";
@@ -6,8 +7,19 @@ import email from "../../assets/icons8-mail-16.png";
 
 const PublicFooter: React.FC = () => {
 
-  const exploreLinks = ["Trang Chủ", "Về Chúng Tôi", "Tin Tức", "Đăng Bài Viết"];
-  const navigationLinks = ["Liên Hệ", "Nhà Đất", "Đất Đai", "Dịch Vụ"];
+  const exploreLinks = [
+    { label: "Trang Chủ", href: "/" },
+    { label: "Về Chúng Tôi", href: "/about" },
+    { label: "Phong Thủy", href: "/fengshui" },
+    { label: "Đăng Bài Viết", href: "/news" },
+  ];
+
+  const navigationLinks = [
+    { label: "Tin Tức", href: "/posts" },
+    { label: "Nhà Ở", href: "/houses" },
+    { label: "Đất Đai", href: "/lands" },
+    { label: "Dịch Vụ", href: "/" },
+  ];
 
   return (
     <footer className="relative w-full bg-[#080f1e] text-gray-300 overflow-hidden">
@@ -36,7 +48,7 @@ const PublicFooter: React.FC = () => {
 
           {/* Col 1 — Brand */}
           <div className="md:col-span-4 flex flex-col gap-6">
-            <div className="flex items-center gap-3">
+            <Link to="/" className="flex items-center gap-3">
               <div className="relative">
                 <div className="absolute inset-0 bg-blue-500 opacity-20 rounded-xl blur-md" />
                 <img
@@ -51,7 +63,7 @@ const PublicFooter: React.FC = () => {
                 </h2>
                 <p className="text-xs text-blue-400/70 tracking-widest uppercase">Real Estate Platform</p>
               </div>
-            </div>
+            </Link>
 
             <p className="text-sm leading-7 text-gray-300 border-l-2 border-blue-500/30 pl-4">
               Nền tảng bất động sản uy tín giúp bạn tìm kiếm, mua bán và đầu tư
@@ -67,14 +79,14 @@ const PublicFooter: React.FC = () => {
             </h4>
             <nav className="flex flex-col gap-3">
               {exploreLinks.map((link, i) => (
-                <a
+                <Link
                   key={i}
-                  href="#"
+                  to={link.href}
                   className="text-sm text-gray-300 hover:text-white transition-all duration-200 flex items-center gap-2 group"
                 >
                   <span className="w-0 h-px bg-blue-400 group-hover:w-3 transition-all duration-200 inline-block" />
-                  {link}
-                </a>
+                  {link.label}
+                </Link>
               ))}
             </nav>
           </div>
@@ -87,14 +99,14 @@ const PublicFooter: React.FC = () => {
             </h4>
             <nav className="flex flex-col gap-3">
               {navigationLinks.map((link, i) => (
-                <a
+                <Link
                   key={i}
-                  href="#"
+                  to={link.href}
                   className="text-sm text-gray-300 hover:text-white transition-all duration-200 flex items-center gap-2 group"
                 >
                   <span className="w-0 h-px bg-blue-400 group-hover:w-3 transition-all duration-200 inline-block" />
-                  {link}
-                </a>
+                  {link.label}
+                </Link>
               ))}
             </nav>
           </div>
@@ -126,8 +138,14 @@ const PublicFooter: React.FC = () => {
         <div className="border-t border-gray-800 pt-6 flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-gray-400">
           <p>© 2026 <span className="text-gray-400">Black'S City</span>. All rights reserved.</p>
           <div className="flex gap-5">
-            {['Chính sách bảo mật', 'Điều khoản sử dụng', 'Hỗ trợ'].map((item, i) => (
-              <a key={i} href="#" className="hover:text-white transition-colors duration-200">{item}</a>
+            {[
+              { label: 'Chính sách bảo mật', href: '/' },
+              { label: 'Điều khoản sử dụng', href: '/' },
+              { label: 'Hỗ trợ', href: '/contact' },
+            ].map((item, i) => (
+              <Link key={i} to={item.href} className="hover:text-white transition-colors duration-200">
+                {item.label}
+              </Link>
             ))}
           </div>
         </div>

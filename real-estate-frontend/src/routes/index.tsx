@@ -15,7 +15,7 @@ import NewsDetailPage from '@/pages/public/NewsDetailPage';
 import FavoritesPage from '@/pages/public/FavoritesPage';
 import AboutMe from '@/pages/public/AboutMe';
 import AppointmentBookingPage from '@/pages/public/AppointmentBookingPage';
-
+import FengshuiPage from '@/pages/public/FengShui';
 // Auth pages
 import LoginPage from '@/pages/auth/LoginPage';
 import RegisterPage from '@/pages/auth/RegisterPage';
@@ -87,6 +87,7 @@ const router = createBrowserRouter([
             { path: 'posts', element: <NewsPage /> },
             { path: '/posts/:id', element: <NewsDetailPage /> },
             { path: 'about', element: <AboutMe /> },
+            { path: 'fengshui', element: <FengshuiPage /> },
             {
                 path: 'appointment',
                 element: (

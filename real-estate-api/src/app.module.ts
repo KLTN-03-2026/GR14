@@ -23,6 +23,7 @@ import { AiModule } from './modules/ai/ai.module';
 import { RecommendationModule } from './modules/recommendation/recommendation.module';
 import { CloudinaryModule } from './common/cloudinary/cloudinary.module';
 import { MailModule } from './common/mail/mail.module';
+import { FengshuiModule } from './modules/fengshui/fengshui.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { MailModule } from './common/mail/mail.module';
     PaymentModule,
     AiModule,
     RecommendationModule,
+    FengshuiModule,
   ],
   providers: [
     {

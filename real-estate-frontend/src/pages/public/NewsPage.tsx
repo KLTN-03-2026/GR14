@@ -122,7 +122,7 @@ const NewsPage = () => {
               className="col-span-12 lg:col-span-8 relative rounded-2xl overflow-hidden cursor-pointer shadow-lg group"
             >
               <img
-                src={getThumbnail(heroPost.images)}
+                src={getThumbnail(heroPost.images as any)}
                 className="w-full h-[340px] object-cover group-hover:scale-105 transition duration-500"
                 alt="hero"
               />
@@ -190,7 +190,7 @@ const NewsPage = () => {
             {sortedPosts.map((post) => (
               <NewsCard
                 key={post.id}
-                post={post}
+                post={post as any}
                 isFavorite={favorites.includes(post.id)}
                 onToggleFavorite={() => toggleFavorite(post.id)}
               />
