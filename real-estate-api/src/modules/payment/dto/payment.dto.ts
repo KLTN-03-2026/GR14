@@ -1,5 +1,10 @@
-import { IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsNotEmpty, IsNumber, IsOptional, IsString, IsEnum } from 'class-validator';
 import { Type } from 'class-transformer';
+
+enum PaymentMethod {
+    VNPAY = 'vnpay',
+    MOMO = 'momo',
+}
 
 export class CreatePaymentDto {
     @IsNotEmpty()
@@ -13,8 +18,8 @@ export class CreatePaymentDto {
     packageId: number;
 
     @IsNotEmpty()
-    @IsString()
-    paymentMethod: string; // 'vnpay' or 'momo'
+    @IsEnum(PaymentMethod)
+    paymentMethod: PaymentMethod; // 'vnpay' or 'momo'
 
     @IsNotEmpty()
     @IsString()

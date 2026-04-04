@@ -5,6 +5,7 @@ import NewsMiniCard from "@/components/common/NewsMiniCard";
 
 // ===== TYPES =====
 interface PostImage {
+    id?: number;
     url: string;
     position: number;
 }
@@ -22,6 +23,8 @@ interface Post {
     district: string;
     ward: string;
     address: string;
+    contactPhone?: string;
+    contactLink?: string;
     description: string;
     price: number;
     area: number;
@@ -72,6 +75,7 @@ const NewsDetailPage = () => {
     const [post, setPost] = useState<Post | null>(null);
     const [list, setList] = useState<Post[]>([]);
     const [showPhone, setShowPhone] = useState(false);
+    const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
     // ===== FETCH DATA =====
     const fetchData = async () => {
@@ -100,8 +104,16 @@ const NewsDetailPage = () => {
 
     useEffect(() => {
         setShowPhone(false);
+        setSelectedImageIndex(0);
         fetchData();
     }, [id]);
+
+    const sortedImages = useMemo(() => {
+        if (!post?.images?.length) return [];
+        return [...post.images].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+    }, [post?.images]);
+
+    const selectedImageUrl = sortedImages[selectedImageIndex]?.url || getThumbnail(post?.images);
 
     // ===== RELATED POSTS =====
     const related = useMemo(() => {
@@ -119,6 +131,7 @@ const NewsDetailPage = () => {
     if (!post) return <div className="p-6 text-center font-medium">Đang tải dữ liệu...</div>;
 
     const isAdmin = post.user?.fullName === "System Admin";
+    const displayPhone = post.contactPhone || post.user?.phone;
 
     return (
         <div className="bg-gray-100 min-h-screen py-6">
@@ -127,10 +140,25 @@ const NewsDetailPage = () => {
                 {/* BANNER IMAGE + TITLE */}
                 <div className="bg-white rounded-2xl p-4 shadow mb-6">
                     <img
-                        src={getThumbnail(post.images)}
+                        src={selectedImageUrl}
                         alt={post.title}
                         className="w-full h-[400px] object-cover rounded-xl"
                     />
+
+                    {sortedImages.length > 1 && (
+                        <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+                            {sortedImages.map((img, index) => (
+                                <button
+                                    type="button"
+                                    key={img.id ?? `${img.url}-${index}`}
+                                    className={`h-16 w-20 shrink-0 overflow-hidden rounded-lg border ${selectedImageIndex === index ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200'}`}
+                                    onClick={() => setSelectedImageIndex(index)}
+                                >
+                                    <img src={img.url} alt="" className="h-full w-full object-cover" />
+                                </button>
+                            ))}
+                        </div>
+                    )}
 
                     <h1 className="text-2xl font-bold mt-4">{post.title}</h1>
 
@@ -174,35 +202,51 @@ const NewsDetailPage = () => {
                         {/* MÔ TẢ CHI TIẾT */}
                         <div className="bg-white rounded-2xl p-4 shadow">
                             <h2 className="font-bold mb-3 text-lg border-b pb-2">Mô tả chi tiết</h2>
-                            <p className="text-gray-700 whitespace-pre-line leading-relaxed">
-                                {post.description}
-                            </p>
+                            <div
+                                className="text-gray-700 leading-relaxed [&_ol]:list-decimal [&_ol]:pl-6 [&_ul]:list-disc [&_ul]:pl-6"
+                                dangerouslySetInnerHTML={{ __html: post.description || '' }}
+                            />
 
-                            <div className="mt-6 bg-blue-50 p-4 rounded-xl flex items-center justify-between border border-blue-100">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-lg">📞</span>
-                                    <span className="font-bold text-blue-700">
-                                        {maskPhone(post.user?.phone, showPhone)}
-                                    </span>
+                            <div className="mt-6 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-lg">📞</span>
+                                        <span className="font-bold text-blue-700">
+                                            {maskPhone(displayPhone, showPhone)}
+                                        </span>
+                                    </div>
+
+                                    {!showPhone ? (
+                                        <button
+                                            onClick={() => setShowPhone(true)}
+                                            className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition"
+                                        >
+                                            Hiện số
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(displayPhone || "");
+                                                alert("Đã sao chép số điện thoại!");
+                                            }}
+                                            className="text-blue-600 text-sm font-medium underline"
+                                        >
+                                            Sao chép
+                                        </button>
+                                    )}
                                 </div>
 
-                                {!showPhone ? (
-                                    <button
-                                        onClick={() => setShowPhone(true)}
-                                        className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition"
-                                    >
-                                        Hiện số
-                                    </button>
-                                ) : (
-                                    <button
-                                        onClick={() => {
-                                            navigator.clipboard.writeText(post.user?.phone || "");
-                                            alert("Đã sao chép số điện thoại!");
-                                        }}
-                                        className="text-blue-600 text-sm font-medium underline"
-                                    >
-                                        Sao chép
-                                    </button>
+                                {post.contactLink && (
+                                    <div className="mt-3 border-t border-blue-200 pt-3">
+                                        <a
+                                            href={post.contactLink}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-sm font-medium text-blue-600 underline"
+                                        >
+                                            Liên hệ qua Facebook/Zalo
+                                        </a>
+                                    </div>
                                 )}
                             </div>
                         </div>

@@ -21,7 +21,7 @@ export const userApi = {
 };
 
 export const customerApi = {
-     getAll: (params?: Record<string, unknown>) =>
+    getAll: (params?: Record<string, unknown>) =>
         apiClient.get('/customers', { params }),
 
     getById: (id: number) =>

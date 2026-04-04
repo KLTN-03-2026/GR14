@@ -34,6 +34,21 @@ export const appointmentApi = {
     assignEmployee: (id: number, employeeId: number) =>
         apiClient.put(`/appointments/${id}/assign`, { employeeId }),
 
+    autoAssign: (id: number) =>
+        apiClient.put(`/appointments/${id}/auto-assign`),
+
+    suggestSlots: (id: number) =>
+        apiClient.get(`/appointments/${id}/suggest-slots`),
+
+    getCalendarEvents: (params: { start: string; end: string; employeeId?: number }) =>
+        apiClient.get('/appointments/calendar/events', { params }),
+
+    moveCalendarAppointment: (id: number, data: { appointmentDate: string; employeeId?: number }) =>
+        apiClient.put(`/appointments/${id}/calendar-move`, data),
+
+    markFirstContact: (id: number, firstContactAt?: string) =>
+        apiClient.put(`/appointments/${id}/first-contact`, firstContactAt ? { firstContactAt } : {}),
+
     updateActualStatus: (id: number, data: Record<string, unknown>) =>
         apiClient.put(`/appointments/${id}/actual-status`, data),
 };

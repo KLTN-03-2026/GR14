@@ -19,4 +19,9 @@ export class FeaturedController {
     getFeaturedLands(@Query('limit') limit = 8) {
         return this.featuredService.getFeaturedLands(+limit);
     }
+
+    @Get('posts')
+    getFeaturedPosts(@Query('limit') limit = 4) {
+        return this.featuredService.getFeaturedPosts(+limit);
+    }
 }

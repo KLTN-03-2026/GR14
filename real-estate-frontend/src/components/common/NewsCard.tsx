@@ -41,6 +41,19 @@ const formatDateTime = (d?: string | null) => {
     return date.toLocaleDateString("vi-VN");
 };
 
+const toPlainText = (value?: string) => {
+    if (!value) return "";
+
+    return value
+        .replace(/<[^>]*>/g, " ")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/\s+/g, " ")
+        .trim();
+};
+
 const NewsCard = ({ post }: Props) => {
     const navigate = useNavigate();
 
@@ -74,7 +87,7 @@ const NewsCard = ({ post }: Props) => {
                 <h3 className="text-lg font-semibold">{post.title}</h3>
 
                 <p className="text-sm text-gray-500 line-clamp-2">
-                    {post.description}
+                    {toPlainText(post.description)}
                 </p>
 
                 <div className="flex gap-4 mt-2">
@@ -82,7 +95,6 @@ const NewsCard = ({ post }: Props) => {
                         {formatPrice(post.price)}
                     </span>
                     <span>{post.area} m²</span>
-                    <span>{post.direction || "Không rõ"}</span>
                 </div>
 
                 <div className="text-xs text-gray-500 mt-2">

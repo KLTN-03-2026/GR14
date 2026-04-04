@@ -5,6 +5,7 @@ import { landApi, propertyCategoryApi, employeeApi } from '@/api';
 import { DIRECTIONS } from '@/constants';
 import type { PropertyCategory, Employee } from '@/types';
 import { Button } from '@/components/ui';
+import LoadingOverlay from '@/components/ui/LoadingOverlay';
 
 interface FileItem {
     uid: string;
@@ -388,6 +389,12 @@ const LandFormPage: React.FC = () => {
                     </div>
                 </form>
             </div>
+
+            <LoadingOverlay
+                visible={loading}
+                title={isEdit ? 'Đang cập nhật đất' : 'Đang tạo đất mới'}
+                description="Đang tải ảnh và lưu dữ liệu, vui lòng đợi..."
+            />
         </div>
     );
 };

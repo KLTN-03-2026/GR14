@@ -29,6 +29,11 @@ const ACTUAL_STATUS_COLOR: Record<number, string> = {
     [APPOINTMENT_ACTUAL_STATUS.CUSTOMER_NO_SHOW]: 'volcano',
     [APPOINTMENT_ACTUAL_STATUS.UNABLE_TO_PROCEED]: 'red',
 };
+const SLA_STATUS_LABELS: Record<number, string> = {
+    0: 'Đúng hạn',
+    1: 'Sắp trễ hạn',
+    2: 'Quá hạn',
+};
 
 type AppointmentFilterTab = 'all' | 'pending' | 'approved' | 'rejected';
 type AppointmentStatusCounts = {
@@ -70,6 +75,8 @@ const AppointmentManagementPage: React.FC = () => {
     const [assignData, setAssignData] = useState<{ employeeId?: number }>({});
     const [deleteTarget, setDeleteTarget] = useState<Appointment | null>(null);
     const [deleting, setDeleting] = useState(false);
+    const [slotSuggestionOpen, setSlotSuggestionOpen] = useState(false);
+    const [slotSuggestions, setSlotSuggestions] = useState<Array<{ at: string; availableEmployees: number }>>([]);
 
     const loadAppointments = useCallback(async () => {
         setLoading(true);
@@ -127,9 +134,9 @@ const AppointmentManagementPage: React.FC = () => {
     };
 
     // -- Approve --------------------------------------------
-    const openApproveModal = (id: number) => {
-        setApproveId(id);
-        setApproveData({});
+    const openApproveModal = (record: Appointment) => {
+        setApproveId(record.id);
+        setApproveData({ employeeId: record.employeeId ?? undefined });
         setApproveModalOpen(true);
     };
     const handleApprove = async () => {
@@ -192,6 +199,27 @@ const AppointmentManagementPage: React.FC = () => {
         }
     };
 
+    const handleAutoAssign = async (appointmentId: number) => {
+        try {
+            const res = await appointmentApi.autoAssign(appointmentId);
+            const payload = res.data;
+
+            if (payload?.assigned) {
+                toast.success(payload.message || 'Auto-assign thành công');
+                loadAppointments();
+                return;
+            }
+
+            const suggestionsRes = await appointmentApi.suggestSlots(appointmentId);
+            setSlotSuggestions(suggestionsRes.data || []);
+            setSlotSuggestionOpen(true);
+            toast.error(payload?.message || 'Không tìm được nhân viên phù hợp');
+        } catch (e: unknown) {
+            const err = e as ApiError;
+            toast.error(err.response?.data?.message || 'Auto-assign thất bại');
+        }
+    };
+
     const employeeOptions = employees.map(e => ({
         value: e.id,
         label: e.user?.fullName || e.code,
@@ -248,10 +276,27 @@ const AppointmentManagementPage: React.FC = () => {
                 : <span style={{ color: '#ccc' }}>Chưa phân công</span>,
         },
         {
+            title: 'Lý do gán',
+            key: 'autoAssignReason',
+            render: (_, r) => r.autoAssignReason
+                ? <span className="text-xs text-gray-600">{r.autoAssignReason}</span>
+                : <span style={{ color: '#ccc' }}>-</span>,
+        },
+        {
             title: 'Ngày hẹn',
             dataIndex: 'appointmentDate',
             key: 'appointmentDate',
             render: (d: string) => formatDateTime(d),
+        },
+        {
+            title: 'Cam kết xử lý (SLA)',
+            key: 'slaStatus',
+            width: 120,
+            render: (_, r) => {
+                const sla = r.slaStatus ?? 0;
+                const color = sla === 2 ? 'error' : sla === 1 ? 'warning' : 'success';
+                return <Badge color={color}>{SLA_STATUS_LABELS[sla] || 'Đúng hạn'}</Badge>;
+            },
         },
         {
             title: 'Trạng thái',
@@ -295,7 +340,7 @@ const AppointmentManagementPage: React.FC = () => {
         {
             title: 'Hành động',
             key: 'action',
-            width: 220,
+            width: 280,
             render: (_, record) => {
                 const actualUpdated = record.actualStatus !== undefined && record.actualStatus !== null;
 
@@ -303,7 +348,7 @@ const AppointmentManagementPage: React.FC = () => {
                     <div className="flex flex-wrap items-center gap-2">
                         {record.status === 0 && (
                             <>
-                                <Button size="sm" variant="primary" iconOnly ariaLabel="Duyệt" onClick={() => openApproveModal(record.id)} startIcon={(
+                                <Button size="sm" variant="primary" iconOnly ariaLabel="Duyệt" onClick={() => openApproveModal(record)} startIcon={(
                                     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                                     </svg>
@@ -321,6 +366,15 @@ const AppointmentManagementPage: React.FC = () => {
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5V4H2v16h5m10 0v-5a3 3 0 00-6 0v5m6 0H11" />
                                 </svg>
                             )}>Phân công</Button>
+                        )}
+                        {!actualUpdated && record.status !== APPOINTMENT_STATUS.REJECTED && !record.employeeId && (
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleAutoAssign(record.id)}
+                            >
+                                Auto assign
+                            </Button>
                         )}
                         {!actualUpdated && record.status !== APPOINTMENT_STATUS.REJECTED && (
                             <Button size="sm" variant="outline" iconOnly ariaLabel="Sửa" onClick={() => navigate(`/admin/appointments/${record.id}/edit`)} startIcon={(
@@ -451,6 +505,23 @@ const AppointmentManagementPage: React.FC = () => {
                             <option key={item.value} value={item.value}>{item.label}</option>
                         ))}
                     </select>
+                </div>
+            </Modal>
+
+            <Modal
+                isOpen={slotSuggestionOpen}
+                onClose={() => setSlotSuggestionOpen(false)}
+                title="Gợi ý khung giờ thay thế"
+                footer={<Button variant="primary" onClick={() => setSlotSuggestionOpen(false)}>Đóng</Button>}
+            >
+                <div className="space-y-2 text-sm text-gray-700">
+                    {slotSuggestions.length === 0 && <div>Không có khung giờ khả dụng.</div>}
+                    {slotSuggestions.map((slot) => (
+                        <div key={slot.at} className="rounded-lg border border-gray-200 px-3 py-2">
+                            <div className="font-medium text-gray-900">{formatDateTime(slot.at)}</div>
+                            <div className="text-xs text-gray-500">Nhân viên khả dụng: {slot.availableEmployees}</div>
+                        </div>
+                    ))}
                 </div>
             </Modal>
 

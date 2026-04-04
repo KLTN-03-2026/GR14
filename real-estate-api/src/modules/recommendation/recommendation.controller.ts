@@ -1,5 +1,5 @@
 import {
-    Controller, Get, Post, Body, Query, UseGuards, Req,
+    Controller, Get, Post, Body, Query, UseGuards, Req, UnauthorizedException,
     ParseIntPipe, DefaultValuePipe,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
@@ -7,7 +7,15 @@ import { RecommendationService } from './recommendation.service';
 
 @Controller('recommendations')
 export class RecommendationController {
-    constructor(private readonly recommendationService: RecommendationService) {}
+    constructor(private readonly recommendationService: RecommendationService) { }
+
+    private getCurrentUserId(user: any): number {
+        const userId = user?.id ?? user?.userId;
+        if (!userId) {
+            throw new UnauthorizedException('Không xác định được người dùng đăng nhập');
+        }
+        return userId;
+    }
 
     /**
      * GET /recommendations/houses?limit=5
@@ -19,7 +27,7 @@ export class RecommendationController {
         @Req() req: any,
         @Query('limit', new DefaultValuePipe(5), ParseIntPipe) limit: number,
     ) {
-        return this.recommendationService.getHouseRecommendations(req.user.userId, limit);
+        return this.recommendationService.getHouseRecommendations(this.getCurrentUserId(req.user), limit);
     }
 
     /**
@@ -32,7 +40,7 @@ export class RecommendationController {
         @Req() req: any,
         @Query('limit', new DefaultValuePipe(5), ParseIntPipe) limit: number,
     ) {
-        return this.recommendationService.getLandRecommendations(req.user.userId, limit);
+        return this.recommendationService.getLandRecommendations(this.getCurrentUserId(req.user), limit);
     }
 
     /**
@@ -45,7 +53,7 @@ export class RecommendationController {
         @Req() req: any,
         @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
     ) {
-        return this.recommendationService.getAIRecommendations(req.user.userId, limit);
+        return this.recommendationService.getAIRecommendations(this.getCurrentUserId(req.user), limit);
     }
 
     /**
@@ -59,7 +67,7 @@ export class RecommendationController {
         @Body() body: { action: string; houseId?: number; landId?: number },
     ) {
         return this.recommendationService.trackBehavior(
-            req.user.userId,
+            this.getCurrentUserId(req.user),
             body.action,
             body.houseId,
             body.landId,

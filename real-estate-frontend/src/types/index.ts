@@ -49,10 +49,26 @@ export interface Employee {
     id: number;
     code: string;
     startDate?: string;
+    city?: string;
+    district?: string;
+    maxAppointmentsPerDay?: number;
+    isActive?: boolean;
+    lastAssignedAt?: string;
     userId: number;
     createdAt: string;
     updatedAt: string;
     user?: User;
+    availabilities?: EmployeeAvailability[];
+}
+
+export interface EmployeeAvailability {
+    id: number;
+    employeeId: number;
+    startAt: string;
+    endAt: string;
+    type: 'available' | 'blocked';
+    createdAt: string;
+    updatedAt: string;
 }
 
 // ==================== PROPERTY ====================
@@ -141,6 +157,13 @@ export interface Appointment {
     customerId: number;
     employeeId?: number;
     appointmentDate: string;
+    durationMinutes?: number;
+    assignedAt?: string;
+    firstContactAt?: string;
+    slaAssignDeadlineAt?: string;
+    slaFirstContactDeadlineAt?: string;
+    slaStatus?: number; // 0: on_track, 1: at_risk, 2: breached
+    autoAssignReason?: string;
     status: number; // 0: pending, 1: approved, 2: rejected
     actualStatus?: number;
     cancelReason?: string;
@@ -152,30 +175,80 @@ export interface Appointment {
     employee?: Employee;
 }
 
+export interface AppointmentCalendarEvent {
+    id: number;
+    title: string;
+    start: string;
+    end: string;
+    allDay?: boolean;
+    extendedProps?: {
+        employeeId?: number;
+        employeeName?: string;
+        customerName?: string;
+        durationMinutes?: number;
+        location?: string;
+    };
+}
+
 // ==================== POST ====================
 
 export interface Post {
     id: number;
+    postType: string;
     title: string;
-    city: string;
-    district: string;
-    ward: string;
-    address: string;
+
+    // Common fields
+    city?: string;
+    district?: string;
+    ward?: string;
+    address?: string;
+    contactPhone?: string;
+    contactLink?: string;
     description: string;
-    price: number;
-    area: number;
     direction?: string;
+
+    // BĐS fields (SELL/RENT HOUSE/LAND)
+    price?: number;
+    area?: number;
+
+    // House fields (SELL_HOUSE, RENT_HOUSE)
+    bedrooms?: number;
+    bathrooms?: number;
+    floors?: number;
+
+    // Land fields (SELL_LAND, RENT_LAND)
+    frontWidth?: number;
+    landLength?: number;
+    landType?: string;
+    legalStatus?: string;
+
+    // NEED_BUY/NEED_RENT fields
+    minPrice?: number;
+    maxPrice?: number;
+    minArea?: number;
+    maxArea?: number;
+
+    // NEWS/PROMOTION fields
+    startDate?: string;
+    endDate?: string;
+    discountCode?: string;
+
+    // Status and VIP
     status: number;
     isVip?: boolean;
     vipExpiry?: string;
     vipPackageName?: string;
     vipPriorityLevel?: number;
     vipSubscriptionStatus?: number | null;
+
+    // User and timestamps
     userId: number;
     postedAt: string;
     approvedAt?: string;
     createdAt: string;
     updatedAt: string;
+
+    // Relations
     user?: User;
     images?: PostImage[];
 }

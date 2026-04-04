@@ -1,18 +1,34 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, Logger } from '@nestjs/common';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
+import helmet from 'helmet';
+import compression from 'compression';
+import { ConfigService } from '@nestjs/config';
 
 async function bootstrap() {
-  // ── Hybrid App: vừa là HTTP server, vừa là RabbitMQ consumer ──
-  const app = await NestFactory.create(AppModule);
+  const logger = new Logger('Bootstrap');
 
-  // Kết nối đến RabbitMQ và lắng nghe queue 'mail_queue'
-  // MailConsumerController sẽ handle các message từ queue này
+  // ── Hybrid App: HTTP server + RabbitMQ consumer ──
+  const app = await NestFactory.create(AppModule, {
+    logger: process.env.NODE_ENV === 'production'
+      ? ['error', 'warn', 'log']
+      : ['error', 'warn', 'log', 'debug', 'verbose'],
+  });
+
+  const configService = app.get(ConfigService);
+
+  // Security headers
+  app.use(helmet());
+
+  // Compression for responses
+  app.use(compression());
+
+  // Kết nối đến RabbitMQ
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
     options: {
-      urls: [process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672'],
+      urls: [configService.get('RABBITMQ_URL') || 'amqp://guest:guest@localhost:5672'],
       queue: 'mail_queue',
       queueOptions: {
         durable: true,
@@ -20,32 +36,54 @@ async function bootstrap() {
     },
   });
 
-  app.enableCors({
-    origin: ['http://localhost:3000', 'http://localhost:3001'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+  app.connectMicroservice<MicroserviceOptions>({
+    transport: Transport.RMQ,
+    options: {
+      urls: [configService.get('RABBITMQ_URL') || 'amqp://guest:guest@localhost:5672'],
+      queue: 'appointment_auto_assign_queue',
+      queueOptions: {
+        durable: true,
+      },
+    },
   });
 
-  app.useGlobalPipes( 
+  // CORS configuration
+  const frontendUrl = configService.get('FRONTEND_URL') || 'http://localhost:3000';
+  app.enableCors({
+    origin: process.env.NODE_ENV === 'production'
+      ? [frontendUrl]
+      : ['http://localhost:3000', 'http://localhost:3001'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+  });
+
+  // Validation pipe with optimization
+  app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       transform: true,
-      forbidNonWhitelisted: false,
+      forbidNonWhitelisted: true,
       transformOptions: {
-        enableImplicitConversion:true, 
-      }
+        enableImplicitConversion: true,
+      },
     }),
   );
 
   app.setGlobalPrefix('api');
 
-  // Khởi động microservice (RabbitMQ consumer) TRƯỚC khi bắt đầu HTTP server
-  await app.startAllMicroservices();
-  console.log('RabbitMQ consumer: listening on queue [mail_queue]');
+  // Graceful shutdown
+  app.enableShutdownHooks();
 
-  const port = process.env.PORT || 5000;
+  // Khởi động microservice trước HTTP server
+  await app.startAllMicroservices();
+  logger.log('RabbitMQ consumer: listening on queue [mail_queue]');
+  logger.log('RabbitMQ consumer: listening on queue [appointment_auto_assign_queue]');
+
+  const port = configService.get('PORT') || 5000;
   await app.listen(port);
-  console.log(`Server running at http://localhost:${port}`);
+  logger.log(`Server running at http://localhost:${port}`);
+  logger.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 }
 bootstrap();
 

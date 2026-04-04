@@ -1,15 +1,18 @@
 import apiClient from './client';
+import { PostType } from '../types/post';
 
 export const postApi = {
-    getApproved: (params?: { page?: number; limit?: number }) =>
+    getApproved: (params?: { page?: number; limit?: number; postType?: PostType }) =>
         apiClient.get('/posts/approved', { params }),
 
-    getPending: () =>
-        apiClient.get('/posts/pending'),
-    getAll: () =>
-        apiClient.get('/posts/all'),
-    getMyPosts: () =>
-        apiClient.get('/posts/my-posts'),
+    getPending: (params?: { postType?: PostType }) =>
+        apiClient.get('/posts/pending', { params }),
+
+    getAll: (params?: { postType?: PostType }) =>
+        apiClient.get('/posts/all', { params }),
+
+    getMyPosts: (params?: { postType?: PostType }) =>
+        apiClient.get('/posts/my-posts', { params }),
 
     getById: (id: number) =>
         apiClient.get(`/posts/${id}`),

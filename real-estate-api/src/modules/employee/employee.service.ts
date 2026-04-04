@@ -1,7 +1,10 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateEmployeeDto, UpdateEmployeeDto } from './dto/employee.dto';
+import {
+    CreateEmployeeDto,
+    UpdateEmployeeDto,
+} from './dto/employee.dto';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -70,6 +73,13 @@ export class EmployeeService {
             if (existedPhone && existedPhone.id !== excludeUserId) {
                 throw new BadRequestException('Số điện thoại đã tồn tại');
             }
+        }
+    }
+
+    private async ensureEmployeeExists(employeeId: number) {
+        const employee = await this.prisma.employee.findUnique({ where: { id: employeeId }, select: { id: true } });
+        if (!employee) {
+            throw new NotFoundException('Employee not found');
         }
     }
 
@@ -190,6 +200,10 @@ export class EmployeeService {
             data: {
                 code: dto.code,
                 startDate: dto.startDate ? new Date(dto.startDate) : new Date(),
+                city: this.normalizeOptional(dto.city),
+                ward: this.normalizeOptional(dto.ward ?? dto.district),
+                maxAppointmentsPerDay: dto.maxAppointmentsPerDay ?? 8,
+                isActive: dto.isActive ?? true,
                 userId: user.id,
             },
             include: {
@@ -280,6 +294,10 @@ export class EmployeeService {
             data: {
                 ...(dto.code && { code: dto.code }),
                 ...(dto.startDate && { startDate: new Date(dto.startDate) }),
+                ...(dto.city !== undefined && { city: this.normalizeOptional(dto.city) ?? null }),
+                ...((dto.ward !== undefined || dto.district !== undefined) && { ward: this.normalizeOptional(dto.ward ?? dto.district) ?? null }),
+                ...(dto.maxAppointmentsPerDay !== undefined && { maxAppointmentsPerDay: dto.maxAppointmentsPerDay }),
+                ...(dto.isActive !== undefined && { isActive: dto.isActive }),
             },
             include: {
                 user: {
