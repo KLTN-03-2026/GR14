@@ -83,7 +83,7 @@ export class RecommendationService {
         // 2. Fetch user behaviors + favorites
         const [behaviors, houseFavorites, landFavorites] = await Promise.all([
             this.prisma.userBehavior.findMany({
-                where: { userId },
+                where: { userId, action: { in: ['click', 'save'] } },
                 select: { houseId: true, landId: true, action: true },
                 orderBy: { createdAt: 'desc' },
                 take: 100,
@@ -651,20 +651,6 @@ export class RecommendationService {
             throw new UnauthorizedException('Không xác định được người dùng đăng nhập');
         }
 
-        // Avoid duplicate views within 5 minutes
-        if (action === 'view') {
-            const recent = await this.prisma.userBehavior.findFirst({
-                where: {
-                    userId,
-                    houseId: houseId || undefined,
-                    landId: landId || undefined,
-                    action: 'view',
-                    createdAt: { gte: new Date(Date.now() - 5 * 60 * 1000) },
-                },
-            });
-            if (recent) return { message: 'Already tracked recently' };
-        }
-
         await this.prisma.userBehavior.create({
             data: { userId, houseId, landId, action },
         });
@@ -693,7 +679,7 @@ export class RecommendationService {
 
         // 1. Get user behavior data
         const behaviors = await this.prisma.userBehavior.findMany({
-            where: { userId, houseId: { not: null } },
+            where: { userId, houseId: { not: null }, action: { in: ['click', 'save'] } },
             include: {
                 house: {
                     select: {
@@ -814,7 +800,7 @@ export class RecommendationService {
 
         // 1. Get user behavior data for lands
         const behaviors = await this.prisma.userBehavior.findMany({
-            where: { userId, landId: { not: null } },
+            where: { userId, landId: { not: null }, action: { in: ['click', 'save'] } },
             include: {
                 land: {
                     select: {

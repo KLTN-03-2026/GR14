@@ -363,12 +363,6 @@ const LandDetailPage: React.FC = () => {
         if (id) loadLand(Number(id));
     }, [id]);
 
-    // Track view behavior for AI recommendations
-    useEffect(() => {
-        if (!land || !isAuthenticated) return;
-        recommendationApi.trackBehavior({ action: 'view', landId: land.id }).catch(() => { });
-    }, [land, isAuthenticated]);
-
     const loadLand = async (landId: number) => {
         try {
             const res = await landApi.getById(landId);
@@ -392,6 +386,7 @@ const LandDetailPage: React.FC = () => {
                 await favoriteApi.removeLand(land!.id);
             } else {
                 await favoriteApi.addLand(land!.id);
+                recommendationApi.trackBehavior({ action: 'save', landId: land!.id }).catch(() => { });
             }
             setIsFavorited(!isFavorited);
             message.success(isFavorited ? 'Đã bỏ yêu thích' : 'Đã thêm vào yêu thích');
@@ -545,8 +540,8 @@ const LandDetailPage: React.FC = () => {
                             <button
                                 onClick={handleFavorite}
                                 className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border text-[14px] font-semibold mb-3 transition-all duration-200 ${isFavorited
-                                        ? 'bg-red-500 border-red-500 text-white hover:bg-red-600'
-                                        : 'bg-white border-gray-300 text-gray-700 hover:border-[#254b86] hover:text-[#254b86]'
+                                    ? 'bg-red-500 border-red-500 text-white hover:bg-red-600'
+                                    : 'bg-white border-gray-300 text-gray-700 hover:border-[#254b86] hover:text-[#254b86]'
                                     }`}
                             >
                                 {isFavorited ? <HeartFilled className="text-[15px]" /> : <HeartOutlined className="text-[15px]" />}

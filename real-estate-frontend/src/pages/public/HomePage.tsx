@@ -46,7 +46,7 @@ const HomePage: React.FC = () => {
         if (!isAuthenticated) return;
         recommendationApi.getAIRecommendations(8)
             .then(res => setAiRecs(res.data?.data || res.data || []))
-            .catch(() => {});
+            .catch(() => { });
     }, [isAuthenticated]);
 
     const loadData = async () => {
@@ -68,8 +68,8 @@ const HomePage: React.FC = () => {
     };
 
     const slides = [
-        { img: banner1, title: 'Tìm kiếm bất động sản lý tưởng',       desc: 'Hơn 10.000+ tin đăng mới mỗi ngày' },
-        { img: banner2, title: 'Khám phá không gian sống mơ ước',       desc: 'Nhà đẹp – Giá tốt – Pháp lý rõ ràng' },
+        { img: banner1, title: 'Tìm kiếm bất động sản lý tưởng', desc: 'Hơn 10.000+ tin đăng mới mỗi ngày' },
+        { img: banner2, title: 'Khám phá không gian sống mơ ước', desc: 'Nhà đẹp – Giá tốt – Pháp lý rõ ràng' },
         { img: banner3, title: 'Đầu tư thông minh – Sinh lời bền vững', desc: 'Cập nhật xu hướng thị trường nhanh nhất' },
     ];
 
@@ -99,6 +99,21 @@ const HomePage: React.FC = () => {
         return () => clearTimeout(timer);
     }, [houses, lands]);
 
+    const trackRecommendationClick = (rec: AIRecommendation) => {
+        if (!isAuthenticated) return;
+
+        recommendationApi.trackBehavior(
+            rec.propertyType === 'house'
+                ? { action: 'click', houseId: rec.id }
+                : { action: 'click', landId: rec.id },
+        ).catch(() => { });
+    };
+
+    const handleRecommendationNavigate = (rec: AIRecommendation) => {
+        trackRecommendationClick(rec);
+        navigate(`/${rec.propertyType === 'house' ? 'houses' : 'lands'}/${rec.id}`);
+    };
+
     return (
         <div>
 
@@ -107,9 +122,8 @@ const HomePage: React.FC = () => {
                 {slides.map((slide, index) => (
                     <div
                         key={index}
-                        className={`absolute inset-0 transition-all duration-1000 ease-in-out ${
-                            index === currentSlide ? 'opacity-100 scale-100 z-10' : 'opacity-0 scale-105 z-0'
-                        }`}
+                        className={`absolute inset-0 transition-all duration-1000 ease-in-out ${index === currentSlide ? 'opacity-100 scale-100 z-10' : 'opacity-0 scale-105 z-0'
+                            }`}
                     >
                         <img src={slide.img} className="w-full h-full object-cover brightness-110" />
                         <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/30 to-transparent" />
@@ -164,14 +178,14 @@ const HomePage: React.FC = () => {
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                             {aiRecs.map(rec => {
                                 const isHouse = rec.propertyType === 'house';
-                                const score   = Math.round(rec.recommendationScore * 100);
-                                const circ    = 2 * Math.PI * 17;
-                                const offset  = circ * (1 - rec.recommendationScore);
+                                const score = Math.round(rec.recommendationScore * 100);
+                                const circ = 2 * Math.PI * 17;
+                                const offset = circ * (1 - rec.recommendationScore);
 
                                 return (
                                     <div
                                         key={`${rec.propertyType}-${rec.id}`}
-                                        onClick={() => navigate(`/${isHouse ? 'houses' : 'lands'}/${rec.id}`)}
+                                        onClick={() => handleRecommendationNavigate(rec)}
                                         className="bg-white border border-gray-100 rounded-tl-3xl rounded-br-3xl overflow-hidden cursor-pointer shadow-sm hover:shadow-[0_8px_28px_rgba(37,75,134,0.14)] hover:-translate-y-1 transition-all duration-250 flex flex-col h-full group"
                                     >
                                         {/* Image */}
@@ -243,7 +257,7 @@ const HomePage: React.FC = () => {
                                                 )}
                                             </div>
 
-                                          
+
                                             <div
                                                 onClick={e => e.stopPropagation()}
                                                 className="bg-[#f8f9ff] border-l-[3px] border-[#254b86] rounded-r-md px-2.5 py-2 text-[11px] text-gray-500 leading-relaxed"
@@ -264,7 +278,11 @@ const HomePage: React.FC = () => {
                                                 </span>
                                                 <a
                                                     href={`/${isHouse ? 'houses' : 'lands'}/${rec.id}`}
-                                                    onClick={e => e.stopPropagation()}
+                                                    onClick={e => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        handleRecommendationNavigate(rec);
+                                                    }}
                                                     className="px-3.5 py-[5px] bg-[#254b86] text-white border-[1.5px] border-[#254b86] text-[12px] font-semibold rounded-lg hover:bg-white hover:text-[#254b86] transition-all duration-200 whitespace-nowrap no-underline"
                                                 >
                                                     Xem chi tiết
@@ -401,7 +419,7 @@ const HomePage: React.FC = () => {
                         {
                             icon: (
                                 <svg width="38" height="38" viewBox="0 0 24 24" fill="white">
-                                    <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+                                    <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
                                 </svg>
                             ),
                             label: 'MUA BÁN NHÀ',
@@ -418,7 +436,7 @@ const HomePage: React.FC = () => {
                         {
                             icon: (
                                 <svg width="38" height="38" viewBox="0 0 24 24" fill="white">
-                                    <path d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z"/>
+                                    <path d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z" />
                                 </svg>
                             ),
                             label: 'MUA BÁN ĐẤT',
@@ -435,7 +453,7 @@ const HomePage: React.FC = () => {
                         {
                             icon: (
                                 <svg width="38" height="38" viewBox="0 0 24 24" fill="white">
-                                    <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+                                    <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z" />
                                 </svg>
                             ),
                             label: 'BÀI VIẾT',
@@ -473,7 +491,7 @@ const HomePage: React.FC = () => {
                             <div className="qc-sub">{item.sub}</div>
                             <div className="qc-arrow">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                    <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                                    <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
                                 </svg>
                             </div>
                         </div>
@@ -489,7 +507,7 @@ const HomePage: React.FC = () => {
 
                 <div className="grid grid-cols-4 gap-4">
                     {/* Big card */}
-                    <div className="col-span-2 row-span-2 relative rounded-xl overflow-hidden group cursor-pointer sr-reveal" style={{'--sr-delay': '100ms'} as React.CSSProperties}>
+                    <div className="col-span-2 row-span-2 relative rounded-xl overflow-hidden group cursor-pointer sr-reveal" style={{ '--sr-delay': '100ms' } as React.CSSProperties}>
                         <img src="/src/assets/tphcm.jpg" className="w-full h-full object-cover group-hover:scale-105 transition" />
                         <div className="absolute inset-0 bg-black/40" />
                         <div className="absolute bottom-4 left-4 text-white">
@@ -500,12 +518,12 @@ const HomePage: React.FC = () => {
 
                     {/* Small cards */}
                     {[
-                        { name: 'Hà Nội',     img: hanoi,     total: 1103 },
-                        { name: 'Đà Nẵng',    img: danang,    total: 564  },
-                        { name: 'Cần Thơ',    img: cantho,    total: 73   },
+                        { name: 'Hà Nội', img: hanoi, total: 1103 },
+                        { name: 'Đà Nẵng', img: danang, total: 564 },
+                        { name: 'Cần Thơ', img: cantho, total: 73 },
                         { name: 'Bình Dương', img: binhduong, total: 1069 },
                     ].map((item, index) => (
-                        <div key={index} className="relative rounded-xl overflow-hidden group cursor-pointer sr-reveal" style={{'--sr-delay': `${(index + 2) * 100}ms`} as React.CSSProperties}>
+                        <div key={index} className="relative rounded-xl overflow-hidden group cursor-pointer sr-reveal" style={{ '--sr-delay': `${(index + 2) * 100}ms` } as React.CSSProperties}>
                             <img src={item.img} className="absolute inset-0 w-full h-full object-cover brightness-110 group-hover:scale-105 transition duration-500" />
                             <div className="absolute inset-0 bg-black/40" />
                             <div className="absolute bottom-2 left-3 text-white">
@@ -527,7 +545,7 @@ const HomePage: React.FC = () => {
                     {houses.map((house, idx) => (
                         <Col xs={24} sm={12} md={8} lg={6} key={house.id}
                             className="sr-reveal"
-                            style={{'--sr-delay': `${idx * 80}ms`} as React.CSSProperties}>
+                            style={{ '--sr-delay': `${idx * 80}ms` } as React.CSSProperties}>
                             <PropertyCard property={house} type="house" />
                         </Col>
                     ))}
@@ -544,7 +562,7 @@ const HomePage: React.FC = () => {
                     {lands.map((land, idx) => (
                         <Col xs={24} sm={12} md={8} lg={6} key={land.id}
                             className="sr-reveal"
-                            style={{'--sr-delay': `${idx * 80}ms`} as React.CSSProperties}>
+                            style={{ '--sr-delay': `${idx * 80}ms` } as React.CSSProperties}>
                             <PropertyCard property={land as any} type="land" />
                         </Col>
                     ))}
@@ -608,10 +626,10 @@ const HomePage: React.FC = () => {
             <div className="bg-gray-50 py-20 px-4">
                 <div className="max-w-[1200px] mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
                     {[
-                        { img: '/src/assets/bdsBan.png',   title: 'Bất động sản bán',      desc: 'Bạn có thể tìm thấy ngôi nhà mơ ước hoặc cơ hội đầu tư hấp dẫn thông qua lượng tin rao lớn, uy tín.' },
-                        { img: '/src/assets/bdsThue.png',  title: 'Bất động sản cho thuê', desc: 'Cập nhật thường xuyên các loại hình bất động sản cho thuê như nhà riêng, chung cư, văn phòng.' },
-                        { img: '/src/assets/duan.png',     title: 'Đánh giá dự án',        desc: 'Các video và bài viết đánh giá giúp bạn có góc nhìn khách quan trước khi đầu tư.' },
-                        { img: '/src/assets/wikibds.png',  title: 'Wiki BĐS',              desc: 'Cung cấp kiến thức, kinh nghiệm mua bán, đầu tư bất động sản và thông tin hữu ích.' },
+                        { img: '/src/assets/bdsBan.png', title: 'Bất động sản bán', desc: 'Bạn có thể tìm thấy ngôi nhà mơ ước hoặc cơ hội đầu tư hấp dẫn thông qua lượng tin rao lớn, uy tín.' },
+                        { img: '/src/assets/bdsThue.png', title: 'Bất động sản cho thuê', desc: 'Cập nhật thường xuyên các loại hình bất động sản cho thuê như nhà riêng, chung cư, văn phòng.' },
+                        { img: '/src/assets/duan.png', title: 'Đánh giá dự án', desc: 'Các video và bài viết đánh giá giúp bạn có góc nhìn khách quan trước khi đầu tư.' },
+                        { img: '/src/assets/wikibds.png', title: 'Wiki BĐS', desc: 'Cung cấp kiến thức, kinh nghiệm mua bán, đầu tư bất động sản và thông tin hữu ích.' },
                     ].map((item, index) => (
                         <div key={index} className="bg-white rounded-2xl p-6 shadow-sm hover:shadow-xl transition-all duration-300 text-center group">
                             <div className="w-[150px] h-[150px] mx-auto mb-5 flex items-center justify-center bg-blue-50 rounded-xl group-hover:bg-blue-100 transition">
