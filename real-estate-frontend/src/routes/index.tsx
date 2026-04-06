@@ -20,6 +20,7 @@ import VNPayCallbackPage from '@/pages/public/VNPayCallbackPage';
 import AppointmentBookingPage from '@/pages/public/AppointmentBookingPage';
 import PaymentResultPage from '@/pages/public/PaymentResultPage';
 
+import FengshuiPage from '@/pages/public/FengShui';
 // Auth pages
 import LoginPage from '@/pages/auth/LoginPage';
 import RegisterPage from '@/pages/auth/RegisterPage';
@@ -91,6 +92,7 @@ const router = createBrowserRouter([
             },
 
             { path: 'about', element: <AboutMe /> },
+            { path: 'fengshui', element: <FengshuiPage /> },
 
             // Protected public routes
             {
