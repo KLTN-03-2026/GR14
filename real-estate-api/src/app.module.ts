@@ -24,14 +24,17 @@ import { RecommendationModule } from './modules/recommendation/recommendation.mo
 import { CloudinaryModule } from './common/cloudinary/cloudinary.module';
 import { MailModule } from './common/mail/mail.module';
 import { FengshuiModule } from './modules/fengshui/fengshui.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    ThrottlerModule.forRoot([{
-      ttl: 60000,
-      limit: 100,
-    }]),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000,
+        limit: 100,
+      },
+    ]),
     PrismaModule,
     RedisModule,
     CloudinaryModule,
@@ -60,6 +63,7 @@ import { FengshuiModule } from './modules/fengshui/fengshui.module';
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
+    AnalyticsModule,
   ],
 })
-export class AppModule { }
+export class AppModule {}
