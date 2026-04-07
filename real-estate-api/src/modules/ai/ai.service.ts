@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+﻿import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
@@ -16,12 +16,26 @@ type ChatTurn = {
     at: string;
 };
 
+type IntentType =
+    | 'search_property'
+    | 'recommend_property'
+    | 'qa_real_estate'
+    | 'compare_property'
+    | 'generate_content'
+    | 'booking'
+    | 'upgrade_account'
+    | 'upgrade_listing'
+    | 'greeting'
+    | 'unknown';
+
 type ParsedIntent = {
+    type: IntentType;
     minPrice?: number;
     maxPrice?: number;
     location?: string;
     sourceType?: 'house' | 'land' | 'post';
     requiredKeyword?: string;
+    compareIds?: number[];
 };
 
 type VectorHit = {
@@ -161,8 +175,86 @@ export class AiService {
         const question = dto.question.trim();
         const sessionId = dto.sessionId.trim();
         const intent = this.parseIntent(question);
-        const hasIntentFilter = Boolean(intent.location) || intent.minPrice !== undefined || intent.maxPrice !== undefined;
+        const hasIntentFilter = Boolean(intent.location) || intent.minPrice !== undefined || intent.maxPrice !== undefined || Boolean(intent.sourceType);
         const noDataAnswer = 'Hiện tại mình chưa tìm thấy bất động sản nào phù hợp với yêu cầu của bạn.';
+
+        // Handle intents that don't need RAG lookup
+        const directResponse = this.handleDirectIntent(intent, question);
+        if (directResponse) {
+            const memoryKey = `ai:chat:${sessionId}`;
+            const summaryKey = `ai:chat:summary:${sessionId}`;
+            const memory = (await this.redis.get<ChatTurn[]>(memoryKey)) ?? [];
+            const summaryMemory = (await this.redis.get<string>(summaryKey)) ?? '';
+            const updated = await this.updateConversationMemory(memoryKey, summaryKey, memory, summaryMemory, question, directResponse.answer);
+            return {
+                ok: true,
+                sessionId,
+                answer: directResponse.answer,
+                structured: null,
+                intent,
+                confidence: 1,
+                sources: [],
+                relatedSources: [],
+                suggestedQuestions: directResponse.suggestedQuestions,
+                memoryTurns: updated.newMemory.length,
+            };
+        }
+
+        // Handle compare_property without explicit IDs — search DB by filters and auto-compare
+        if (intent.type === 'compare_property' && (!intent.compareIds || intent.compareIds.length < 2)) {
+            const hasFilter = Boolean(intent.location) || intent.minPrice !== undefined || intent.maxPrice !== undefined || Boolean(intent.sourceType);
+            if (hasFilter) {
+                const memoryKey = `ai:chat:${sessionId}`;
+                const summaryKey = `ai:chat:summary:${sessionId}`;
+                const memory = (await this.redis.get<ChatTurn[]>(memoryKey)) ?? [];
+                const summaryMemory = (await this.redis.get<string>(summaryKey)) ?? '';
+                const candidates = await this.findDbCandidatesByIntent(intent, 5);
+                if (candidates.length >= 2) {
+                    const ids = candidates
+                        .slice(0, 3)
+                        .map((c) => Number(c.payload?.sourceId))
+                        .filter((id) => Number.isFinite(id) && id > 0);
+                    if (ids.length >= 2) {
+                        const compareAnswer = await this.buildCompareAnswer(ids);
+                        const updated = await this.updateConversationMemory(memoryKey, summaryKey, memory, summaryMemory, question, compareAnswer.answer);
+                        return {
+                            ok: true,
+                            sessionId,
+                            answer: compareAnswer.answer,
+                            structured: null,
+                            intent,
+                            confidence: 1,
+                            sources: compareAnswer.sources,
+                            relatedSources: [],
+                            suggestedQuestions: compareAnswer.suggestedQuestions,
+                            memoryTurns: updated.newMemory.length,
+                        };
+                    }
+                }
+            }
+        }
+
+        // Handle compare_property with explicit IDs — fetch from DB directly
+        if (intent.type === 'compare_property' && intent.compareIds && intent.compareIds.length >= 2) {
+            const memoryKey = `ai:chat:${sessionId}`;
+            const summaryKey = `ai:chat:summary:${sessionId}`;
+            const memory = (await this.redis.get<ChatTurn[]>(memoryKey)) ?? [];
+            const summaryMemory = (await this.redis.get<string>(summaryKey)) ?? '';
+            const compareAnswer = await this.buildCompareAnswer(intent.compareIds);
+            const updated = await this.updateConversationMemory(memoryKey, summaryKey, memory, summaryMemory, question, compareAnswer.answer);
+            return {
+                ok: true,
+                sessionId,
+                answer: compareAnswer.answer,
+                structured: null,
+                intent,
+                confidence: 1,
+                sources: compareAnswer.sources,
+                relatedSources: [],
+                suggestedQuestions: compareAnswer.suggestedQuestions,
+                memoryTurns: updated.newMemory.length,
+            };
+        }
 
         const normalizedQuestion = this.normalizeText(question);
         const responseCacheKey = `ai:chat:resp:${encodeURIComponent(normalizedQuestion).slice(0, 200)}`;
@@ -177,6 +269,7 @@ export class AiService {
             sources: ChatSourcePayload[];
             relatedSources?: ChatSourcePayload[];
             confidence: number;
+            suggestedQuestions?: string[];
         }>(responseCacheKey);
         timings.cacheMs = Date.now() - cacheStartedAt;
         if (cachedResponse) {
@@ -195,6 +288,7 @@ export class AiService {
                 confidence: cachedResponse.confidence,
                 sources: cachedResponse.sources,
                 relatedSources: cachedResponse.relatedSources ?? [],
+                suggestedQuestions: cachedResponse.suggestedQuestions ?? [],
                 memoryTurns: updated.newMemory.length,
             };
         }
@@ -272,12 +366,15 @@ export class AiService {
                 answer: noDataAnswer,
                 sources: [],
                 relatedSources,
+                suggestedQuestions: ['Tìm nhà dưới 3 tỷ', 'Tìm đất nền giá rẻ', 'Kinh nghiệm mua nhà lần đầu'],
                 confidence: 0,
                 sessionId,
                 intent,
                 memoryTurns: updated.newMemory.length,
             };
         }
+
+        const defaultSuggestions = this.buildSuggestedQuestions(intent, hits);
 
         // Fast mode skips LLM generation for better UX latency.
         if (this.fastMode || !this.enableLlm) {
@@ -291,6 +388,7 @@ export class AiService {
                     answer,
                     sources: hits.map((h) => ({ ...h.payload, score: h.score })),
                     relatedSources,
+                    suggestedQuestions: defaultSuggestions,
                     confidence: hits[0]?.score || 0,
                 },
                 this.responseCacheTtlSec,
@@ -311,6 +409,7 @@ export class AiService {
                 confidence: hits[0]?.score || 0,
                 sources: hits.map((h) => ({ ...h.payload, score: h.score })),
                 relatedSources,
+                suggestedQuestions: defaultSuggestions,
                 memoryTurns: updated.newMemory.length,
             };
         }
@@ -335,10 +434,34 @@ export class AiService {
             })
             .join('\n\n');
 
+        const intentInstructions = this.buildIntentInstructions(intent);
+
         const promptParts = [
-            'Ban la tro ly bat dong san. Tra loi bang TIENG VIET va CHI dung du lieu trong CONTEXT.',
-            'Tra ve JSON hop le theo schema: {"summary":"string","recommendations":[{"title":"string","location":"string","price":"number","area":"number","reason":"string","source":"string","url":"string"}],"followUp":"string"}.',
-            'Neu khong du thong tin, tra ve: {"summary":"Hiện tại mình chưa tìm thấy bất động sản nào phù hợp với yêu cầu của bạn.","recommendations":[],"followUp":""}.',
+            '===SYSTEM===',
+            'Ban la tro ly AI tu van bat dong san chuyen nghiep cho nen tang Real Estate Viet Nam.',
+            'LUON tra loi bang TIENG VIET. Giong dieu than thien, ro rang, chuyen nghiep.',
+            '',
+            '===NHIEM VU===',
+            `Intent hien tai: ${intent.type}`,
+            intentInstructions,
+            '',
+            '===QUY TAC CHUNG===',
+            '1. Chi dung du lieu tu CONTEXT de goi y BDS. Khong duoc bịa thong tin.',
+            '2. Neu context co BDS, PHAI goi y cu the voi ly do ro rang (vi tri, gia, dien tich, tien ich).',
+            '3. Moi goi y can co sourceId de nguoi dung co the xem chi tiet hoac so sanh.',
+            '4. Neu khong du du lieu, tra loi trung thuc va huong dan nguoi dung.',
+            '5. Luon them suggestedQuestions phu hop voi nhu cau nguoi dung.',
+            '',
+            '===DINH DANG TRA LOI (JSON BAT BUOC)===',
+            'Tra ve JSON chinh xac theo schema:',
+            '{"summary":"string","recommendations":[{"title":"string","location":"string","price":number,"area":number,"bedrooms":number,"floors":number,"direction":"string","reason":"string","source":"string","sourceId":number,"url":"string"}],"followUp":"string","suggestedQuestions":["string"]}',
+            'Trong do:',
+            '- summary: tom tat ngan gon ve ket qua tim kiem',
+            '- recommendations: danh sach BDS phu hop (toi da 3), PHAI co sourceId',
+            '- reason: ly do cu the tai sao BDS nay phu hop voi nhu cau nguoi dung',
+            '- followUp: goi y tiep theo hoac cau hoi lam ro nhu cau',
+            '- suggestedQuestions: 2-3 cau hoi goi y tiep theo',
+            'Neu khong tim thay BDS nao: {"summary":"Hien tai minh chua tim thay BDS phu hop. Ban co the mo ta them nhu cau?","recommendations":[],"followUp":"","suggestedQuestions":["Tim nha duoi 3 ty","Tim dat nen gia re"]}',
         ];
 
         if (recentMemory.length > 0) {
@@ -386,6 +509,12 @@ export class AiService {
             answer = this.toFastAnswer(hits);
         }
 
+        // Extract suggestedQuestions from LLM structured output if available
+        const llmSuggestions = Array.isArray(structured?.suggestedQuestions)
+            ? (structured.suggestedQuestions as string[]).filter((s) => typeof s === 'string' && s.trim().length > 0).slice(0, 3)
+            : [];
+        const suggestedQuestions = llmSuggestions.length > 0 ? llmSuggestions : defaultSuggestions;
+
         const updated = await this.updateConversationMemory(memoryKey, summaryKey, memory, summaryMemory, question, answer);
         await this.redis.set(
             responseCacheKey,
@@ -393,6 +522,7 @@ export class AiService {
                 answer,
                 sources: hits.map((h) => ({ ...h.payload, score: h.score })),
                 relatedSources,
+                suggestedQuestions,
                 confidence: hits[0]?.score || 0,
             },
             this.responseCacheTtlSec,
@@ -413,6 +543,7 @@ export class AiService {
             confidence: hits[0]?.score || 0,
             sources: hits.map((h) => ({ ...h.payload, score: h.score })),
             relatedSources,
+            suggestedQuestions,
             memoryTurns: updated.newMemory.length,
         };
     }
@@ -443,6 +574,368 @@ export class AiService {
         await this.redis.set(summaryKey, newSummary, 24 * 60 * 60);
 
         return { newMemory, newSummary };
+    }
+
+    private async buildCompareAnswer(ids: number[]): Promise<{
+        answer: string;
+        sources: ChatSourcePayload[];
+        suggestedQuestions: string[];
+    }> {
+        // Try to find each ID in house OR land table
+        const findById = async (id: number) => {
+            const house = await this.prisma.house.findUnique({ where: { id } });
+            if (house) return { type: 'house' as const, data: house as Record<string, unknown> };
+            const land = await this.prisma.land.findUnique({ where: { id } });
+            if (land) return { type: 'land' as const, data: land as Record<string, unknown> };
+            return null;
+        };
+
+        const results = await Promise.all(ids.map(findById));
+        const found = results.filter((r): r is NonNullable<typeof r> => r !== null);
+
+        if (found.length < 2) {
+            const missing = ids.filter((_, i) => results[i] === null);
+            return {
+                answer: `Mình không tìm thấy bất động sản với ID: ${missing.join(', ')}. Vui lòng kiểm tra lại mã tin. Bạn có thể tìm kiếm để lấy mã tin đúng.`,
+                sources: [],
+                suggestedQuestions: ['Tìm nhà dưới 5 tỷ', 'Tìm đất nền giá rẻ'],
+            };
+        }
+
+        const sources: ChatSourcePayload[] = [];
+
+        // Build property detail table rows
+        const propertyRows = found.map((item, idx) => {
+            const d = item.data;
+            const price = this.toNumber(d.price);
+            const area = this.toNumber(d.area);
+            const pricePerM2 = area > 0 ? Math.round(price / area) : 0;
+            const url = `${this.frontendUrl}/${item.type === 'house' ? 'houses' : 'lands'}/${String(d.id)}`;
+            const typeLabel = item.type === 'house' ? 'Nhà' : 'Đất';
+
+            sources.push({
+                source: item.type,
+                sourceId: d.id,
+                title: d.title,
+                city: d.city,
+                district: d.district,
+                price,
+                area,
+                url,
+            });
+
+            return {
+                idx: idx + 1,
+                id: d.id,
+                type: typeLabel,
+                title: String(d.title || 'N/A'),
+                location: `${String(d.street || '')} ${String(d.ward || '')} ${String(d.district || '')}, ${String(d.city || '')}`,
+                price,
+                priceFormatted: this.formatVnd(price),
+                area,
+                areaFormatted: this.formatArea(area),
+                pricePerM2,
+                pricePerM2Formatted: this.formatVnd(pricePerM2),
+                url,
+            };
+        });
+
+        // Generate comparison analysis
+        const sorted = [...found].sort((a, b) => this.toNumber(a.data.price) - this.toNumber(b.data.price));
+        const cheapest = sorted[0];
+        const cheapestIdx = found.indexOf(cheapest) + 1;
+        const cheapestPrice = this.toNumber(cheapest.data.price);
+
+        const largest = found.reduce((best, cur) =>
+            this.toNumber(cur.data.area) > this.toNumber(best.data.area) ? cur : best);
+        const largestIdx = found.indexOf(largest) + 1;
+        const largestArea = this.toNumber(largest.data.area);
+
+        const bestValue = found.reduce((best, cur) => {
+            const curArea = this.toNumber(cur.data.area);
+            const bestArea = this.toNumber(best.data.area);
+            if (curArea <= 0) return best;
+            if (bestArea <= 0) return cur;
+            const curPM = this.toNumber(cur.data.price) / curArea;
+            const bestPM = this.toNumber(best.data.price) / bestArea;
+            return curPM < bestPM ? cur : best;
+        });
+        const bestValueIdx = found.indexOf(bestValue) + 1;
+        const bestValuePM = Math.round(this.toNumber(bestValue.data.price) / Math.max(1, this.toNumber(bestValue.data.area)));
+        const maxPrice = Math.max(...propertyRows.map((r) => r.price), 1);
+        const maxArea = Math.max(...propertyRows.map((r) => r.area), 1);
+
+        const propertyCardsHtml = propertyRows
+            .map((row) => {
+                const isCheapest = row.idx === cheapestIdx;
+                const isLargest = row.idx === largestIdx;
+                const isBestValue = row.idx === bestValueIdx;
+                const priceBar = Math.round((row.price / maxPrice) * 100);
+                const areaBar = Math.round((row.area / maxArea) * 100);
+                const badges = [
+                    isCheapest ? 'GIÁ TỐT NHẤT' : '',
+                    isLargest ? 'DIỆN TÍCH LỚN' : '',
+                    isBestValue ? 'GIÁ/M² TỐT' : '',
+                ].filter((b) => b);
+                const badgesHtml = badges
+                    .map(
+                        (b) =>
+                            `<span style="display:inline-block;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:2px 8px;border-radius:12px;font-size:11px;margin-right:4px;font-weight:600;">${b}</span>`,
+                    )
+                    .join('');
+                const cardBg = isCheapest || isBestValue ? '#f0f7ff' : '#ffffff';
+                const cardBorder = badges.length > 0 ? '2px solid #667eea' : '1px solid #e0e0e0';
+
+                return `
+<div style="background:${cardBg};border:${cardBorder};border-radius:8px;padding:12px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+    <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px;">
+        <span style="font-weight:700;color:#667eea;font-size:14px;">Căn ${row.idx} (ID ${row.id})</span>
+        <span style="font-size:11px;color:#666;">${row.type}</span>
+    </div>
+    ${badgesHtml ? `<div style="margin-bottom:8px;">${badgesHtml}</div>` : ''}
+    <div style="background:#f9f9f9;padding:8px;border-radius:4px;margin-bottom:8px;font-size:12px;line-height:1.4;color:#333;">
+        <strong>${row.title.substring(0, 60)}${row.title.length > 60 ? '...' : ''}</strong><br/>
+        <span style="color:#666;font-size:11px;">${row.location.substring(0, 50)}${row.location.length > 50 ? '...' : ''}</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+        <div>
+            <span style="font-size:11px;color:#666;font-weight:500;">Giá</span>
+            <div style="font-weight:700;color:#d32f2f;font-size:13px;">${row.priceFormatted}</div>
+            <div style="width:100%;height:4px;background:#e0e0e0;border-radius:2px;margin-top:4px;overflow:hidden;">
+                <div style="height:100%;background:linear-gradient(90deg,#d32f2f,#f44336);width:${priceBar}%;border-radius:2px;"></div>
+            </div>
+        </div>
+        <div>
+            <span style="font-size:11px;color:#666;font-weight:500;">Diện tích</span>
+            <div style="font-weight:700;color:#1976d2;font-size:13px;">${row.areaFormatted}</div>
+            <div style="width:100%;height:4px;background:#e0e0e0;border-radius:2px;margin-top:4px;overflow:hidden;">
+                <div style="height:100%;background:linear-gradient(90deg,#1976d2,#42a5f5);width:${areaBar}%;border-radius:2px;"></div>
+            </div>
+        </div>
+    </div>
+    <div style="background:#f5f5f5;padding:6px 8px;border-radius:4px;text-align:center;font-size:13px;color:#333;font-weight:600;">
+        ${row.pricePerM2Formatted}/m² <span style="color:#999;">|</span> ${row.type}
+    </div>
+</div>`;
+            })
+            .join('');
+
+        const htmlTable = `
+<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:12px 0;max-width:100%;">
+    <h3 style="color:#1a1a1a;margin:0 0 16px 0;font-size:16px;font-weight:700;">So sánh ${found.length} bất động sản</h3>
+    <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px;">${propertyCardsHtml}</div>
+    <div style="background:linear-gradient(135deg,#f0f7ff 0%,#e3f2fd 100%);border-left:4px solid #2196F3;padding:12px;border-radius:6px;margin-bottom:12px;">
+        <h4 style="color:#1565c0;margin:0 0 10px 0;font-size:13px;font-weight:700;">KẾT LUẬN PHÂN TÍCH</h4>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;color:#333;line-height:1.6;">
+            <div style="background:rgba(211,47,47,0.08);padding:8px;border-radius:4px;border-left:3px solid #d32f2f;"><strong style="color:#d32f2f;">Giá rẻ nhất</strong><br/>Căn ${cheapestIdx}: ${this.formatVnd(cheapestPrice)}</div>
+            <div style="background:rgba(25,118,210,0.08);padding:8px;border-radius:4px;border-left:3px solid #1976d2;"><strong style="color:#1976d2;">Diện tích lớn</strong><br/>Căn ${largestIdx}: ${this.formatArea(largestArea)}</div>
+            <div style="background:rgba(251,192,45,0.1);padding:8px;border-radius:4px;border-left:3px solid #fbc02d;grid-column:1/3;"><strong style="color:#f57f17;">Giá/m² tốt nhất</strong> - Căn ${bestValueIdx}: <strong style="color:#d32f2f;">${this.formatVnd(bestValuePM)}/m²</strong></div>
+        </div>
+    </div>
+    <div style="background:#fff9c4;border-left:4px solid #fbc02d;padding:12px;border-radius:6px;color:#f57f17;font-size:12px;">
+        <strong>Bạn muốn xem chi tiết hoặc tìm thêm lựa chọn khác?</strong>
+    </div>
+</div>`.trim();
+
+        return {
+            answer: htmlTable,
+            sources,
+            suggestedQuestions: [
+                `Xem chi tiết ID ${String(found[0].data.id)}`,
+                'Tìm nhà tương tự dưới 5 tỷ',
+                'Kinh nghiệm mua nhà lần đầu',
+            ],
+        };
+    }
+
+    private buildIntentInstructions(intent: ParsedIntent): string {
+        switch (intent.type) {
+            case 'search_property':
+                return [
+                    'NHIEM VU: Tim kiem BDS phu hop voi yeu cau.',
+                    'Phan tich: loai BDS (nha/dat), vi tri, khoang gia, dien tich, so phong.',
+                    'Giai thich ro tai sao moi BDS trong CONTEXT phu hop voi nhu cau.',
+                    intent.maxPrice ? `Ngan sach toi da: ${this.formatVnd(intent.maxPrice)}. Chi goi y BDS trong ngan sach.` : '',
+                    intent.location ? `Vi tri yeu cau: ${intent.location}.` : '',
+                ].filter(Boolean).join('\n');
+
+            case 'recommend_property':
+                return [
+                    'NHIEM VU: Tu van va goi y BDS phu hop nhat voi nhu cau.',
+                    'Phan tich ky: ngan sach, so thanh vien gia dinh, vi tri uu tien, tien ich can thiet.',
+                    'Giai thich CHI TIET ly do goi y: vi tri tien loi, gia hop ly, dien tich du rong, tien ich gan.',
+                    'Neu thieu thong tin (ngan sach, vi tri), dat cau hoi lam ro trong followUp.',
+                    intent.maxPrice ? `Ngan sach nguoi dung: ${this.formatVnd(intent.maxPrice)}.` : '',
+                ].filter(Boolean).join('\n');
+
+            case 'compare_property':
+                return [
+                    'NHIEM VU: So sanh cac BDS trong CONTEXT theo tieu chi ro rang.',
+                    'So sanh theo: gia, gia/m², dien tich, vi tri, so phong ngu, uu/nhuoc diem.',
+                    'Ket luan: BDS nao phu hop nhat cho nhu cau gi cu the.',
+                    'Trong summary neu ro BDS nao re nhat, rong nhat, gia/m² tot nhat.',
+                ].join('\n');
+
+            case 'recommend_property':
+                return 'NHIEM VU: Tu van BDS phu hop. Phan tich ngan sach, vi tri, nhu cau gia dinh. Giai thich ro ly do goi y.';
+
+            default:
+                return 'NHIEM VU: Tra loi cau hoi va goi y BDS phu hop tu CONTEXT.';
+        }
+    }
+
+    private handleDirectIntent(intent: ParsedIntent, question: string): { answer: string; suggestedQuestions: string[] } | null {
+
+        if (intent.type === 'greeting') {
+            return {
+                answer: 'Xin chào! Mình là trợ lý AI bất động sản. Mình có thể giúp bạn tìm nhà, đất, tư vấn giá, hoặc giải đáp thắc mắc về bất động sản. Bạn cần hỗ trợ gì?',
+                suggestedQuestions: [
+                    'Tìm nhà dưới 3 tỷ ở Đà Nẵng',
+                    'Sổ hồng là gì?',
+                    'Tìm đất nền giá rẻ',
+                ],
+            };
+        }
+
+        if (intent.type === 'qa_real_estate') {
+            const qaAnswer = this.answerQA(question);
+            if (qaAnswer) return qaAnswer;
+        }
+
+        if (intent.type === 'booking') {
+            return {
+                answer: 'Bạn muốn đặt lịch xem nhà/đất nào? Vui lòng cho mình biết:\n- Mã tin hoặc tên bất động sản\n- Ngày và giờ bạn muốn xem\n\nMình sẽ hỗ trợ đặt lịch ngay cho bạn.',
+                suggestedQuestions: [
+                    'Tìm nhà ở Quận 7',
+                    'Tìm đất nền Bình Dương',
+                ],
+            };
+        }
+
+        if (intent.type === 'upgrade_account') {
+            return {
+                answer: 'Để nâng cấp tài khoản VIP, bạn sẽ được hưởng các quyền lợi:\n- Đăng tin ưu tiên\n- Hiển thị nổi bật trên trang chủ\n- Hỗ trợ chuyên viên tư vấn\n\nBạn muốn nâng cấp gói nào? Vui lòng liên hệ admin hoặc vào trang quản lý tài khoản để thực hiện.',
+                suggestedQuestions: [
+                    'Tìm nhà dưới 5 tỷ',
+                    'Đất nền giá rẻ ở đâu?',
+                ],
+            };
+        }
+
+        if (intent.type === 'upgrade_listing') {
+            return {
+                answer: 'Để đẩy tin hoặc nâng cấp tin đăng nổi bật, bạn có thể vào mục "Quản lý tin đăng" trong tài khoản và chọn gói phù hợp. Tin nổi bật sẽ được hiển thị ưu tiên trên trang chủ và kết quả tìm kiếm.',
+                suggestedQuestions: [
+                    'Tìm nhà ở Hà Nội',
+                    'Kinh nghiệm mua nhà lần đầu',
+                ],
+            };
+        }
+
+        if (intent.type === 'generate_content') {
+            return {
+                answer: 'Bạn muốn mình hỗ trợ viết bài đăng bán/cho thuê bất động sản? Vui lòng cung cấp thông tin:\n- Loại BĐS (nhà, đất, căn hộ...)\n- Vị trí, diện tích, giá\n- Đặc điểm nổi bật\n\nMình sẽ soạn bài đăng hấp dẫn cho bạn.',
+                suggestedQuestions: [
+                    'Tìm nhà dưới 3 tỷ',
+                    'Sổ hồng là gì?',
+                ],
+            };
+        }
+
+        if (intent.type === 'compare_property') {
+            if (intent.compareIds && intent.compareIds.length >= 2) {
+                // IDs were parsed — let RAG handle it with context
+                return null;
+            }
+            // No explicit IDs — fall through to RAG search so the chatbot
+            // can find matching properties and present them for comparison
+            // instead of just showing instructions.
+            return null;
+        }
+
+        return null;
+    }
+
+    private answerQA(question: string): { answer: string; suggestedQuestions: string[] } | null {
+        const normalized = this.normalizeText(question);
+        const qaBank: { pattern: RegExp; answer: string; suggestedQuestions: string[] }[] = [
+            {
+                pattern: /\bso hong\b/,
+                answer: 'Sổ hồng (Giấy chứng nhận quyền sử dụng đất, quyền sở hữu nhà ở và tài sản khác gắn liền với đất) là văn bản pháp lý do Nhà nước cấp cho chủ sở hữu bất động sản. Đây là giấy tờ quan trọng nhất khi mua bán nhà đất, giúp đảm bảo quyền lợi hợp pháp của người sở hữu.\n\nLưu ý khi mua nhà:\n- Kiểm tra sổ hồng chính chủ\n- Xác minh thông tin trên sổ với thực tế\n- Kiểm tra có bị thế chấp hay tranh chấp không',
+                suggestedQuestions: ['Sổ đỏ khác sổ hồng thế nào?', 'Thủ tục mua bán nhà đất', 'Tìm nhà có sổ hồng'],
+            },
+            {
+                pattern: /\bso do\b/,
+                answer: 'Sổ đỏ là tên gọi dân gian của Giấy chứng nhận quyền sử dụng đất (bìa đỏ). Hiện nay, sổ đỏ và sổ hồng đã được hợp nhất thành một loại giấy chứng nhận duy nhất, thường gọi chung là "sổ hồng".\n\nSự khác biệt trước đây:\n- Sổ đỏ: cấp cho đất không có nhà\n- Sổ hồng: cấp cho nhà ở và đất ở đô thị',
+                suggestedQuestions: ['Sổ hồng là gì?', 'Thủ tục sang tên sổ đỏ', 'Tìm đất nền có sổ'],
+            },
+            {
+                pattern: /\b(cong chung|thu tuc|sang ten)\b/,
+                answer: 'Thủ tục công chứng mua bán nhà đất gồm các bước chính:\n1. Hai bên thỏa thuận giá và điều khoản\n2. Chuẩn bị hồ sơ: CMND/CCCD, sổ hồng, hợp đồng mua bán\n3. Công chứng hợp đồng tại văn phòng công chứng\n4. Nộp thuế (thuế thu nhập cá nhân 2%, lệ phí trước bạ 0.5%)\n5. Đăng ký sang tên tại Văn phòng đăng ký đất đai\n\nThời gian: khoảng 15-30 ngày làm việc.',
+                suggestedQuestions: ['Phí công chứng bao nhiêu?', 'Tìm nhà ở Đà Nẵng', 'Kinh nghiệm mua nhà lần đầu'],
+            },
+            {
+                pattern: /\b(thue|phi|le phi|truoc ba)\b.*\b(mua|ban|nha|dat)\b|\b(mua|ban|nha|dat)\b.*\b(thue|phi|le phi)\b/,
+                answer: 'Các loại thuế/phí khi mua bán bất động sản:\n- Thuế thu nhập cá nhân (TNCN): 2% giá bán (người bán chịu)\n- Lệ phí trước bạ: 0.5% giá trị BĐS (người mua chịu)\n- Phí công chứng: theo biểu phí quy định\n- Phí thẩm định hồ sơ: khoảng 0.15% giá trị BĐS\n\nLưu ý: Một số trường hợp được miễn thuế TNCN (nhà duy nhất, sở hữu trên 5 năm...).',
+                suggestedQuestions: ['Thủ tục mua bán nhà đất', 'Sổ hồng là gì?', 'Tìm nhà dưới 3 tỷ'],
+            },
+            {
+                pattern: /\b(kinh nghiem|luu y|loi khuyen)\b.*\b(mua)\b|\b(mua)\b.*\b(lan dau|luu y|kinh nghiem)\b/,
+                answer: 'Kinh nghiệm mua nhà lần đầu:\n1. Xác định ngân sách rõ ràng (bao gồm phí phát sinh)\n2. Ưu tiên vị trí: gần trường học, bệnh viện, chợ\n3. Kiểm tra pháp lý: sổ hồng, quy hoạch, tranh chấp\n4. Xem nhà thực tế nhiều lần, nhiều thời điểm\n5. Kiểm tra kết cấu, hệ thống điện nước\n6. So sánh giá với khu vực lân cận\n7. Thương lượng giá hợp lý\n8. Sử dụng dịch vụ công chứng uy tín\n\nĐừng vội vàng, hãy tìm hiểu kỹ trước khi quyết định!',
+                suggestedQuestions: ['Tìm nhà dưới 3 tỷ', 'Sổ hồng là gì?', 'Thủ tục mua bán nhà đất'],
+            },
+            {
+                pattern: /\b(phong thuy|feng\s*shui|huong nha|tuoi)\b/,
+                answer: 'Phong thủy khi mua nhà là yếu tố nhiều người Việt quan tâm:\n- Hướng nhà: nên chọn hướng hợp tuổi gia chủ\n- Hình dáng đất: vuông vức là tốt nhất\n- Đường vào nhà: tránh ngõ cụt, đường đâm thẳng vào nhà\n- Xung quanh: tránh gần nghĩa trang, bệnh viện, đường cao tốc\n\nTuy nhiên, vị trí, giá cả và pháp lý vẫn là yếu tố quan trọng nhất khi quyết định mua.',
+                suggestedQuestions: ['Tìm nhà hướng Đông', 'Kinh nghiệm mua nhà lần đầu', 'Tìm đất nền giá rẻ'],
+            },
+        ];
+
+        for (const qa of qaBank) {
+            if (qa.pattern.test(normalized)) {
+                return { answer: qa.answer, suggestedQuestions: qa.suggestedQuestions };
+            }
+        }
+
+        return null;
+    }
+
+    private buildSuggestedQuestions(intent: ParsedIntent, hits: VectorHit[]): string[] {
+        const suggestions: string[] = [];
+        const firstHit = hits[0]?.payload;
+
+        // Suggest comparing when multiple results are found
+        if (hits.length >= 2) {
+            const id1 = Number(hits[0]?.payload?.sourceId);
+            const id2 = Number(hits[1]?.payload?.sourceId);
+            if (Number.isFinite(id1) && id1 > 0 && Number.isFinite(id2) && id2 > 0) {
+                suggestions.push(`So sánh ID ${id1} và ID ${id2}`);
+            }
+        }
+
+        if (firstHit) {
+            const city = String(firstHit.city || '');
+            const source = String(firstHit.source || '');
+            if (city) {
+                suggestions.push(`Tìm ${source === 'land' ? 'đất' : 'nhà'} khác ở ${city}`);
+            }
+        }
+
+        if (intent.minPrice || intent.maxPrice) {
+            suggestions.push('Xem thêm bất động sản giá tương tự');
+        } else {
+            suggestions.push('Tìm nhà dưới 3 tỷ');
+        }
+
+        if (!intent.location) {
+            suggestions.push('Tìm bất động sản ở Đà Nẵng');
+        }
+
+        if (suggestions.length < 3) {
+            suggestions.push('Kinh nghiệm mua nhà lần đầu');
+        }
+
+        return suggestions.slice(0, 3);
     }
 
     private compactMemoryText(value: string, limit: number): string {
@@ -538,6 +1031,10 @@ export class AiService {
         const id = 1_000_000 + Number(house.id || 0);
         const price = this.toNumber(house.price);
         const area = this.toNumber(house.area);
+        const bedrooms = Number(house.bedrooms ?? 0);
+        const bathrooms = Number(house.bathrooms ?? 0);
+        const floors = Number(house.floors ?? 0);
+        const direction = String(house.direction || '');
 
         const payload: Record<string, unknown> = {
             source: 'house',
@@ -549,6 +1046,10 @@ export class AiService {
             street: house.street || '',
             price,
             area,
+            bedrooms,
+            bathrooms,
+            floors,
+            direction,
             description: house.description || '',
             url: `${this.frontendUrl}/houses/${house.id}`,
         };
@@ -559,8 +1060,12 @@ export class AiService {
             `Vi tri: ${payload.street}, ${payload.ward}, ${payload.district}, ${payload.city}`,
             `Gia: ${payload.price}`,
             `Dien tich: ${payload.area}`,
+            bedrooms > 0 ? `Phong ngu: ${bedrooms}` : '',
+            bathrooms > 0 ? `Phong tam: ${bathrooms}` : '',
+            floors > 0 ? `So tang: ${floors}` : '',
+            direction ? `Huong: ${direction}` : '',
             `Mo ta: ${String(house.description || '')}`,
-        ].join('\n');
+        ].filter(Boolean).join('\n');
 
         return { id, text, payload };
     }
@@ -569,6 +1074,10 @@ export class AiService {
         const id = 2_000_000 + Number(land.id || 0);
         const price = this.toNumber(land.price);
         const area = this.toNumber(land.area);
+        const direction = String(land.direction || '');
+        const legalStatus = String(land.legalStatus || land.legal_status || '');
+        const landType = String(land.landType || land.land_type || '');
+        const frontWidth = this.toNumber(land.frontWidth ?? land.front_width);
 
         const payload: Record<string, unknown> = {
             source: 'land',
@@ -580,6 +1089,10 @@ export class AiService {
             street: land.street || '',
             price,
             area,
+            direction,
+            legalStatus,
+            landType,
+            frontWidth,
             description: land.description || '',
             url: `${this.frontendUrl}/lands/${land.id}`,
         };
@@ -590,8 +1103,12 @@ export class AiService {
             `Vi tri: ${payload.street}, ${payload.ward}, ${payload.district}, ${payload.city}`,
             `Gia: ${payload.price}`,
             `Dien tich: ${payload.area}`,
+            direction ? `Huong: ${direction}` : '',
+            legalStatus ? `Phap ly: ${legalStatus}` : '',
+            landType ? `Loai dat: ${landType}` : '',
+            frontWidth > 0 ? `Mat tien: ${frontWidth}m` : '',
             `Mo ta: ${String(land.description || '')}`,
-        ].join('\n');
+        ].filter(Boolean).join('\n');
 
         return { id, text, payload };
     }
@@ -644,8 +1161,47 @@ export class AiService {
 
     private parseIntent(question: string): ParsedIntent {
         const normalized = this.normalizeText(question);
-        const intent: ParsedIntent = {};
+        const intent: ParsedIntent = { type: 'unknown' };
 
+        // --- Classify intent type ---
+        if (/^(xin chao|hello|hi|hey|chao ban|chao|alo)\b/.test(normalized)) {
+            intent.type = 'greeting';
+            return intent;
+        }
+
+        if (/\b(so sanh|compare|khac nhau|giong nhau)\b/.test(normalized)) {
+            intent.type = 'compare_property';
+            // Only match explicit property IDs: preceded by 'id', 'ma tin', 'so', 'can', 'tin'
+            // OR large numbers (>=100) that can't be district/ward numbers
+            const explicitIdMatches = normalized.match(/\b(?:id|ma tin|ma|so|can|tin)\s*(\d+)\b/gi);
+            const largeNumbers = [...normalized.matchAll(/\b(\d{3,})\b/g)].map((m: RegExpMatchArray) => m[1]);
+            const allIds = [
+                ...(explicitIdMatches ?? []).map((m) => m.replace(/\D/g, '')),
+                ...largeNumbers,
+            ].map(Number).filter((n) => Number.isFinite(n) && n > 0);
+            if (allIds.length >= 2) {
+                intent.compareIds = [...new Set(allIds)].slice(0, 5);
+            }
+        } else if (/\b(dat lich|book|hen|xem nha|lich hen|lich xem)\b/.test(normalized)) {
+            intent.type = 'booking';
+        } else if (/\b(nang cap|upgrade|vip|premium|pro)\b/.test(normalized) && /\b(tai khoan|account)\b/.test(normalized)) {
+            intent.type = 'upgrade_account';
+        } else if (/\b(nang cap|upgrade|vip|premium|day tin|tin noi bat)\b/.test(normalized) && /\b(tin|listing|bai dang)\b/.test(normalized)) {
+            intent.type = 'upgrade_listing';
+        } else if (/\b(viet bai|tao bai|generate|soan|dang ban|dang cho thue)\b/.test(normalized)) {
+            intent.type = 'generate_content';
+        } else if (/\b(la gi|nghia la|the nao|thu tuc|phap ly|so hong|so do|cong chung|phi)\b/.test(normalized) && !/\b(tim|mua|ban|gia|ty|trieu)\b/.test(normalized)) {
+            intent.type = 'qa_real_estate';
+        } else if (/\b(kinh nghiem|luu y|loi khuyen)\b/.test(normalized) && !/\b(tim|gia|ty|trieu)\b/.test(normalized)) {
+            // "kinh nghiem mua nha" is a QA even though it contains "mua"
+            intent.type = 'qa_real_estate';
+        } else if (/\b(nen mua|goi y|tu van|recommend|phu hop|nhu cau)\b/.test(normalized)) {
+            intent.type = 'recommend_property';
+        } else if (/\b(tim|search|can|mua|ban|thue|cho thue|gia|ty|trieu|dat|nha|can ho|chung cu)\b/.test(normalized)) {
+            intent.type = 'search_property';
+        }
+
+        // --- Parse price filters ---
         const rangeMatch = normalized.match(/tu\s+([0-9.,]+)\s*(ty|trieu|tr)?\s+(den|toi|-)\s+([0-9.,]+)\s*(ty|trieu|tr)?/);
         if (rangeMatch) {
             const min = this.toVnd(rangeMatch[1], rangeMatch[2]);
@@ -668,12 +1224,42 @@ export class AiService {
             if (min !== undefined) intent.minPrice = min;
         }
 
+        // Budget phrasing: "có X tỷ", "ngân sách X tỷ", "khoảng X tỷ", "tầm X tỷ"
+        if (intent.maxPrice === undefined && intent.minPrice === undefined) {
+            const budgetMatch = normalized.match(/(?:co|ngan sach|khoang|tam|budget)\s+([0-9.,]+)\s*(ty|trieu|tr)?/);
+            if (budgetMatch) {
+                const budget = this.toVnd(budgetMatch[1], budgetMatch[2]);
+                if (budget !== undefined) intent.maxPrice = budget;
+            }
+        }
+
+        // Bare price like "2 tỷ" or "500 triệu" without a qualifier
+        if (intent.maxPrice === undefined && intent.minPrice === undefined) {
+            const bareMatch = normalized.match(/\b([0-9.,]+)\s*(ty|trieu|tr)\b/);
+            if (bareMatch) {
+                const price = this.toVnd(bareMatch[1], bareMatch[2]);
+                if (price !== undefined) {
+                    // Treat bare price as maxPrice (budget ceiling) for search/recommend
+                    if (/\b(tim|can|mua|co|ngan sach|nen mua|goi y|tu van)\b/.test(normalized)) {
+                        intent.maxPrice = price;
+                    }
+                }
+            }
+        }
+
+        // For price-containing queries, default to search/recommend if not yet classified
+        if (intent.type === 'unknown' && (intent.minPrice !== undefined || intent.maxPrice !== undefined)) {
+            intent.type = 'search_property';
+        }
+
+        // --- Parse location ---
         const locationMatch = normalized.match(/(?:o|tai|khu vuc|gan)\s+([a-z0-9\s]+)$/);
         if (locationMatch) {
             const location = locationMatch[1].trim();
             if (location.length >= 2) intent.location = location;
         }
 
+        // --- Parse source type ---
         if (/\b(chung cu|can ho|apartment)\b/.test(normalized)) {
             intent.sourceType = 'house';
         } else if (/\b(nha|biet thu|townhouse)\b/.test(normalized)) {
@@ -683,8 +1269,6 @@ export class AiService {
         }
 
         if (/\b(nong nghiep|vuon|trong cay)\b/.test(normalized)) {
-            // Keep land-type preference but avoid strict keyword hard filter,
-            // because many valid land records do not explicitly contain "nong nghiep" text.
             intent.sourceType = 'land';
         }
 
@@ -700,6 +1284,10 @@ export class AiService {
         const filtered = hits.filter((hit) => {
             const payload = hit.payload || {};
             const price = this.toNumber(payload.price);
+
+            // When a price filter is active, exclude items with unknown/zero price
+            // because they cannot be verified against the user's budget.
+            if (hasPriceFilter && price <= 0) return false;
 
             if (intent.minPrice !== undefined && price < intent.minPrice) return false;
             if (intent.maxPrice !== undefined && price > intent.maxPrice) return false;
@@ -909,6 +1497,9 @@ export class AiService {
                     location: r.location,
                     price: r.price,
                     area: r.area,
+                    bedrooms: r.bedrooms,
+                    floors: r.floors,
+                    direction: r.direction,
                     url: r.url,
                     source: r.source,
                     sourceId: r.sourceId,
@@ -940,9 +1531,12 @@ export class AiService {
         recs.forEach((r, idx) => {
             lines.push(this.formatSuggestionBlock(idx + 1, {
                 title: r.title,
-                location: `${String(r.district || 'N/A')}, ${String(r.city || 'N/A')}`,
+                location: [r.street, r.ward, r.district, r.city].filter(Boolean).join(', ') || `${String(r.district || 'N/A')}, ${String(r.city || 'N/A')}`,
                 price: r.price,
                 area: r.area,
+                bedrooms: r.bedrooms,
+                floors: r.floors,
+                direction: r.direction,
                 url: r.url,
                 source: r.source,
                 sourceId: r.sourceId,
@@ -964,6 +1558,9 @@ export class AiService {
             location?: unknown;
             price?: unknown;
             area?: unknown;
+            bedrooms?: unknown;
+            floors?: unknown;
+            direction?: unknown;
             url?: unknown;
             source?: unknown;
             sourceId?: unknown;
@@ -976,16 +1573,24 @@ export class AiService {
         const area = this.formatArea(item.area);
         const url = this.normalizeDetailUrl(item.url, item.source, item.sourceId);
         const reason = String(item.reason || '').trim();
+        const bedrooms = Number(item.bedrooms ?? 0);
+        const floors = Number(item.floors ?? 0);
+        const direction = String(item.direction || '').trim();
+
+        const sourceId = Number(item.sourceId);
+        const sourceLabel = String(item.source || '').toUpperCase();
+        const idTag = Number.isFinite(sourceId) && sourceId > 0 ? ` (ID ${sourceId})` : '';
 
         const lines: string[] = [];
-        lines.push(`${index}. ${title}`);
+        lines.push(`${index}. ${sourceLabel ? `${sourceLabel} ` : ''}${title}${idTag}`);
         lines.push(`   - ${location}`);
         lines.push(`   - Giá: ${price}`);
         lines.push(`   - Diện tích: ${area}`);
+        if (bedrooms > 0) lines.push(`   - Phòng ngủ: ${bedrooms} phòng`);
+        if (floors > 0) lines.push(`   - Số tầng: ${floors}`);
+        if (direction) lines.push(`   - Hướng: ${direction}`);
         if (reason) lines.push(`   - Lý do: ${reason}`);
-        if (url) {
-            lines.push(`   - Xem chi tiết: ${url}`);
-        }
+        if (url) lines.push(`   - Xem chi tiết: ${url}`);
 
         return lines.join('\n');
     }

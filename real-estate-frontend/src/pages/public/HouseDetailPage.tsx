@@ -2,7 +2,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { message } from 'antd';
 import { HeartOutlined, HeartFilled, CalendarOutlined } from '@ant-design/icons';
-import { houseApi, favoriteApi, recommendationApi } from '@/api';
+import { houseApi, recommendationApi } from '@/api';
+import { useFavorites } from '@/context/FavoritesContext';
 import { Loading } from '@/components/common';
 import { formatCurrency, formatArea, getFullAddress, formatDateTime } from '@/utils';
 import { useAuthStore } from '@/stores/authStore';
@@ -347,9 +348,9 @@ const HouseDetailPage: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const { isAuthenticated } = useAuthStore();
+    const { isFavoritedHouse, addHouseFavorite, removeFavoritedHouse } = useFavorites();
     const [house, setHouse] = useState<House | null>(null);
     const [loading, setLoading] = useState(true);
-    const [isFavorited, setIsFavorited] = useState(false);
 
     // Quay lại đúng trang + filter:
     // List page truyền: navigate(`/houses/${id}?from=${encodeURIComponent(location.pathname + location.search)}`)
@@ -387,14 +388,15 @@ const HouseDetailPage: React.FC = () => {
             return;
         }
         try {
-            if (isFavorited) {
-                await favoriteApi.removeHouse(house!.id);
+            const isFav = isFavoritedHouse(house!.id);
+            if (isFav) {
+                await removeFavoritedHouse(house!.id);
+                message.success('Đã bỏ yêu thích');
             } else {
-                await favoriteApi.addHouse(house!.id);
+                await addHouseFavorite(house!.id);
+                message.success('Đã thêm vào yêu thích');
                 recommendationApi.trackBehavior({ action: 'save', houseId: house!.id }).catch(() => { });
             }
-            setIsFavorited(!isFavorited);
-            message.success(isFavorited ? 'Đã bỏ yêu thích' : 'Đã thêm vào yêu thích');
         } catch {
             message.error('Có lỗi xảy ra');
         }
@@ -542,13 +544,13 @@ const HouseDetailPage: React.FC = () => {
                             {/* Nút Yêu thích */}
                             <button
                                 onClick={handleFavorite}
-                                className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border text-[14px] font-semibold mb-3 transition-all duration-200 ${isFavorited
+                                className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border text-[14px] font-semibold mb-3 transition-all duration-200 ${isFavoritedHouse(house.id)
                                     ? 'bg-red-500 border-red-500 text-white hover:bg-red-600'
                                     : 'bg-white border-gray-300 text-gray-700 hover:border-[#254b86] hover:text-[#254b86]'
                                     }`}
                             >
-                                {isFavorited ? <HeartFilled className="text-[15px]" /> : <HeartOutlined className="text-[15px]" />}
-                                {isFavorited ? 'Đã yêu thích' : 'Yêu thích'}
+                                {isFavoritedHouse(house.id) ? <HeartFilled className="text-[15px]" /> : <HeartOutlined className="text-[15px]" />}
+                                {isFavoritedHouse(house.id) ? 'Đã yêu thích' : 'Yêu thích'}
                             </button>
 
                             {/* Nút Đặt lịch hẹn */}
