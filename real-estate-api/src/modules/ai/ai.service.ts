@@ -3,6 +3,7 @@ import axios from 'axios';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
 import { ChatDto } from './dto/chat.dto';
+import { AiChatCompareService } from './ai-chat-compare.service';
 
 type IndexedDoc = {
     id: number;
@@ -25,6 +26,7 @@ type IntentType =
     | 'booking'
     | 'upgrade_account'
     | 'upgrade_listing'
+    | 'post_guide'
     | 'greeting'
     | 'unknown';
 
@@ -36,6 +38,7 @@ type ParsedIntent = {
     sourceType?: 'house' | 'land' | 'post';
     requiredKeyword?: string;
     compareIds?: number[];
+    compareDescriptions?: string[]; // named property descriptions to search separately
 };
 
 type VectorHit = {
@@ -45,6 +48,36 @@ type VectorHit = {
 };
 
 type ChatSourcePayload = Record<string, unknown>;
+
+type ConversationState = {
+    memoryKey: string;
+    summaryKey: string;
+    memory: ChatTurn[];
+    summaryMemory: string;
+};
+
+type ChatResponsePayload = {
+    answer: string;
+    structured: Record<string, unknown> | null;
+    intent: ParsedIntent;
+    confidence: number;
+    sources: ChatSourcePayload[];
+    relatedSources: ChatSourcePayload[];
+    suggestedQuestions: string[];
+};
+
+type ChatResult = {
+    ok: true;
+    sessionId: string;
+    answer: string;
+    structured: Record<string, unknown> | null;
+    intent: ParsedIntent;
+    confidence: number;
+    sources: ChatSourcePayload[];
+    relatedSources: ChatSourcePayload[];
+    suggestedQuestions: string[];
+    memoryTurns: number;
+};
 
 @Injectable()
 export class AiService {
@@ -78,6 +111,7 @@ export class AiService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
+        private readonly compareService: AiChatCompareService,
     ) { }
 
     async indexOne(type: 'house' | 'land' | 'post', id: number): Promise<void> {
@@ -178,17 +212,16 @@ export class AiService {
         const hasIntentFilter = Boolean(intent.location) || intent.minPrice !== undefined || intent.maxPrice !== undefined || Boolean(intent.sourceType);
         const noDataAnswer = 'Hiện tại mình chưa tìm thấy bất động sản nào phù hợp với yêu cầu của bạn.';
 
+        // Fetch conversation state early (needed for multi-turn flows)
+        const conversationEarly = await this.getConversationState(sessionId);
+
+        const generateContentResponse = await this.handleGenerateContentFlow(sessionId, question, intent, conversationEarly);
+        if (generateContentResponse) return generateContentResponse;
+
         // Handle intents that don't need RAG lookup
         const directResponse = this.handleDirectIntent(intent, question);
         if (directResponse) {
-            const memoryKey = `ai:chat:${sessionId}`;
-            const summaryKey = `ai:chat:summary:${sessionId}`;
-            const memory = (await this.redis.get<ChatTurn[]>(memoryKey)) ?? [];
-            const summaryMemory = (await this.redis.get<string>(summaryKey)) ?? '';
-            const updated = await this.updateConversationMemory(memoryKey, summaryKey, memory, summaryMemory, question, directResponse.answer);
-            return {
-                ok: true,
-                sessionId,
+            return this.returnChatWithMemory(sessionId, question, conversationEarly, {
                 answer: directResponse.answer,
                 structured: null,
                 intent,
@@ -196,102 +229,32 @@ export class AiService {
                 sources: [],
                 relatedSources: [],
                 suggestedQuestions: directResponse.suggestedQuestions,
-                memoryTurns: updated.newMemory.length,
-            };
+            });
         }
 
-        // Handle compare_property without explicit IDs — search DB by filters and auto-compare
-        if (intent.type === 'compare_property' && (!intent.compareIds || intent.compareIds.length < 2)) {
-            const hasFilter = Boolean(intent.location) || intent.minPrice !== undefined || intent.maxPrice !== undefined || Boolean(intent.sourceType);
-            if (hasFilter) {
-                const memoryKey = `ai:chat:${sessionId}`;
-                const summaryKey = `ai:chat:summary:${sessionId}`;
-                const memory = (await this.redis.get<ChatTurn[]>(memoryKey)) ?? [];
-                const summaryMemory = (await this.redis.get<string>(summaryKey)) ?? '';
-                const candidates = await this.findDbCandidatesByIntent(intent, 5);
-                if (candidates.length >= 2) {
-                    const ids = candidates
-                        .slice(0, 3)
-                        .map((c) => Number(c.payload?.sourceId))
-                        .filter((id) => Number.isFinite(id) && id > 0);
-                    if (ids.length >= 2) {
-                        const compareAnswer = await this.buildCompareAnswer(ids);
-                        const updated = await this.updateConversationMemory(memoryKey, summaryKey, memory, summaryMemory, question, compareAnswer.answer);
-                        return {
-                            ok: true,
-                            sessionId,
-                            answer: compareAnswer.answer,
-                            structured: null,
-                            intent,
-                            confidence: 1,
-                            sources: compareAnswer.sources,
-                            relatedSources: [],
-                            suggestedQuestions: compareAnswer.suggestedQuestions,
-                            memoryTurns: updated.newMemory.length,
-                        };
-                    }
-                }
-            }
-        }
-
-        // Handle compare_property with explicit IDs — fetch from DB directly
-        if (intent.type === 'compare_property' && intent.compareIds && intent.compareIds.length >= 2) {
-            const memoryKey = `ai:chat:${sessionId}`;
-            const summaryKey = `ai:chat:summary:${sessionId}`;
-            const memory = (await this.redis.get<ChatTurn[]>(memoryKey)) ?? [];
-            const summaryMemory = (await this.redis.get<string>(summaryKey)) ?? '';
-            const compareAnswer = await this.buildCompareAnswer(intent.compareIds);
-            const updated = await this.updateConversationMemory(memoryKey, summaryKey, memory, summaryMemory, question, compareAnswer.answer);
-            return {
-                ok: true,
-                sessionId,
-                answer: compareAnswer.answer,
-                structured: null,
-                intent,
-                confidence: 1,
-                sources: compareAnswer.sources,
-                relatedSources: [],
-                suggestedQuestions: compareAnswer.suggestedQuestions,
-                memoryTurns: updated.newMemory.length,
-            };
-        }
+        const compareResponse = await this.handleCompareFlow(sessionId, question, intent, conversationEarly);
+        if (compareResponse) return compareResponse;
 
         const normalizedQuestion = this.normalizeText(question);
-        const responseCacheKey = `ai:chat:resp:${encodeURIComponent(normalizedQuestion).slice(0, 200)}`;
-        const memoryKey = `ai:chat:${sessionId}`;
-        const summaryKey = `ai:chat:summary:${sessionId}`;
-        const memory = (await this.redis.get<ChatTurn[]>(memoryKey)) ?? [];
-        const summaryMemory = (await this.redis.get<string>(summaryKey)) ?? '';
-        const recentMemory = memory.slice(-Math.max(0, this.chatHistoryTurns));
-        const cacheStartedAt = Date.now();
-        const cachedResponse = await this.redis.get<{
-            answer: string;
-            sources: ChatSourcePayload[];
-            relatedSources?: ChatSourcePayload[];
-            confidence: number;
-            suggestedQuestions?: string[];
-        }>(responseCacheKey);
-        timings.cacheMs = Date.now() - cacheStartedAt;
-        if (cachedResponse) {
-            const updated = await this.updateConversationMemory(memoryKey, summaryKey, memory, summaryMemory, question, cachedResponse.answer);
-            if (this.logTimings) {
-                this.logger.log(
-                    `chat timing: total=${Date.now() - chatStartedAt}ms cache=${timings.cacheMs}ms source=cache session=${sessionId}`,
-                );
-            }
-            return {
-                ok: true,
-                sessionId,
-                answer: cachedResponse.answer,
-                structured: null,
-                intent,
-                confidence: cachedResponse.confidence,
-                sources: cachedResponse.sources,
-                relatedSources: cachedResponse.relatedSources ?? [],
-                suggestedQuestions: cachedResponse.suggestedQuestions ?? [],
-                memoryTurns: updated.newMemory.length,
-            };
-        }
+        // Follow-up questions depend on conversation context, so they must not share
+        // a global cache key with other sessions that asked the same literal question.
+        const isFollowUp = conversationEarly.memory.length > 0 &&
+            /\b(do|kia|tren|day|vua xem|vua tim|cai do|nha do|tin do|can do|no|chung|nhung|nay voi|voi nhau|hai cai|2 cai)\b/.test(normalizedQuestion);
+        const responseCacheKey = isFollowUp
+            ? `ai:chat:resp:${sessionId}:${encodeURIComponent(normalizedQuestion).slice(0, 160)}`
+            : `ai:chat:resp:${encodeURIComponent(normalizedQuestion).slice(0, 200)}`;
+        const conversation = conversationEarly;
+        const recentMemory = conversation.memory.slice(-Math.max(0, this.chatHistoryTurns));
+        const cachedResponse = await this.tryCachedChatResponse(
+            sessionId,
+            question,
+            intent,
+            responseCacheKey,
+            conversation,
+            timings,
+            chatStartedAt,
+        );
+        if (cachedResponse) return cachedResponse;
 
         const candidateLimit = hasIntentFilter
             ? Math.max(this.retrievalTopK * this.retrievalCandidateMultiplier, this.retrievalTopK * 3)
@@ -355,23 +318,20 @@ export class AiService {
             .slice(0, Math.max(1, this.contextTopK));
 
         if (hits.length === 0) {
-            const updated = await this.updateConversationMemory(memoryKey, summaryKey, memory, summaryMemory, question, noDataAnswer);
             if (this.logTimings) {
                 this.logger.log(
                     `chat timing: total=${Date.now() - chatStartedAt}ms cache=${timings.cacheMs ?? 0}ms embed=${timings.embedMs ?? 0}ms search=${timings.searchMs ?? 0}ms filter=${timings.filterMs ?? 0}ms dbFallback=${timings.dbFallbackMs ?? 0}ms source=no-data session=${sessionId}`,
                 );
             }
-            return {
-                ok: true,
+            return this.returnChatWithMemory(sessionId, question, conversation, {
                 answer: noDataAnswer,
+                structured: null,
+                intent,
+                confidence: 0,
                 sources: [],
                 relatedSources,
                 suggestedQuestions: ['Tìm nhà dưới 3 tỷ', 'Tìm đất nền giá rẻ', 'Kinh nghiệm mua nhà lần đầu'],
-                confidence: 0,
-                sessionId,
-                intent,
-                memoryTurns: updated.newMemory.length,
-            };
+            });
         }
 
         const defaultSuggestions = this.buildSuggestedQuestions(intent, hits);
@@ -381,7 +341,6 @@ export class AiService {
             const fastAnswerStartedAt = Date.now();
             const answer = this.toFastAnswer(hits);
             timings.fastAnswerMs = Date.now() - fastAnswerStartedAt;
-            const updated = await this.updateConversationMemory(memoryKey, summaryKey, memory, summaryMemory, question, answer);
             await this.redis.set(
                 responseCacheKey,
                 {
@@ -400,9 +359,7 @@ export class AiService {
                 );
             }
 
-            return {
-                ok: true,
-                sessionId,
+            return this.returnChatWithMemory(sessionId, question, conversation, {
                 answer,
                 structured: null,
                 intent,
@@ -410,8 +367,7 @@ export class AiService {
                 sources: hits.map((h) => ({ ...h.payload, score: h.score })),
                 relatedSources,
                 suggestedQuestions: defaultSuggestions,
-                memoryTurns: updated.newMemory.length,
-            };
+            });
         }
 
         const context = hits
@@ -468,8 +424,8 @@ export class AiService {
             promptParts.push(`Lich su ngan: ${recentMemory.map((x) => `${x.role}: ${x.text}`).join(' || ')}`);
         }
 
-        if (summaryMemory) {
-            promptParts.push(`Tong ket hoi thoai truoc do: ${summaryMemory}`);
+        if (conversation.summaryMemory) {
+            promptParts.push(`Tong ket hoi thoai truoc do: ${conversation.summaryMemory}`);
         }
 
         if (hasIntentFilter) {
@@ -515,7 +471,6 @@ export class AiService {
             : [];
         const suggestedQuestions = llmSuggestions.length > 0 ? llmSuggestions : defaultSuggestions;
 
-        const updated = await this.updateConversationMemory(memoryKey, summaryKey, memory, summaryMemory, question, answer);
         await this.redis.set(
             responseCacheKey,
             {
@@ -534,9 +489,7 @@ export class AiService {
             );
         }
 
-        return {
-            ok: true,
-            sessionId,
+        return this.returnChatWithMemory(sessionId, question, conversation, {
             answer,
             structured,
             intent,
@@ -544,8 +497,263 @@ export class AiService {
             sources: hits.map((h) => ({ ...h.payload, score: h.score })),
             relatedSources,
             suggestedQuestions,
+        });
+    }
+
+    private async getConversationState(sessionId: string): Promise<ConversationState> {
+        const memoryKey = `ai:chat:${sessionId}`;
+        const summaryKey = `ai:chat:summary:${sessionId}`;
+        const memory = (await this.redis.get<ChatTurn[]>(memoryKey)) ?? [];
+        const summaryMemory = (await this.redis.get<string>(summaryKey)) ?? '';
+
+        return {
+            memoryKey,
+            summaryKey,
+            memory,
+            summaryMemory,
+        };
+    }
+
+    private async returnChatWithMemory(
+        sessionId: string,
+        question: string,
+        conversation: ConversationState,
+        payload: ChatResponsePayload,
+    ): Promise<ChatResult> {
+        const updated = await this.updateConversationMemory(
+            conversation.memoryKey,
+            conversation.summaryKey,
+            conversation.memory,
+            conversation.summaryMemory,
+            question,
+            payload.answer,
+        );
+
+        return {
+            ok: true,
+            sessionId,
+            ...payload,
             memoryTurns: updated.newMemory.length,
         };
+    }
+
+    private async handleGenerateContentFlow(
+        sessionId: string,
+        question: string,
+        intent: ParsedIntent,
+        conversation: ConversationState,
+    ): Promise<ChatResult | null> {
+        const shouldBypassContentFollowUp = [
+            'compare_property',
+            'booking',
+            'upgrade_account',
+            'upgrade_listing',
+            'post_guide',
+            'qa_real_estate',
+            'greeting',
+        ].includes(intent.type);
+
+        if (this.isFollowUpToContentGeneration(conversation.memory) && intent.type !== 'generate_content') {
+            if (shouldBypassContentFollowUp) {
+                return null;
+            }
+
+            const genAnswer = await this.generatePropertyDescription(question, conversation);
+            return this.returnChatWithMemory(sessionId, question, conversation, {
+                answer: genAnswer,
+                structured: null,
+                intent: { type: 'generate_content' },
+                confidence: 1,
+                sources: [],
+                relatedSources: [],
+                suggestedQuestions: [
+                    'Chỉnh sửa thêm mô tả này',
+                    'Tìm nhà dưới 3 tỷ',
+                    'So sánh 2 bất động sản phù hợp nhất',
+                ],
+            });
+        }
+
+        if (intent.type !== 'generate_content') return null;
+
+        if (!this.hasPropertyDetails(question)) {
+            const askAnswer = [
+                'Mình sẽ giúp bạn soạn bài đăng bất động sản chuyên nghiệp!',
+                '',
+                'Bạn vui lòng cung cấp thông tin sau:',
+                '- **Loại BĐS**: nhà phố / căn hộ / biệt thự / đất nền...',
+                '- **Địa chỉ**: số nhà, đường, phường/xã, quận/huyện, tỉnh/thành',
+                '- **Diện tích**: diện tích đất, diện tích sàn (m²)',
+                '- **Giá**: giá bán hoặc giá cho thuê',
+                '- **Số phòng ngủ, phòng tắm, số tầng** (nếu có)',
+                '- **Hướng nhà/đất** (nếu biết)',
+                '- **Pháp lý**: sổ hồng, sổ đỏ, đang chờ sổ...',
+                '- **Điểm nổi bật**: tiện ích xung quanh, đặc điểm đặc biệt...',
+                '',
+                'Chỉ cần cung cấp thông tin trên, mình sẽ soạn bài đăng chất lượng cho bạn ngay!',
+            ].join('\n');
+            return this.returnChatWithMemory(sessionId, question, conversation, {
+                answer: askAnswer,
+                structured: null,
+                intent,
+                confidence: 1,
+                sources: [],
+                relatedSources: [],
+                suggestedQuestions: [
+                    'Nhà phố 3PN 80m2 quận 7 TP.HCM giá 5 tỷ, sổ hồng',
+                    'Đất nền 120m2 Bình Dương 2 tỷ',
+                    'Căn hộ 2PN 65m2 Đà Nẵng 2.5 tỷ',
+                ],
+            });
+        }
+
+        const genAnswer = await this.generatePropertyDescription(question, conversation);
+        return this.returnChatWithMemory(sessionId, question, conversation, {
+            answer: genAnswer,
+            structured: null,
+            intent,
+            confidence: 1,
+            sources: [],
+            relatedSources: [],
+            suggestedQuestions: [
+                'Chỉnh sửa thêm mô tả này',
+                'Tìm nhà dưới 3 tỷ',
+                'So sánh 2 bất động sản phù hợp nhất',
+            ],
+        });
+    }
+
+    private async handleCompareFlow(
+        sessionId: string,
+        question: string,
+        intent: ParsedIntent,
+        conversation: ConversationState,
+    ): Promise<ChatResult | null> {
+        if (intent.type !== 'compare_property') return null;
+
+        if (intent.compareIds && intent.compareIds.length >= 2) {
+            const compareAnswer = await this.compareService.buildCompareAnswer(intent.compareIds);
+            return this.returnChatWithMemory(sessionId, question, conversation, {
+                answer: compareAnswer.answer,
+                structured: null,
+                intent,
+                confidence: 1,
+                sources: compareAnswer.sources,
+                relatedSources: [],
+                suggestedQuestions: compareAnswer.suggestedQuestions,
+            });
+        }
+
+        // Strategy 1: user named two specific properties — search each separately
+        if (intent.compareDescriptions && intent.compareDescriptions.length >= 2) {
+            const idA = await this.compareService.findIdByDescription(intent.compareDescriptions[0]);
+            const idB = await this.compareService.findIdByDescription(intent.compareDescriptions[1], idA ?? undefined);
+            if (idA !== null && idB !== null && idA !== idB) {
+                const compareAnswer = await this.compareService.buildCompareAnswer([idA, idB]);
+                return this.returnChatWithMemory(sessionId, question, conversation, {
+                    answer: compareAnswer.answer,
+                    structured: null,
+                    intent,
+                    confidence: 1,
+                    sources: compareAnswer.sources,
+                    relatedSources: [],
+                    suggestedQuestions: compareAnswer.suggestedQuestions,
+                });
+            }
+        }
+
+        // Strategy 2: referential language — use IDs from history
+        if (!intent.compareDescriptions || intent.compareDescriptions.length === 0) {
+            const historyIds = this.compareService.extractIdsFromHistory(conversation.memory);
+            if (historyIds.length >= 2) {
+                const compareAnswer = await this.compareService.buildCompareAnswer(historyIds.slice(0, 3));
+                return this.returnChatWithMemory(sessionId, question, conversation, {
+                    answer: compareAnswer.answer,
+                    structured: null,
+                    intent,
+                    confidence: 1,
+                    sources: compareAnswer.sources,
+                    relatedSources: [],
+                    suggestedQuestions: compareAnswer.suggestedQuestions,
+                });
+            }
+        }
+
+        // Strategy 3: use filters to find candidates in DB
+        const hasFilter = Boolean(intent.location) || intent.minPrice !== undefined || intent.maxPrice !== undefined || Boolean(intent.sourceType);
+        if (hasFilter) {
+            const candidates = await this.findDbCandidatesByIntent(intent, 5);
+            if (candidates.length >= 2) {
+                const ids = candidates
+                    .slice(0, 3)
+                    .map((c) => Number(c.payload?.sourceId))
+                    .filter((id) => Number.isFinite(id) && id > 0);
+                if (ids.length >= 2) {
+                    const compareAnswer = await this.compareService.buildCompareAnswer(ids);
+                    return this.returnChatWithMemory(sessionId, question, conversation, {
+                        answer: compareAnswer.answer,
+                        structured: null,
+                        intent,
+                        confidence: 1,
+                        sources: compareAnswer.sources,
+                        relatedSources: [],
+                        suggestedQuestions: compareAnswer.suggestedQuestions,
+                    });
+                }
+            }
+        }
+
+        const compareFailAnswer =
+            'Mình chưa tìm thấy đủ thông tin để so sánh 2 bất động sản bạn yêu cầu. Bạn có thể:\n' +
+            '- Gửi lại link của từng bất động sản cần so sánh\n' +
+            '- Hoặc mô tả chi tiết hơn về địa chỉ từng BDS (số nhà, đường, phường/xã, quận/huyện, tỉnh/thành)';
+        return this.returnChatWithMemory(sessionId, question, conversation, {
+            answer: compareFailAnswer,
+            structured: null,
+            intent,
+            confidence: 0,
+            sources: [],
+            relatedSources: [],
+            suggestedQuestions: ['Tìm nhà dưới 3 tỷ', 'So sánh 2 bất động sản đang xem', 'Kinh nghiệm mua nhà lần đầu'],
+        });
+    }
+
+    private async tryCachedChatResponse(
+        sessionId: string,
+        question: string,
+        intent: ParsedIntent,
+        responseCacheKey: string,
+        conversation: ConversationState,
+        timings: Record<string, number>,
+        chatStartedAt: number,
+    ): Promise<ChatResult | null> {
+        const cacheStartedAt = Date.now();
+        const cachedResponse = await this.redis.get<{
+            answer: string;
+            sources: ChatSourcePayload[];
+            relatedSources?: ChatSourcePayload[];
+            confidence: number;
+            suggestedQuestions?: string[];
+        }>(responseCacheKey);
+        timings.cacheMs = Date.now() - cacheStartedAt;
+
+        if (!cachedResponse) return null;
+
+        if (this.logTimings) {
+            this.logger.log(
+                `chat timing: total=${Date.now() - chatStartedAt}ms cache=${timings.cacheMs}ms source=cache session=${sessionId}`,
+            );
+        }
+
+        return this.returnChatWithMemory(sessionId, question, conversation, {
+            answer: cachedResponse.answer,
+            structured: null,
+            intent,
+            confidence: cachedResponse.confidence,
+            sources: cachedResponse.sources,
+            relatedSources: cachedResponse.relatedSources ?? [],
+            suggestedQuestions: cachedResponse.suggestedQuestions ?? [],
+        });
     }
 
     private async updateConversationMemory(
@@ -576,176 +784,30 @@ export class AiService {
         return { newMemory, newSummary };
     }
 
-    private async buildCompareAnswer(ids: number[]): Promise<{
-        answer: string;
-        sources: ChatSourcePayload[];
-        suggestedQuestions: string[];
-    }> {
-        // Try to find each ID in house OR land table
-        const findById = async (id: number) => {
-            const house = await this.prisma.house.findUnique({ where: { id } });
-            if (house) return { type: 'house' as const, data: house as Record<string, unknown> };
-            const land = await this.prisma.land.findUnique({ where: { id } });
-            if (land) return { type: 'land' as const, data: land as Record<string, unknown> };
-            return null;
-        };
+    /**
+     * Parse "so sánh <A> với <B>" into two property description strings.
+     * Works on the raw (non-normalized) question to preserve property names.
+     * Returns [] if the parts look like referential words ("nhà này", "cái đó", etc.)
+     * rather than actual property descriptions.
+     */
+    private parseCompareDescriptions(question: string): string[] {
+        // Remove leading compare trigger words
+        const stripped = question
+            .replace(/^(so\s+s[aá]nh|compare|so\s+v[oớ]i|h[aã]y\s+so\s+s[aá]nh)\s*/i, '')
+            .trim();
 
-        const results = await Promise.all(ids.map(findById));
-        const found = results.filter((r): r is NonNullable<typeof r> => r !== null);
+        // Split by connectors: " với ", " và ", " vs ", " or ", " hoặc "
+        const splitRegex = /\s+(?:với|và|vs|or|hoặc)\s+/i;
+        const parts = stripped.split(splitRegex).map((p) => p.trim()).filter((p) => p.length > 0);
 
-        if (found.length < 2) {
-            const missing = ids.filter((_, i) => results[i] === null);
-            return {
-                answer: `Mình không tìm thấy bất động sản với ID: ${missing.join(', ')}. Vui lòng kiểm tra lại mã tin. Bạn có thể tìm kiếm để lấy mã tin đúng.`,
-                sources: [],
-                suggestedQuestions: ['Tìm nhà dưới 5 tỷ', 'Tìm đất nền giá rẻ'],
-            };
-        }
+        if (parts.length < 2) return [];
 
-        const sources: ChatSourcePayload[] = [];
+        // Referential words that mean "this one", "that one" — not actual property names
+        const referentialPattern = /^(nh[aà]\s+n[aà]y|c[aá]i\s+n[aà]y|c[aá]n\s+n[aà]y|nh[aà]\s+[kđ][oóò]|c[aá]i\s+[kđ][oóò]|nh[aà]\s+kia|c[aá]i\s+kia|c[aá]i\s+tr[eê]n|c[aá]i\s+d[uư][oớ]i|hai\s+c[aá]i|2\s+c[aá]i|chu[nǹ]g|[cđ]h[uú]ng|nh[uư]ng\s+c[aá]i|v[uừ]a\s+tim|v[uừ]a\s+xem)$/i;
 
-        // Build property detail table rows
-        const propertyRows = found.map((item, idx) => {
-            const d = item.data;
-            const price = this.toNumber(d.price);
-            const area = this.toNumber(d.area);
-            const pricePerM2 = area > 0 ? Math.round(price / area) : 0;
-            const url = `${this.frontendUrl}/${item.type === 'house' ? 'houses' : 'lands'}/${String(d.id)}`;
-            const typeLabel = item.type === 'house' ? 'Nhà' : 'Đất';
+        const descriptions = parts.filter((p) => !referentialPattern.test(p.trim()) && p.length >= 4);
 
-            sources.push({
-                source: item.type,
-                sourceId: d.id,
-                title: d.title,
-                city: d.city,
-                district: d.district,
-                price,
-                area,
-                url,
-            });
-
-            return {
-                idx: idx + 1,
-                id: d.id,
-                type: typeLabel,
-                title: String(d.title || 'N/A'),
-                location: `${String(d.street || '')} ${String(d.ward || '')} ${String(d.district || '')}, ${String(d.city || '')}`,
-                price,
-                priceFormatted: this.formatVnd(price),
-                area,
-                areaFormatted: this.formatArea(area),
-                pricePerM2,
-                pricePerM2Formatted: this.formatVnd(pricePerM2),
-                url,
-            };
-        });
-
-        // Generate comparison analysis
-        const sorted = [...found].sort((a, b) => this.toNumber(a.data.price) - this.toNumber(b.data.price));
-        const cheapest = sorted[0];
-        const cheapestIdx = found.indexOf(cheapest) + 1;
-        const cheapestPrice = this.toNumber(cheapest.data.price);
-
-        const largest = found.reduce((best, cur) =>
-            this.toNumber(cur.data.area) > this.toNumber(best.data.area) ? cur : best);
-        const largestIdx = found.indexOf(largest) + 1;
-        const largestArea = this.toNumber(largest.data.area);
-
-        const bestValue = found.reduce((best, cur) => {
-            const curArea = this.toNumber(cur.data.area);
-            const bestArea = this.toNumber(best.data.area);
-            if (curArea <= 0) return best;
-            if (bestArea <= 0) return cur;
-            const curPM = this.toNumber(cur.data.price) / curArea;
-            const bestPM = this.toNumber(best.data.price) / bestArea;
-            return curPM < bestPM ? cur : best;
-        });
-        const bestValueIdx = found.indexOf(bestValue) + 1;
-        const bestValuePM = Math.round(this.toNumber(bestValue.data.price) / Math.max(1, this.toNumber(bestValue.data.area)));
-        const maxPrice = Math.max(...propertyRows.map((r) => r.price), 1);
-        const maxArea = Math.max(...propertyRows.map((r) => r.area), 1);
-
-        const propertyCardsHtml = propertyRows
-            .map((row) => {
-                const isCheapest = row.idx === cheapestIdx;
-                const isLargest = row.idx === largestIdx;
-                const isBestValue = row.idx === bestValueIdx;
-                const priceBar = Math.round((row.price / maxPrice) * 100);
-                const areaBar = Math.round((row.area / maxArea) * 100);
-                const badges = [
-                    isCheapest ? 'GIÁ TỐT NHẤT' : '',
-                    isLargest ? 'DIỆN TÍCH LỚN' : '',
-                    isBestValue ? 'GIÁ/M² TỐT' : '',
-                ].filter((b) => b);
-                const badgesHtml = badges
-                    .map(
-                        (b) =>
-                            `<span style="display:inline-block;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:2px 8px;border-radius:12px;font-size:11px;margin-right:4px;font-weight:600;">${b}</span>`,
-                    )
-                    .join('');
-                const cardBg = isCheapest || isBestValue ? '#f0f7ff' : '#ffffff';
-                const cardBorder = badges.length > 0 ? '2px solid #667eea' : '1px solid #e0e0e0';
-
-                return `
-<div style="background:${cardBg};border:${cardBorder};border-radius:8px;padding:12px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-    <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px;">
-        <span style="font-weight:700;color:#667eea;font-size:14px;">Căn ${row.idx} (ID ${row.id})</span>
-        <span style="font-size:11px;color:#666;">${row.type}</span>
-    </div>
-    ${badgesHtml ? `<div style="margin-bottom:8px;">${badgesHtml}</div>` : ''}
-    <div style="background:#f9f9f9;padding:8px;border-radius:4px;margin-bottom:8px;font-size:12px;line-height:1.4;color:#333;">
-        <strong>${row.title.substring(0, 60)}${row.title.length > 60 ? '...' : ''}</strong><br/>
-        <span style="color:#666;font-size:11px;">${row.location.substring(0, 50)}${row.location.length > 50 ? '...' : ''}</span>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-        <div>
-            <span style="font-size:11px;color:#666;font-weight:500;">Giá</span>
-            <div style="font-weight:700;color:#d32f2f;font-size:13px;">${row.priceFormatted}</div>
-            <div style="width:100%;height:4px;background:#e0e0e0;border-radius:2px;margin-top:4px;overflow:hidden;">
-                <div style="height:100%;background:linear-gradient(90deg,#d32f2f,#f44336);width:${priceBar}%;border-radius:2px;"></div>
-            </div>
-        </div>
-        <div>
-            <span style="font-size:11px;color:#666;font-weight:500;">Diện tích</span>
-            <div style="font-weight:700;color:#1976d2;font-size:13px;">${row.areaFormatted}</div>
-            <div style="width:100%;height:4px;background:#e0e0e0;border-radius:2px;margin-top:4px;overflow:hidden;">
-                <div style="height:100%;background:linear-gradient(90deg,#1976d2,#42a5f5);width:${areaBar}%;border-radius:2px;"></div>
-            </div>
-        </div>
-    </div>
-    <div style="background:#f5f5f5;padding:6px 8px;border-radius:4px;text-align:center;font-size:13px;color:#333;font-weight:600;">
-        ${row.pricePerM2Formatted}/m² <span style="color:#999;">|</span> ${row.type}
-    </div>
-</div>`;
-            })
-            .join('');
-
-        const htmlTable = `
-<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:12px 0;max-width:100%;">
-    <h3 style="color:#1a1a1a;margin:0 0 16px 0;font-size:16px;font-weight:700;">So sánh ${found.length} bất động sản</h3>
-    <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px;">${propertyCardsHtml}</div>
-    <div style="background:linear-gradient(135deg,#f0f7ff 0%,#e3f2fd 100%);border-left:4px solid #2196F3;padding:12px;border-radius:6px;margin-bottom:12px;">
-        <h4 style="color:#1565c0;margin:0 0 10px 0;font-size:13px;font-weight:700;">KẾT LUẬN PHÂN TÍCH</h4>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;color:#333;line-height:1.6;">
-            <div style="background:rgba(211,47,47,0.08);padding:8px;border-radius:4px;border-left:3px solid #d32f2f;"><strong style="color:#d32f2f;">Giá rẻ nhất</strong><br/>Căn ${cheapestIdx}: ${this.formatVnd(cheapestPrice)}</div>
-            <div style="background:rgba(25,118,210,0.08);padding:8px;border-radius:4px;border-left:3px solid #1976d2;"><strong style="color:#1976d2;">Diện tích lớn</strong><br/>Căn ${largestIdx}: ${this.formatArea(largestArea)}</div>
-            <div style="background:rgba(251,192,45,0.1);padding:8px;border-radius:4px;border-left:3px solid #fbc02d;grid-column:1/3;"><strong style="color:#f57f17;">Giá/m² tốt nhất</strong> - Căn ${bestValueIdx}: <strong style="color:#d32f2f;">${this.formatVnd(bestValuePM)}/m²</strong></div>
-        </div>
-    </div>
-    <div style="background:#fff9c4;border-left:4px solid #fbc02d;padding:12px;border-radius:6px;color:#f57f17;font-size:12px;">
-        <strong>Bạn muốn xem chi tiết hoặc tìm thêm lựa chọn khác?</strong>
-    </div>
-</div>`.trim();
-
-        return {
-            answer: htmlTable,
-            sources,
-            suggestedQuestions: [
-                `Xem chi tiết ID ${String(found[0].data.id)}`,
-                'Tìm nhà tương tự dưới 5 tỷ',
-                'Kinh nghiệm mua nhà lần đầu',
-            ],
-        };
+        return descriptions.length >= 2 ? descriptions.slice(0, 2) : [];
     }
 
     private buildIntentInstructions(intent: ParsedIntent): string {
@@ -793,6 +855,9 @@ export class AiService {
                     'Tìm nhà dưới 3 tỷ ở Đà Nẵng',
                     'Sổ hồng là gì?',
                     'Tìm đất nền giá rẻ',
+                    'Cách đặt lịch hẹn xem nhà',
+                    'Cách nâng cấp tài khoản VIP',
+                    'Gợi ý viết mô tả đăng bán nhà',
                 ],
             };
         }
@@ -804,40 +869,74 @@ export class AiService {
 
         if (intent.type === 'booking') {
             return {
-                answer: 'Bạn muốn đặt lịch xem nhà/đất nào? Vui lòng cho mình biết:\n- Mã tin hoặc tên bất động sản\n- Ngày và giờ bạn muốn xem\n\nMình sẽ hỗ trợ đặt lịch ngay cho bạn.',
+                answer: [
+                    '📅 **Hướng dẫn đặt lịch xem nhà/đất:**',
+                    '',
+                    '1. Mở trang **chi tiết** của bất động sản bạn muốn xem',
+                    `2. Bấm nút **"Đặt lịch xem"**`,
+                    '3. Chọn **ngày**, **khung giờ** và **thời lượng** muốn xem',
+                    '4. Xác nhận thông tin để gửi lịch',
+                    '',
+                    '**Cần chuẩn bị:**',
+                    '- Ngày muốn xem',
+                    '- Khung giờ cụ thể',
+                    '- Thời lượng dự kiến',
+                    '',
+                    'Sau khi đặt, nhân viên sẽ xác nhận lịch qua điện thoại. Bạn cần hỗ trợ tìm BĐS để đặt lịch không?',
+                ].join('\n'),
                 suggestedQuestions: [
-                    'Tìm nhà ở Quận 7',
+                    'Tìm nhà dưới 3 tỷ để xem',
                     'Tìm đất nền Bình Dương',
+                    'Nhà cho thuê giá rẻ',
                 ],
             };
         }
 
         if (intent.type === 'upgrade_account') {
             return {
-                answer: 'Để nâng cấp tài khoản VIP, bạn sẽ được hưởng các quyền lợi:\n- Đăng tin ưu tiên\n- Hiển thị nổi bật trên trang chủ\n- Hỗ trợ chuyên viên tư vấn\n\nBạn muốn nâng cấp gói nào? Vui lòng liên hệ admin hoặc vào trang quản lý tài khoản để thực hiện.',
+                answer: [
+                    '👑 **Nâng cấp tài khoản VIP – Quyền lợi & Hướng dẫn:**',
+                    '',
+                    '**Quyền lợi tài khoản VIP:**',
+                    '✅ Đăng tin bất động sản không giới hạn',
+                    '✅ Tin đăng được hiển thị ưu tiên trên trang chủ & kết quả tìm kiếm',
+                    '✅ Hỗ trợ tư vấn từ chuyên viên BĐS',
+                    '✅ Truy cập báo cáo thị trường & thống kê chuyên sâu',
+                    '✅ Badge VIP nổi bật trên hồ sơ cá nhân',
+                    '',
+                    '**Cách nâng cấp:**',
+                    `1. Đăng nhập → Vào **Hồ sơ cá nhân**: ${this.frontendUrl}/profile`,
+                    '2. Chọn mục **"Nâng cấp VIP"** hoặc **"Gói dịch vụ"**',
+                    '3. Chọn gói phù hợp → Thanh toán → Kích hoạt ngay',
+                    '',
+                    'Bạn có câu hỏi về các gói VIP không?',
+                ].join('\n'),
                 suggestedQuestions: [
+                    'Hướng dẫn đăng bài viết BĐS',
+                    'Tìm đất nền giá rẻ',
                     'Tìm nhà dưới 5 tỷ',
-                    'Đất nền giá rẻ ở đâu?',
                 ],
             };
         }
 
         if (intent.type === 'upgrade_listing') {
             return {
-                answer: 'Để đẩy tin hoặc nâng cấp tin đăng nổi bật, bạn có thể vào mục "Quản lý tin đăng" trong tài khoản và chọn gói phù hợp. Tin nổi bật sẽ được hiển thị ưu tiên trên trang chủ và kết quả tìm kiếm.',
+                answer: 'Hiện chatbot chưa hỗ trợ hướng dẫn nâng cấp tin đăng trong luồng chat này. Bạn có thể thao tác trực tiếp trong trang quản lý tin đăng.',
                 suggestedQuestions: [
-                    'Tìm nhà ở Hà Nội',
-                    'Kinh nghiệm mua nhà lần đầu',
+                    'Tìm nhà dưới 5 tỷ',
+                    'So sánh 2 bất động sản phù hợp nhất',
+                    'Nâng cấp tài khoản VIP',
                 ],
             };
         }
 
-        if (intent.type === 'generate_content') {
+        if (intent.type === 'post_guide') {
             return {
-                answer: 'Bạn muốn mình hỗ trợ viết bài đăng bán/cho thuê bất động sản? Vui lòng cung cấp thông tin:\n- Loại BĐS (nhà, đất, căn hộ...)\n- Vị trí, diện tích, giá\n- Đặc điểm nổi bật\n\nMình sẽ soạn bài đăng hấp dẫn cho bạn.',
+                answer: 'Hiện chatbot chưa hỗ trợ hướng dẫn đăng bài trong luồng chat này.',
                 suggestedQuestions: [
                     'Tìm nhà dưới 3 tỷ',
-                    'Sổ hồng là gì?',
+                    'So sánh 2 bất động sản đang xem',
+                    'Nâng cấp tài khoản VIP',
                 ],
             };
         }
@@ -854,6 +953,162 @@ export class AiService {
         }
 
         return null;
+    }
+
+    /**
+     * Returns true if the last assistant message in memory was asking the user
+     * to supply property details for content generation.
+     */
+    private isFollowUpToContentGeneration(memory: ChatTurn[]): boolean {
+        const lastAssistant = [...memory].reverse().find((t) => t.role === 'assistant');
+        if (!lastAssistant) return false;
+        const triggers = [
+            'Loại BĐS',
+            'soạn bài đăng',
+            'Đặc điểm nổi bật',
+            'mình sẽ soạn',
+            'tạo mô tả',
+            'Mình cần bạn cung cấp thông tin',
+            'Chỉ cần cung cấp thông tin',
+            'soạn bài đăng chất lượng cho bạn ngay',
+            'soạn bài đăng bất động sản chuyên nghiệp',
+        ];
+        return triggers.some((t) => lastAssistant.text.includes(t));
+    }
+
+    /**
+     * Returns true if the user's message contains enough property details
+     * (location, area, price, room count, etc.) to generate a listing description.
+     */
+    private hasPropertyDetails(question: string): boolean {
+        // If message is substantively long, assume it has details
+        if (question.trim().length > 100) return true;
+
+        const normalized = this.normalizeText(question);
+
+        const hasLocation = /\b(quan|huyen|phuong|xa|duong|tinh|tp|thanh pho|ha noi|ho chi minh|da nang|binh duong|dong nai|vung tau|hue|can tho|nha trang)\b/.test(normalized);
+        const hasArea = /\b(\d+\s*m2|\d+\s*m²|\d+\s*met vuong|dien tich)\b/.test(normalized);
+        const hasPrice = /\b\d+(\.\d+)?\s*(ty|trieu|tr)\b/.test(normalized);
+        const hasRooms = /\b(\d+\s*(phong ngu|pn|phong|tang)|so phong|so tang)\b/.test(normalized);
+        const hasPropertyType = /\b(nha pho|can ho|biet thu|dat nen|chung cu|shophouse|nha cap 4)\b/.test(normalized);
+
+        const detailCount = [hasLocation, hasArea, hasPrice, hasRooms, hasPropertyType].filter(Boolean).length;
+        return detailCount >= 2;
+    }
+
+    /**
+     * Calls LLM to generate a professional real-estate listing description
+     * based on the property info the user provided.
+     */
+    private async generatePropertyDescription(question: string, conversation: ConversationState): Promise<string> {
+        // Collect property info: prefer last user message in history if current question is the follow-up
+        const lastUserTurns = conversation.memory
+            .filter((t) => t.role === 'user')
+            .slice(-2)
+            .map((t) => t.text)
+            .join('\n');
+        const propertyInfo = question.length > 20 ? question : lastUserTurns || question;
+
+        const prompt = [
+            'Bạn là chuyên gia viết nội dung bất động sản Việt Nam.',
+            'Dựa vào thông tin BĐS bên dưới, hãy viết bài đăng bán/cho thuê ngắn gọn bằng tiếng Việt có dấu.',
+            'Định dạng bắt buộc:',
+            'TIÊU ĐỀ: [1 dòng, ngắn gọn, có loại BĐS + vị trí + điểm nổi bật]',
+            'MÔ TẢ: [80-150 từ: tổng quan, vị trí, đặc điểm chính, pháp lý, lời kêu gọi]',
+            'Nếu thiếu thông tin, dùng placeholder [...]. Không bịa dữ liệu.',
+            'Kết thúc bằng dòng: --- Bạn có thể copy đoạn mô tả trên để đăng bài! ---',
+            '',
+            `Thông tin BĐS: ${propertyInfo}`,
+        ].join('\n');
+
+        try {
+            const resp = await axios.post(
+                `${this.ollamaUrl}/api/generate`,
+                {
+                    model: this.chatModel,
+                    prompt,
+                    stream: false,
+                    options: { num_predict: 400, temperature: 0.4 },
+                },
+                { timeout: this.ollamaTimeoutMs * 3 },
+            );
+            const raw = String(resp.data?.response || '').trim();
+            if (raw.length > 50) return raw;
+        } catch (error) {
+            this.logger.warn(`generatePropertyDescription LLM error: ${this.stringifyError(error)}`);
+        }
+
+        // Template-based fallback — always produces a usable result
+        return this.buildTemplateDescription(propertyInfo);
+    }
+
+    private buildTemplateDescription(info: string): string {
+        const n = this.normalizeText(info);
+
+        const typeMap: [RegExp, string][] = [
+            [/\b(biet thu)\b/, 'Biệt thự'],
+            [/\b(can ho|chung cu)\b/, 'Căn hộ chung cư'],
+            [/\b(shophouse)\b/, 'Shophouse'],
+            [/\b(dat nen|dat)\b/, 'Đất nền'],
+            [/\b(nha pho)\b/, 'Nhà phố'],
+            [/\b(nha cap 4)\b/, 'Nhà cấp 4'],
+            [/\bnha\b/, 'Nhà'],
+        ];
+        const propType = typeMap.find(([re]) => re.test(n))?.[1] ?? 'Bất động sản';
+
+        const areaMatch = n.match(/(\d+[\d.,]*)\s*m[2²]/);
+        const area = areaMatch ? `${areaMatch[1]}m²` : null;
+
+        const priceMatch = n.match(/(\d+[\d.,]*)\s*(ty|trieu|tr)/);
+        const price = priceMatch
+            ? `${priceMatch[1]} ${priceMatch[2] === 'ty' ? 'tỷ' : 'triệu'} đồng`
+            : null;
+
+        const bedroomMatch = n.match(/(\d+)\s*(pn|phong ngu|phong)/);
+        const bedrooms = bedroomMatch ? `${bedroomMatch[1]} phòng ngủ` : null;
+
+        const floorMatch = n.match(/(\d+)\s*tang/);
+        const floors = floorMatch ? `${floorMatch[1]} tầng` : null;
+
+        const locationMatch = info.match(/(quận|huyện|phường|xã|đường|thành phố|TP\.?\s*\w+|Hà Nội|HCM|Đà Nẵng)[^,.\n]*/i);
+        const location = locationMatch ? locationMatch[0].trim() : null;
+
+        const legalMatch = n.match(/(so hong|so do|so rieng|chu quyen)/);
+        const legal = legalMatch
+            ? legalMatch[1] === 'so hong' ? 'Sổ hồng' : legalMatch[1] === 'so do' ? 'Sổ đỏ' : 'Pháp lý đầy đủ'
+            : null;
+
+        const action = /cho thue/.test(n) ? 'Cho thuê' : 'Bán';
+
+        const titleParts = [action, propType, area, location, price].filter(Boolean);
+        const title = titleParts.join(' – ');
+
+        const details = [
+            `- Loại BĐS: ${propType}`,
+            area ? `- Diện tích: ${area}` : null,
+            bedrooms ? `- Số phòng ngủ: ${bedrooms}` : null,
+            floors ? `- Số tầng: ${floors}` : null,
+            location ? `- Vị trí: ${location}` : null,
+            legal ? `- Pháp lý: ${legal}` : null,
+            price ? `- Giá ${action === 'Bán' ? 'bán' : 'thuê'}: ${price}` : null,
+        ].filter(Boolean).join('\n');
+
+        return [
+            `TIÊU ĐỀ: ${title}`,
+            '',
+            'MÔ TẢ:',
+            `${action} ${propType.toLowerCase()}${location ? ` tọa lạc tại ${location}` : ''}${area ? `, diện tích ${area}` : ''}.`,
+            bedrooms || floors ? `Căn nhà ${[bedrooms, floors].filter(Boolean).join(', ')}, thiết kế hợp lý, không gian thoáng mát.` : '',
+            legal ? `Pháp lý minh bạch, ${legal} chính chủ, giao dịch an toàn.` : '',
+            price ? `Giá ${action === 'Bán' ? 'bán' : 'thuê'}: **${price}** – thương lượng cho khách thiện chí.` : '',
+            '',
+            'Chi tiết:',
+            details,
+            '',
+            'Liên hệ ngay để được tư vấn và xem nhà thực tế!',
+            '',
+            '--- Bạn có thể copy đoạn mô tả trên để đăng bài! ---',
+        ].filter((l) => l !== '').join('\n');
     }
 
     private answerQA(question: string): { answer: string; suggestedQuestions: string[] } | null {
@@ -909,7 +1164,7 @@ export class AiService {
             const id1 = Number(hits[0]?.payload?.sourceId);
             const id2 = Number(hits[1]?.payload?.sourceId);
             if (Number.isFinite(id1) && id1 > 0 && Number.isFinite(id2) && id2 > 0) {
-                suggestions.push(`So sánh ID ${id1} và ID ${id2}`);
+                suggestions.push('So sánh 2 bất động sản phù hợp nhất');
             }
         }
 
@@ -1181,14 +1436,29 @@ export class AiService {
             ].map(Number).filter((n) => Number.isFinite(n) && n > 0);
             if (allIds.length >= 2) {
                 intent.compareIds = [...new Set(allIds)].slice(0, 5);
+            } else {
+                // Try to extract two property descriptions: "so sánh <A> với <B>"
+                const descParts = this.parseCompareDescriptions(question);
+                if (descParts.length >= 2) {
+                    intent.compareDescriptions = descParts;
+                }
             }
+        } else if (/\b(so sanh|compare)\b.*\b(nha nay|cai nay|can nay|tin nay|nha do|cai do|can do|tin do|nha kia|cai kia|2 cai|hai cai|nhung cai|chung|vua tim|vua xem|tren|do|chung|nay voi|voi nhau)\b|\b(nha nay|cai nay|hai cai|2 cai|vua tim)\b.*\b(so sanh|compare|voi|va)\b/.test(normalized)) {
+            // Referential compare: user is referring to properties seen in recent chat history
+            intent.type = 'compare_property';
         } else if (/\b(dat lich|book|hen|xem nha|lich hen|lich xem)\b/.test(normalized)) {
             intent.type = 'booking';
         } else if (/\b(nang cap|upgrade|vip|premium|pro)\b/.test(normalized) && /\b(tai khoan|account)\b/.test(normalized)) {
             intent.type = 'upgrade_account';
         } else if (/\b(nang cap|upgrade|vip|premium|day tin|tin noi bat)\b/.test(normalized) && /\b(tin|listing|bai dang)\b/.test(normalized)) {
             intent.type = 'upgrade_listing';
-        } else if (/\b(viet bai|tao bai|generate|soan|dang ban|dang cho thue)\b/.test(normalized)) {
+        } else if (/\b(huong dan dang|cach dang|dang bai|dang tin|lam sao dang|muon dang)\b/.test(normalized) && !/\b(viet|tao|soan|mo ta|gen)\b/.test(normalized)) {
+            intent.type = 'post_guide';
+        } else if (
+            /\b(viet bai|tao bai|generate|soan noi dung|viet mo ta|tao mo ta|gen mo ta|soan mo ta)\b/.test(normalized) ||
+            (/\b(viet|soan|tao|gen|giup)\b/.test(normalized) && /\b(mo ta|bai dang|noi dung|bai viet)\b/.test(normalized)) ||
+            (/\bmo ta\b/.test(normalized) && /\b(ban|cho thue)\b/.test(normalized))
+        ) {
             intent.type = 'generate_content';
         } else if (/\b(la gi|nghia la|the nao|thu tuc|phap ly|so hong|so do|cong chung|phi)\b/.test(normalized) && !/\b(tim|mua|ban|gia|ty|trieu)\b/.test(normalized)) {
             intent.type = 'qa_real_estate';
@@ -1272,6 +1542,24 @@ export class AiService {
             intent.sourceType = 'land';
         }
 
+        // --- Parse required keyword (property feature filter) ---
+        const requiredKeywordMap: Array<[RegExp, string]> = [
+            [/\b(mat tien|mat duong|truoc mat|thoang mat|lo goc)\b/, 'mat tien'],
+            [/\b(hem ngo|hem xe|hem|ngo)\b/, 'hem'],
+            [/\b(view bien|nhin bien|gan bien|ven bien)\b/, 'bien'],
+            [/\b(gara|garage|san xe o to)\b/, 'gara'],
+            [/\b(san vuon|co vuon|vuon rau)\b/, 'vuon'],
+            [/\b(ho boi|boi loi)\b/, 'ho boi'],
+            [/\b(thang may|elevator)\b/, 'thang may'],
+            [/\b(nha pho|lien ke)\b/, 'nha pho'],
+        ];
+        for (const [pattern, kw] of requiredKeywordMap) {
+            if (pattern.test(normalized)) {
+                intent.requiredKeyword = kw;
+                break;
+            }
+        }
+
         return intent;
     }
 
@@ -1308,6 +1596,14 @@ export class AiService {
             if (intent.sourceType) {
                 const source = String(payload.source || '');
                 if (source !== intent.sourceType) return false;
+            }
+
+            if (intent.requiredKeyword) {
+                const needle = this.normalizeText(intent.requiredKeyword);
+                const haystack = [payload.title, payload.description, payload.street, payload.ward, payload.district]
+                    .map((x) => this.normalizeText(String(x || '')))
+                    .join(' ');
+                if (!haystack.includes(needle)) return false;
             }
 
             return true;
@@ -1579,10 +1875,10 @@ export class AiService {
 
         const sourceId = Number(item.sourceId);
         const sourceLabel = String(item.source || '').toUpperCase();
-        const idTag = Number.isFinite(sourceId) && sourceId > 0 ? ` (ID ${sourceId})` : '';
+        const hasDetail = Number.isFinite(sourceId) && sourceId > 0;
 
         const lines: string[] = [];
-        lines.push(`${index}. ${sourceLabel ? `${sourceLabel} ` : ''}${title}${idTag}`);
+        lines.push(`${index}. ${sourceLabel ? `${sourceLabel} ` : ''}${title}`);
         lines.push(`   - ${location}`);
         lines.push(`   - Giá: ${price}`);
         lines.push(`   - Diện tích: ${area}`);
@@ -1590,7 +1886,7 @@ export class AiService {
         if (floors > 0) lines.push(`   - Số tầng: ${floors}`);
         if (direction) lines.push(`   - Hướng: ${direction}`);
         if (reason) lines.push(`   - Lý do: ${reason}`);
-        if (url) lines.push(`   - Xem chi tiết: ${url}`);
+        if (url && hasDetail) lines.push(`   - Xem chi tiết: ${url}`);
 
         return lines.join('\n');
     }

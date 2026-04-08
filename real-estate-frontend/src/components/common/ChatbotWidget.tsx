@@ -37,6 +37,9 @@ const STARTER_QUESTIONS = [
     'Sổ hồng là gì?',
     'Tìm đất nền giá rẻ',
     'Kinh nghiệm mua nhà lần đầu',
+    'Cách đặt lịch hẹn xem nhà',
+    'Cách nâng cấp tài khoản VIP',
+    'Gợi ý viết mô tả đăng bán nhà',
 ];
 
 const resolveDetailPath = (source: ChatSource): string | null => {
