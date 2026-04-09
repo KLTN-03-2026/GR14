@@ -17,10 +17,13 @@ import NewsPage from "@/pages/public/NewsPage";
 import NewsDetailPage from "@/pages/public/NewsDetailPage";
 import FavoritesPage from "@/pages/public/FavoritesPage";
 import AboutMe from "@/pages/public/AboutMe";
+import PostFormPage from "@/pages/public/PostFormPage";
+import VIPUpgradePage from "@/pages/public/VIPUpgradePage";
+import PaymentSuccessPage from "@/pages/public/PaymentSuccessPage";
+import VNPayCallbackPage from "@/pages/public/VNPayCallbackPage";
 import AppointmentBookingPage from "@/pages/public/AppointmentBookingPage";
-import FengshuiPage from "@/pages/public/FengShui";
-import CreatePostPage from "@/pages/public/CreatePostPage";
 import PaymentResultPage from "@/pages/public/PaymentResultPage";
+import FengshuiPage from "@/pages/public/FengShui";
 
 // Auth pages
 import LoginPage from "@/pages/auth/LoginPage";
@@ -55,26 +58,13 @@ import EmployeeAppointmentPage from "@/pages/employee/EmployeeAppointmentPage";
 import EmployeeCalendarPage from "@/pages/employee/EmployeeCalendarPage";
 
 const router = createBrowserRouter([
-  // ── Auth ────────────────────────────────────────────────────────────────────
+  // AUTH
   { path: "/login", element: <LoginPage /> },
   { path: "/register", element: <RegisterPage /> },
   { path: "/otp", element: <ConfirmOTP /> },
   { path: "/forgot-password", element: <ForgotPasswordPage /> },
-  {
-    path: "/profile",
-    element: (
-      <ProtectedRoute>
-        <PublicProfilePage />
-      </ProtectedRoute>
-    ),
-  },
 
-  // ── Payment result (public, after gateway redirect) ──────────────────────
-  { path: "/payment/result", element: <PaymentResultPage /> },
-  { path: "/payment/success", element: <PaymentResultPage /> },
-  { path: "/payment/failed", element: <PaymentResultPage /> },
-
-  // ── Public ──────────────────────────────────────────────────────────────────
+  // PUBLIC
   {
     path: "/",
     element: <PublicLayout />,
@@ -84,16 +74,43 @@ const router = createBrowserRouter([
       { path: "houses/:id", element: <HouseDetailPage /> },
       { path: "lands", element: <LandListPage /> },
       { path: "lands/:id", element: <LandDetailPage /> },
+
+      // Posts
       { path: "posts", element: <NewsPage /> },
       { path: "posts/:id", element: <NewsDetailPage /> },
+      {
+        path: "posts/new",
+        element: (
+          <ProtectedRoute>
+            <PostFormPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "posts/:id/edit",
+        element: (
+          <ProtectedRoute>
+            <PostFormPage />
+          </ProtectedRoute>
+        ),
+      },
+
       { path: "about", element: <AboutMe /> },
       { path: "fengshui", element: <FengshuiPage /> },
-      { path: "favorites", element: <FavoritesPage /> },
+
       {
         path: "appointment",
         element: (
           <ProtectedRoute requiredRoles={["CUSTOMER"]}>
             <AppointmentBookingPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: "favorites",
+        element: (
+          <ProtectedRoute>
+            <FavoritesPage />
           </ProtectedRoute>
         ),
       },
@@ -106,17 +123,32 @@ const router = createBrowserRouter([
         ),
       },
       {
-        path: "create-post",
+        path: "vip-upgrade",
         element: (
           <ProtectedRoute>
-            <CreatePostPage />
+            <VIPUpgradePage />
           </ProtectedRoute>
         ),
       },
     ],
   },
 
-  // ── Admin ───────────────────────────────────────────────────────────────────
+  // PAYMENT
+  { path: "/payment/result", element: <PaymentResultPage /> },
+  { path: "/payment/success", element: <PaymentSuccessPage /> },
+  { path: "/payment/failed", element: <PaymentResultPage /> },
+  { path: "/payment/vnpay-callback", element: <VNPayCallbackPage /> },
+
+  {
+    path: "/profile",
+    element: (
+      <ProtectedRoute>
+        <PublicProfilePage />
+      </ProtectedRoute>
+    ),
+  },
+
+  // ADMIN
   {
     path: "/admin",
     element: (
@@ -125,50 +157,41 @@ const router = createBrowserRouter([
       </ProtectedRoute>
     ),
     children: [
-      // Dashboard (analytics now lives here via useState tabs)
       { index: true, element: <DashboardPage /> },
 
-      // Houses
       { path: "houses", element: <HouseManagementPage /> },
       { path: "houses/create", element: <HouseFormPage /> },
       { path: "houses/:id/edit", element: <HouseFormPage /> },
 
-      // Lands
       { path: "lands", element: <LandManagementPage /> },
       { path: "lands/create", element: <LandFormPage /> },
       { path: "lands/:id/edit", element: <LandFormPage /> },
 
-      // Posts
       { path: "posts", element: <PostManagementPage /> },
 
-      // Appointments
       { path: "appointments", element: <AppointmentManagementPage /> },
       { path: "appointments/calendar", element: <AppointmentCalendarPage /> },
       { path: "appointments/create", element: <AppointmentFormPage /> },
       { path: "appointments/:id/edit", element: <AppointmentFormPage /> },
 
-      // Users
       { path: "users", element: <UserManagementPage /> },
       { path: "customers", element: <CustomerManagementPage /> },
       { path: "employees", element: <EmployeeManagementPage /> },
 
-      // Roles & Categories
       { path: "roles", element: <RoleManagementPage /> },
       { path: "categories", element: <CategoryManagementPage /> },
 
-      // Favorites & Profile
       { path: "favorites", element: <FavoriteManagementPage /> },
       { path: "profile", element: <ProfilePage /> },
 
-      // VIP & Payment
       { path: "payment-history", element: <PaymentHistoryPage /> },
       { path: "vip-packages", element: <VipPackageManagementPage /> },
       { path: "vip-packages/create", element: <VipPackageFormPage /> },
-      { path: "vip-packages/:id", element: <VipPackageFormPage /> },
+      { path: "vip-packages/:id/edit", element: <VipPackageFormPage /> },
     ],
   },
 
-  // ── Employee ─────────────────────────────────────────────────────────────────
+  // EMPLOYEE
   {
     path: "/employee",
     element: (

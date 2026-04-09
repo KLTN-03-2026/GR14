@@ -1,19 +1,5 @@
 import { useNavigate } from "react-router-dom";
-interface Post {
-    id: number;
-    title: string;
-    city: string;
-    district: string;
-    ward: string;
-    description: string;
-    price: number;
-    area: number;
-    direction?: string | null;
-    postedAt?: string | null;
-    createdAt?: string | null; // 
-    isVip?: boolean;
-    images?: { url: string; position: number }[];
-}
+import type { Post, PostImage } from "@/types/post";
 
 interface Props {
     post: Post;
@@ -28,9 +14,9 @@ const formatPrice = (v?: number) => {
     return v.toLocaleString("vi-VN") + " đ";
 };
 
-const getThumbnail = (images?: any[]) => {
+const getThumbnail = (images?: PostImage[]) => {
     if (!images?.length) return "https://via.placeholder.com/600x400";
-    return [...images].sort((a, b) => a.position - b.position)[0].url;
+    return [...images].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))[0].url;
 };
 
 const formatDateTime = (d?: string | null) => {
@@ -94,11 +80,11 @@ const NewsCard = ({ post }: Props) => {
                     <span className="text-red-500 font-bold">
                         {formatPrice(post.price)}
                     </span>
-                    <span>{post.area} m²</span>
+                    <span>{post.area != null ? `${post.area} m²` : '—'}</span>
                 </div>
 
                 <div className="text-xs text-gray-500 mt-2">
-                    📍 {post.ward}, {post.district}, {post.city}
+                    📍 {[post.ward, post.district, post.city].filter(Boolean).join(", ") || "—"}
                 </div>
 
                 <div className="text-xs text-gray-400 mt-1">

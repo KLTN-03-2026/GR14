@@ -23,7 +23,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('posts')
 export class PostController {
-    constructor(private readonly postService: PostService) { }
+    constructor(private readonly postService: PostService) {}
 
     @Get('approved')
     findApproved(
@@ -44,8 +44,20 @@ export class PostController {
     @Get('all')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @Roles('ADMIN')
-    findAll(@Query('postType') postType?: PostType) {
-        return this.postService.findAll(postType);
+    findAll(
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+        @Query('status') status?: string,
+        @Query('search') search?: string,
+        @Query('postType') postType?: PostType,
+    ) {
+        return this.postService.findAll({
+            page: page ? +page : 1,
+            limit: limit ? +limit : 10,
+            status: status ? +status : undefined,
+            search,
+            postType,
+        });
     }
 
     @Get('my-posts')
@@ -71,19 +83,19 @@ export class PostController {
     }
 
     @Put(':id')
+    @UseGuards(AuthGuard('jwt'))
     @UseInterceptors(FilesInterceptor('images', 10))
     update(
         @Param('id', ParseIntPipe) id: number,
         @Body(new ValidationPipe({
             transform: true,
             whitelist: true,
-            forbidNonWhitelisted: true
+            forbidNonWhitelisted: true,
         })) dto: UpdatePostDto,
         @UploadedFiles() files: Express.Multer.File[],
+        @Req() req: any,
     ) {
-        console.log('📸 Số ảnh nhận được:', files?.length || 0);
-        console.log('📝 DTO:', dto);
-        return this.postService.update(id, dto, files);
+        return this.postService.update(id, dto, req.user.id, files);
     }
 
     @Put(':id/approve')
@@ -102,7 +114,7 @@ export class PostController {
 
     @Delete(':id')
     @UseGuards(AuthGuard('jwt'))
-    delete(@Param('id', ParseIntPipe) id: number) {
-        return this.postService.delete(id);
+    delete(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+        return this.postService.delete(id, req.user.id);
     }
 }

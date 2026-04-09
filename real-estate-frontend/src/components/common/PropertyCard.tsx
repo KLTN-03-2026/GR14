@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { message } from 'antd';
 import { HeartOutlined, HeartFilled, EnvironmentOutlined } from '@ant-design/icons';
 import { useAuthStore } from '@/stores/authStore';
-import { favoriteApi } from '@/api';
+import { useFavorites } from '@/context/FavoritesContext';
 import { formatCurrency } from '@/utils';
 import type { House, Land } from '@/types';
 import bedIcon from '@/assets/double-bed.png';
@@ -50,13 +50,14 @@ const getLocation = (property: House | Land): string => {
 const PropertyCard: React.FC<PropertyCardProps> = ({ property, type = 'house' }) => {
     const navigate = useNavigate();
     const [imgError, setImgError] = useState(false);
-    const [isFavorited, setIsFavorited] = useState(false);
     const { isAuthenticated } = useAuthStore();
+    const { isFavoritedHouse, isFavoritedLand, addHouseFavorite, removeFavoritedHouse, addLandFavorite, removeFavoritedLand } = useFavorites();
 
     const imgSrc = getImageSrc(property);
     const showPlaceholder = !imgSrc || imgError;
     const location = getLocation(property);
     const isHouse = type === 'house';
+    const isFavorited = isHouse ? isFavoritedHouse(property.id) : isFavoritedLand(property.id);
 
     const handleClick = () => {
         navigate(`/${isHouse ? 'houses' : 'lands'}/${property.id}`);
@@ -72,16 +73,20 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ property, type = 'house' })
         }
         try {
             if (isFavorited) {
-                isHouse
-                    ? await favoriteApi.removeHouse(property.id)
-                    : await favoriteApi.removeLand(property.id);
+                if (isHouse) {
+                    await removeFavoritedHouse(property.id);
+                } else {
+                    await removeFavoritedLand(property.id);
+                }
+                message.success('Đã bỏ yêu thích');
             } else {
-                isHouse
-                    ? await favoriteApi.addHouse(property.id)
-                    : await favoriteApi.addLand(property.id);
+                if (isHouse) {
+                    await addHouseFavorite(property.id);
+                } else {
+                    await addLandFavorite(property.id);
+                }
+                message.success('Đã thêm vào yêu thích');
             }
-            setIsFavorited(!isFavorited);
-            message.success(isFavorited ? 'Đã bỏ yêu thích' : 'Đã thêm vào yêu thích');
         } catch {
             message.error('Có lỗi xảy ra');
         }
@@ -116,9 +121,8 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ property, type = 'house' })
                 <button
                     onClick={handleFavorite}
                     aria-label={isFavorited ? 'Bỏ yêu thích' : 'Thêm vào yêu thích'}
-                    className={`absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center shadow-md transition-all duration-200 z-10 ${
-                        isFavorited ? 'bg-red-500 hover:bg-red-600' : 'bg-white/90 hover:bg-white'
-                    }`}
+                    className={`absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center shadow-md transition-all duration-200 z-10 ${isFavorited ? 'bg-red-500 hover:bg-red-600' : 'bg-white/90 hover:bg-white'
+                        }`}
                 >
                     {isFavorited
                         ? <HeartFilled className="text-white text-[14px]" />
@@ -180,12 +184,12 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ property, type = 'house' })
                         {formatPrice((property as any).price)}
                     </span>
                     <Link
-                                to={`/${isHouse ? 'houses' : 'lands'}/${property.id}`}
-                                onClick={(e) => e.stopPropagation()}
-                                className="px-4 py-1.5 bg-[#254b86] text-white border border-[#254b86] text-[13px] font-semibold rounded-lg hover:bg-white hover:text-[#254b86] transition-all duration-200 whitespace-nowrap shadow-sm hover:shadow"
-                            >
-                                Xem chi tiết
-                </Link>
+                        to={`/${isHouse ? 'houses' : 'lands'}/${property.id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="px-4 py-1.5 bg-[#254b86] text-white border border-[#254b86] text-[13px] font-semibold rounded-lg hover:bg-white hover:text-[#254b86] transition-all duration-200 whitespace-nowrap shadow-sm hover:shadow"
+                    >
+                        Xem chi tiết
+                    </Link>
                 </div>
             </div>
         </div>

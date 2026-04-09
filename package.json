@@ -1,4 +1,12 @@
 {
+  "name": "real-estate",
+  "private": true,
+  "description": "Dự án gồm API (NestJS) và frontend (Vite). Chạy npm install trong từng thư mục con.",
+  "scripts": {
+    "install:api": "npm install --prefix real-estate-api",
+    "install:web": "npm install --prefix real-estate-frontend",
+    "install:all": "npm run install:api && npm run install:web"
+  },
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",

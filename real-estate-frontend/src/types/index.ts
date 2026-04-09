@@ -8,6 +8,11 @@ export interface User {
     email?: string;
     address?: string;
     status: number;
+    isVip?: boolean;
+    vipExpiry?: string; // ISO date string
+    vipPackageName?: string | null;
+    vipPriorityLevel?: number | null;
+    vipDurationDays?: number | null;
     createdAt: string;
     updatedAt: string;
     roles?: string[];
@@ -402,9 +407,10 @@ export interface Payment {
 }
 
 export interface CreatePaymentRequest {
-    postId: number;
+    postId?: number; // Optional - for POST_VIP or null for ACCOUNT_VIP
     packageId: number;
-    paymentMethod: 'vnpay' | 'momo';
+    paymentType: 'POST_VIP' | 'ACCOUNT_VIP';
+    paymentMethod: 'vnpay' | 'momo' | 'MOCK';
     returnUrl: string;
 }
 

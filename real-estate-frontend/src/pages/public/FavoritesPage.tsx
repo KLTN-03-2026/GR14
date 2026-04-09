@@ -1,23 +1,24 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Tabs, Spin, Empty, Button } from 'antd';
 import { HeartFilled } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { favoriteApi } from '@/api';
+import { useFavorites } from '@/context/FavoritesContext';
 import { PropertyCard } from '@/components/common';
 
 const FavoritesPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
-    const [favoriteHouses, setFavoriteHouses] = useState<any[]>([]);
-    const [favoriteLands, setFavoriteLands] = useState<any[]>([]);
-
+    const [allHouses, setAllHouses] = useState<any[]>([]);
+    const [allLands, setAllLands] = useState<any[]>([]);
+    const { favoriteHouseIds, favoriteLandIds } = useFavorites();
 
     const fetchFavorites = async () => {
         setLoading(true);
         try {
             const res = await favoriteApi.getAll();
             const allFavorites = res.data;
-            setFavoriteHouses(allFavorites.filter((fav: any) => fav.house).map((fav: any) => fav.house));
-            setFavoriteLands(allFavorites.filter((fav: any) => fav.land).map((fav: any) => fav.land));
+            setAllHouses(allFavorites.filter((fav: any) => fav.house).map((fav: any) => fav.house));
+            setAllLands(allFavorites.filter((fav: any) => fav.land).map((fav: any) => fav.land));
         } catch {
             // message handled by interceptor
         } finally {
@@ -27,6 +28,16 @@ const FavoritesPage: React.FC = () => {
 
     useEffect(() => { fetchFavorites(); }, []);
 
+    // Filter items dựa trên IDs từ FavoritesContext (auto update when user unfavorite)
+    const favoriteHouses = useMemo(
+        () => allHouses.filter(house => favoriteHouseIds.includes(house.id)),
+        [allHouses, favoriteHouseIds]
+    );
+
+    const favoriteLands = useMemo(
+        () => allLands.filter(land => favoriteLandIds.includes(land.id)),
+        [allLands, favoriteLandIds]
+    );
 
     const renderTabContent = (items: any[], type: 'house' | 'land') => {
         if (loading) {

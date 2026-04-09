@@ -1,8 +1,7 @@
-import { IsNotEmpty, IsString, IsOptional, IsEnum, IsNumber, IsBoolean, IsDateString, Min, Max } from 'class-validator';
+import { IsNotEmpty, IsString, IsOptional, IsEnum, IsNumber, IsDateString, Min } from 'class-validator';
 import { PartialType } from '@nestjs/mapped-types';
-import { Transform, Type } from 'class-transformer';
+import { Type } from 'class-transformer';
 
-// Post Type Enum
 export enum PostType {
     SELL_HOUSE = 'SELL_HOUSE',
     SELL_LAND = 'SELL_LAND',
@@ -14,15 +13,14 @@ export enum PostType {
     PROMOTION = 'PROMOTION',
 }
 
-// Base DTO with common fields
 export class CreatePostDto {
     @IsNotEmpty()
     @IsEnum(PostType)
-    postType: PostType;
+    postType!: PostType;
 
     @IsNotEmpty()
     @IsString()
-    title: string;
+    title!: string;
 
     @IsOptional()
     @IsString()
@@ -50,9 +48,8 @@ export class CreatePostDto {
 
     @IsNotEmpty()
     @IsString()
-    description: string;
+    description!: string;
 
-    // Fields for BĐS (SELL/RENT HOUSE/LAND)
     @IsOptional()
     @Type(() => Number)
     @IsNumber({ maxDecimalPlaces: 2 })
@@ -69,7 +66,6 @@ export class CreatePostDto {
     @IsString()
     direction?: string;
 
-    // Fields for House posts (SELL_HOUSE, RENT_HOUSE)
     @IsOptional()
     @Type(() => Number)
     @IsNumber()
@@ -88,7 +84,6 @@ export class CreatePostDto {
     @Min(1)
     floors?: number;
 
-    // Fields for Land posts (SELL_LAND, RENT_LAND)
     @IsOptional()
     @Type(() => Number)
     @IsNumber({ maxDecimalPlaces: 2 })
@@ -109,7 +104,6 @@ export class CreatePostDto {
     @IsString()
     legalStatus?: string;
 
-    // Fields for NEED_BUY/NEED_RENT
     @IsOptional()
     @Type(() => Number)
     @IsNumber({ maxDecimalPlaces: 2 })
@@ -134,7 +128,6 @@ export class CreatePostDto {
     @Min(0)
     maxArea?: number;
 
-    // Fields for NEWS/PROMOTION
     @IsOptional()
     @IsDateString()
     startDate?: string;
@@ -148,46 +141,57 @@ export class CreatePostDto {
     discountCode?: string;
 }
 
-// Update DTO
 export class UpdatePostDto extends PartialType(CreatePostDto) { }
 
-// Response DTO
 export class PostResponseDto {
-    id: number;
-    postType: PostType;
-    title: string;
+    id!: number;
+    postType!: PostType;
+    title!: string;
     city?: string;
     district?: string;
     ward?: string;
     address?: string;
     contactPhone?: string;
     contactLink?: string;
-    description: string;
+    description!: string;
+
     price?: number;
     area?: number;
     direction?: string;
+
     bedrooms?: number;
     bathrooms?: number;
     floors?: number;
+
     frontWidth?: number;
     landLength?: number;
     landType?: string;
     legalStatus?: string;
+
     minPrice?: number;
     maxPrice?: number;
     minArea?: number;
     maxArea?: number;
+
     startDate?: Date;
     endDate?: Date;
     discountCode?: string;
-    status: number;
-    isVip: boolean;
+
+    status!: number;
+    isVip!: boolean;
     vipExpiry?: Date;
-    userId: number;
-    postedAt: Date;
+
+    userId!: number;
+    postedAt!: Date;
     approvedAt?: Date;
-    createdAt: Date;
-    updatedAt: Date;
+    createdAt!: Date;
+    updatedAt!: Date;
+
     images?: { id: number; url: string; position: number }[];
-    user?: { id: number; username: string; fullName: string; phone: string };
+    user?: {
+        id: number;
+        username: string;
+        fullName: string;
+        phone: string;
+    };
 }

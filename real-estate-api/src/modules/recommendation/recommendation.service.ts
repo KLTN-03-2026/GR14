@@ -164,7 +164,6 @@ export class RecommendationService {
         // 5. Build user embedding vector (weighted average of interacted property embeddings)
         const userVector = await this.buildUserVector(userId, interactions);
 
-        // 6. Vector search for candidates using userVector (FIX #3: 100 from vector)
         let vectorCandidates: VectorSearchResult[] = [];
         if (userVector) {
             vectorCandidates = await this.vectorSearch(userVector, 100, interactions);
@@ -198,7 +197,7 @@ export class RecommendationService {
                     category: true,
                 },
                 orderBy: { createdAt: 'desc' },
-                take: 50, // FIX #3: tighter DB candidate set
+                take: 50,
             }),
             this.prisma.land.findMany({
                 where: {
@@ -211,12 +210,10 @@ export class RecommendationService {
                     category: true,
                 },
                 orderBy: { createdAt: 'desc' },
-                take: 50, // FIX #3: tighter DB candidate set
+                take: 50,
             }),
         ]);
 
-        // 10. Build embedding score map from vector search results
-        //     FIX #1: Normalize cosine similarity → strip low-signal scores
         const embeddingScoreMap = new Map<string, number>();
         for (const vc of vectorCandidates) {
             const source = String(vc.payload?.source || '');
@@ -227,7 +224,6 @@ export class RecommendationService {
             }
         }
 
-        // FIX #2: Adaptive hybrid weights based on user data richness
         const weightEmbedding = profile.totalWeight > 10 ? 0.7 : 0.4;
         const weightRule = 1 - weightEmbedding;
 
@@ -532,16 +528,12 @@ export class RecommendationService {
 
     // ==================== HYBRID SCORING ====================
 
-    // FIX #1: Normalize cosine similarity to strip low-signal noise
     private normalizeEmbeddingScore(raw: number): number {
-        // Cosine similarity from Qdrant is 0→1 but distribution clusters around 0.2–0.8.
-        // Rescale so scores below 0.2 map to 0 and the rest spread across 0→1.
         return Math.max(0, (raw - 0.2) / (1 - 0.2));
     }
 
     // ==================== DIVERSITY ====================
 
-    // FIX #4: Smart feed diversity — limit per (district + priceBucket + type) combo
     private applyDiversity(scored: HybridScoredProperty[], limit: number): HybridScoredProperty[] {
         const result: HybridScoredProperty[] = [];
         const bucketCount = new Map<string, number>();

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-hot-toast';
 import DOMPurify from 'dompurify';
 import { postApi } from '@/api';
@@ -18,22 +18,12 @@ type ApiError = {
     };
 };
 
-type VipTooltipState = {
-    visible: boolean;
-    x: number;
-    y: number;
-    packageName: string;
-    statusText: string;
-};
-
 const PostManagementPage: React.FC = () => {
     const [allPosts, setAllPosts] = useState<Post[]>([]);
     const [loading, setLoading] = useState(false);
-
     const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'vip'>('all');
     const [search, setSearch] = useState('');
     const [page, setPage] = useState(1);
-
     const [modalOpen, setModalOpen] = useState(false);
     const [editingPost, setEditingPost] = useState<Post | null>(null);
     const [previewOpen, setPreviewOpen] = useState(false);
@@ -42,62 +32,67 @@ const PostManagementPage: React.FC = () => {
     const [deletePost, setDeletePost] = useState<Post | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [submitting, setSubmitting] = useState(false);
-    const [vipTooltip, setVipTooltip] = useState<VipTooltipState>({
-        visible: false,
-        x: 0,
-        y: 0,
-        packageName: '',
-        statusText: '',
-    });
-
-    const loadPosts = async () => {
+    const loadPosts = useCallback(async () => {
         setLoading(true);
         try {
             const res = await postApi.getAll();
-            setAllPosts(res.data || []);
-        } catch (err) {
+            const payload = (res as any)?.data;
+            const maybePosts = payload?.data ?? payload;
+            const posts = Array.isArray(maybePosts)
+                ? maybePosts
+                : Array.isArray(maybePosts?.data)
+                    ? maybePosts.data
+                    : [];
+
+            if (!Array.isArray(posts)) {
+                console.warn('Unexpected posts payload:', payload);
+            }
+
+            setAllPosts(posts);
+        } catch (err: any) {
+            const status = err?.response?.status;
+            const apiMessage = err?.response?.data?.message;
+            const url = err?.config?.baseURL && err?.config?.url ? `${err.config.baseURL}${err.config.url}` : undefined;
+
             console.error('Load posts error:', err);
-            toast.error('Lỗi tải dữ liệu');
+            toast.error(
+                status
+                    ? `Lỗi tải dữ liệu (HTTP ${status})${url ? `: ${url}` : ''}`
+                    : 'Lỗi tải dữ liệu'
+            );
+            if (apiMessage) {
+                toast.error(Array.isArray(apiMessage) ? apiMessage[0] : apiMessage);
+            }
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
 
     useEffect(() => {
         loadPosts();
-    }, []);
+    }, [loadPosts]);
 
     const isVipPost = (post: Post) => Boolean(post.isVip || post.vipPackageName || post.vipExpiry);
 
-    const getVipStatusText = (post: Post) => {
-        if (!post.vipExpiry) return 'Chưa có thông tin hết hạn';
-        const expiry = new Date(post.vipExpiry);
-        if (Number.isNaN(expiry.getTime())) return 'Ngày hết hạn không hợp lệ';
-        const isActive = expiry.getTime() >= Date.now();
-        return `${isActive ? 'Còn hạn đến' : 'Đã hết hạn ngày'} ${formatDateTime(post.vipExpiry)}`;
+    const getVipTierLabel = (post: Post): string => {
+        if (!isVipPost(post)) return '—';
+
+        const level = post.vipPriorityLevel;
+        if (level === 0) return 'VIP 0';
+        if (level === 1) return 'VIP 1';
+        if (level === 2) return 'VIP 2';
+        if (level === 3) return 'VIP 3';
+
+        const name = String(post.vipPackageName || '').toLowerCase();
+        if (!name) return 'VIP';
+        if (name.includes('30')) return 'VIP 3';
+        if (name.includes('15')) return 'VIP 2';
+        if (name.includes('7')) return 'VIP 1';
+        if (name.includes('10k') || name.includes('1 lần') || name.includes('1 lan')) return 'VIP 0';
+        return 'VIP';
     };
 
-    const openVipTooltip = (event: React.MouseEvent, post: Post) => {
-        setVipTooltip({
-            visible: true,
-            x: event.clientX + 12,
-            y: event.clientY + 12,
-            packageName: post.vipPackageName || 'Gói VIP',
-            statusText: getVipStatusText(post),
-        });
-    };
-
-    const moveVipTooltip = (event: React.MouseEvent) => {
-        setVipTooltip((prev) => ({
-            ...prev,
-            x: event.clientX + 12,
-            y: event.clientY + 12,
-        }));
-    };
-
-    const closeVipTooltip = () => {
-        setVipTooltip((prev) => ({ ...prev, visible: false }));
-    };
+    // Tooltip VIP đã được bỏ ở cột "Tiêu đề" (đã có cột "Gói VIP" riêng).
 
     const filteredByTabAndSearch = useMemo(() => {
         let result = [...allPosts];
@@ -137,7 +132,6 @@ const PostManagementPage: React.FC = () => {
                 await postApi.create(submitData);
                 toast.success('Thêm bài đăng thành công');
             }
-
             loadPosts();
             setModalOpen(false);
         } catch (err: unknown) {
@@ -178,123 +172,137 @@ const PostManagementPage: React.FC = () => {
     const columns: Column<Post>[] = [
         {
             title: 'Ảnh',
-            key: 'image',
-            width: 110,
-            render: (_, r) =>
-                r.images?.length ? (
-                    <div
-                        className="flex items-center gap-1"
+            width: 80,
+            render: (_, record) =>
+                record.images?.length ? (
+                    <img
+                        src={record.images[0].url}
+                        alt="thumb"
+                        className="h-[50px] w-[60px] cursor-pointer rounded object-cover"
                         onClick={() => {
-                            setPreviewImages((r.images || []).map((img) => img.url));
+                           setPreviewImages(record.images?.map((img) => img.url) || []);
                             setPreviewIndex(0);
                             setPreviewOpen(true);
                         }}
-                    >
-                        <img
-                            src={r.images[0].url}
-                            alt=""
-                            className="h-[44px] w-[56px] rounded object-cover cursor-zoom-in"
-                        />
-                        {r.images.length > 1 && (
-                            <span className="rounded-full bg-brand-500 px-1.5 py-0.5 text-[11px] text-white whitespace-nowrap">+{r.images.length - 1}</span>
-                        )}
-                    </div>
-                ) : (
-                    '—'
-                ),
+                    />
+                ) : '—',
         },
         {
             title: 'Tiêu đề',
-            key: 'title',
-            width: 240,
-            render: (_, r) => (
-                <div className="flex items-center gap-2">
-                    <span>{r.title}</span>
-                    {isVipPost(r) && (
-                        <span
-                            className="inline-flex cursor-help"
-                            onMouseEnter={(e) => openVipTooltip(e, r)}
-                            onMouseMove={moveVipTooltip}
-                            onMouseLeave={closeVipTooltip}
-                        >
-                            <Badge color="warning">VIP</Badge>
-                        </span>
-                    )}
-                </div>
+            width: 220,
+            render: (_, record) => (
+                <span className="font-medium">{record.title}</span>
             ),
         },
         {
             title: 'Mô tả',
-            dataIndex: 'description',
             key: 'description',
             width: 550,
-            render: (text: string) =>
-                !text ? (
-                    '—'
-                ) : (
-                    <div
-                        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(text) }}
-                        style={{ lineHeight: '1.6', fontSize: '13.5px', whiteSpace: 'normal', wordBreak: 'break-word' }}
-                    />
-                ),
+            render: (_, r) =>
+                !r.description ? '—' : (() => {
+                    const raw = String(r.description || '');
+                    const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(raw);
+                    const escapeHtml = (s: string) =>
+                        s
+                            .replace(/&/g, '&amp;')
+                            .replace(/</g, '&lt;')
+                            .replace(/>/g, '&gt;')
+                            .replace(/"/g, '&quot;')
+                            .replace(/'/g, '&#39;');
+
+                    const html = looksLikeHtml
+                        ? raw
+                        : `<div>${escapeHtml(raw).replace(/\r?\n/g, '<br />')}</div>`;
+
+                    return (
+                        <div
+                            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }}
+                            style={{ lineHeight: '1.6', fontSize: '13.5px', whiteSpace: 'normal', wordBreak: 'break-word' }}
+                        />
+                    );
+                })(),
         },
         { title: 'Địa chỉ', dataIndex: 'address', width: 280 },
         { title: 'Giá', key: 'price', width: 160, render: (_, r) => formatCurrency(r.price) },
         { title: 'Ngày đăng', key: 'postedAt', width: 150, render: (_, r) => formatDateTime(r.postedAt) },
         {
+            title: 'Gói VIP',
+            key: 'vipTier',
+            width: 110,
+            render: (_, record) => {
+                const label = getVipTierLabel(record);
+                if (label === '—') return '—';
+                const color =
+                    label === 'VIP 3' ? 'bg-amber-100 text-amber-800 border-amber-200'
+                        : label === 'VIP 2' ? 'bg-purple-100 text-purple-800 border-purple-200'
+                            : label === 'VIP 1' ? 'bg-blue-100 text-blue-800 border-blue-200'
+                                : 'bg-gray-100 text-gray-700 border-gray-200';
+                return (
+                    <span className={`inline-flex items-center justify-center rounded-full border px-2 py-1 text-xs font-bold whitespace-nowrap ${color}`}>
+                        {label}
+                    </span>
+                );
+            },
+        },
+        {
             title: 'Trạng thái',
             key: 'status',
-            width: 120,
-            render: (_, r) => (
-                <Badge color={r.status === 1 ? 'warning' : r.status === 2 ? 'success' : 'error'}>
-                    {POST_STATUS_LABELS[r.status]}
-                </Badge>
-            ),
+            width: 130,
+            render: (_, record) => {
+                const colorMap: Record<number, 'warning' | 'success' | 'error'> = {
+                    1: 'warning',
+                    2: 'success',
+                    3: 'error',
+                };
+                return (
+                    <Badge color={colorMap[record.status]}>
+                        {POST_STATUS_LABELS[record.status]}
+                    </Badge>
+                );
+            },
         },
         {
             title: 'Hành động',
-            key: 'action',
-            width: 260,
-            render: (_, r) => (
-                <div className="flex flex-wrap items-center gap-2">
-                    {r.status === 1 && (
+            width: 180,
+            render: (_, record) => (
+                <div className="grid grid-cols-2 gap-2">
+                    {record.status === 1 && (
                         <>
-                            <Button size="sm" variant="primary" iconOnly ariaLabel="Duyệt" onClick={() => handleStatusChange(r.id, 2)} startIcon={(
-                                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                </svg>
-                            )}>
+                            <Button
+                                size="sm"
+                                variant="primary"
+                                onClick={() => handleStatusChange(record.id, 2)}
+                                ariaLabel="Duyệt"
+                                className="h-9 w-full"
+                            >
                                 Duyệt
                             </Button>
-                            <Button size="sm" variant="danger" iconOnly ariaLabel="Từ chối" onClick={() => handleStatusChange(r.id, 3)} startIcon={(
-                                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            )}>
+                            <Button
+                                size="sm"
+                                variant="danger"
+                                onClick={() => handleStatusChange(record.id, 3)}
+                                ariaLabel="Từ chối"
+                                className="h-9 w-full"
+                            >
                                 Từ chối
                             </Button>
                         </>
                     )}
-                    <Button size="sm" variant="outline" iconOnly ariaLabel="Sửa" onClick={() => openModal(r)} startIcon={(
-                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                    )}>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openModal(record)}
+                        ariaLabel="Sửa"
+                        className="h-9 w-full"
+                    >
                         Sửa
                     </Button>
                     <Button
                         size="sm"
                         variant="danger"
-                        iconOnly
+                        onClick={() => setDeletePost(record)}
                         ariaLabel="Xóa"
-                        startIcon={(
-                            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                        )}
-                        onClick={() => {
-                            setDeletePost(r);
-                        }}
+                        className="h-9 w-full"
                     >
                         Xóa
                     </Button>
@@ -304,82 +312,51 @@ const PostManagementPage: React.FC = () => {
     ];
 
     const tabButtonClass = (active: boolean) =>
-        `inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${active
-            ? 'border-brand-500 bg-brand-50 text-brand-600'
-            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+        `inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${
+            active
+                ? 'border-brand-500 bg-brand-50 text-brand-600'
+                : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
         }`;
 
     return (
         <div>
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-6 flex items-center justify-between">
                 <h3 className="text-xl font-semibold text-gray-900">Quản lý bài đăng</h3>
-                <Button variant="primary" iconOnly ariaLabel="Thêm bài đăng" onClick={() => openModal()} startIcon={(
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                    </svg>
-                )}>
-                    Thêm bài đăng
+                <Button variant="primary" onClick={() => openModal()}>
+                    + Thêm bài đăng
                 </Button>
             </div>
 
+            {/* Tab filter */}
             <div className="mb-4 flex flex-wrap gap-2">
-                <button
-                    className={tabButtonClass(activeTab === 'all')}
-                    onClick={() => {
-                        setActiveTab('all');
-                        setPage(1);
-                    }}
-                >
-                    Tất cả ({allPosts.length})
-                </button>
-                <button
-                    className={tabButtonClass(activeTab === 'vip')}
-                    onClick={() => {
-                        setActiveTab('vip');
-                        setPage(1);
-                    }}
-                >
-                    Tin VIP ({allPosts.filter((p) => isVipPost(p)).length})
-                </button>
-                <button
-                    className={tabButtonClass(activeTab === 'pending')}
-                    onClick={() => {
-                        setActiveTab('pending');
-                        setPage(1);
-                    }}
-                >
-                    Chờ duyệt ({allPosts.filter((p) => p.status === 1).length})
-                </button>
-                <button
-                    className={tabButtonClass(activeTab === 'approved')}
-                    onClick={() => {
-                        setActiveTab('approved');
-                        setPage(1);
-                    }}
-                >
-                    Đã duyệt ({allPosts.filter((p) => p.status === 2).length})
-                </button>
-                <button
-                    className={tabButtonClass(activeTab === 'rejected')}
-                    onClick={() => {
-                        setActiveTab('rejected');
-                        setPage(1);
-                    }}
-                >
-                    Đã từ chối ({allPosts.filter((p) => p.status === 3).length})
-                </button>
+                {(
+                    [
+                        { key: 'all', label: 'Tất cả', count: allPosts.length },
+                        { key: 'pending', label: 'Chờ duyệt', count: allPosts.filter((p) => p.status === 1).length },
+                        { key: 'approved', label: 'Đã duyệt', count: allPosts.filter((p) => p.status === 2).length },
+                        { key: 'rejected', label: 'Đã từ chối', count: allPosts.filter((p) => p.status === 3).length },
+                        { key: 'vip', label: 'VIP', count: allPosts.filter((p) => isVipPost(p)).length },
+                    ] as const
+                ).map((tab) => (
+                    <button
+                        key={tab.key}
+                        className={tabButtonClass(activeTab === tab.key)}
+                        onClick={() => { setActiveTab(tab.key); setPage(1); }}
+                    >
+                        {tab.label}
+                        <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-xs">{tab.count}</span>
+                    </button>
+                ))}
             </div>
 
-            <div className="mb-4 w-full min-w-0 sm:max-w-[400px]">
+            {/* Search */}
+            <div className="relative mb-4 w-full sm:max-w-[400px]">
                 <input
                     type="text"
                     placeholder="Tìm kiếm theo tiêu đề hoặc địa chỉ..."
-                    className="admin-control admin-filter-input w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                     value={search}
-                    onChange={(e) => {
-                        setSearch(e.target.value);
-                        setPage(1);
-                    }}
+                    onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                 />
             </div>
 
@@ -392,7 +369,8 @@ const PostManagementPage: React.FC = () => {
                     current: page,
                     total: filteredByTabAndSearch.length,
                     pageSize: DEFAULT_PAGE_SIZE,
-                    onChange: setPage,
+                    onChange: (p: number) => setPage(p),
+                    showTotal: (t: number) => `Tổng ${t} bản ghi`,
                 }}
             />
 
@@ -403,22 +381,11 @@ const PostManagementPage: React.FC = () => {
                 onClose={() => setPreviewOpen(false)}
             />
 
-            {vipTooltip.visible && (
-                <div
-                    className="pointer-events-none fixed z-[9999] w-64 rounded-lg border border-amber-200 bg-white p-3 text-xs text-gray-700 shadow-lg"
-                    style={{ left: vipTooltip.x, top: vipTooltip.y }}
-                >
-                    <div className="mb-1 font-semibold text-gray-900">{vipTooltip.packageName}</div>
-                    <div>{vipTooltip.statusText}</div>
-                </div>
-            )}
-
+            {/* Modal xóa */}
             <Modal
                 title="Xác nhận xóa bài đăng"
                 isOpen={!!deletePost}
-                onClose={() => {
-                    if (!deleting) setDeletePost(null);
-                }}
+                onClose={() => { if (!deleting) setDeletePost(null); }}
                 width="max-w-md"
                 footer={(
                     <>
@@ -432,13 +399,12 @@ const PostManagementPage: React.FC = () => {
                 )}
             >
                 <p className="text-sm text-gray-700">
-                    Bạn có chắc muốn xóa bài đăng
-                    {' '}
-                    <span className="font-semibold text-gray-900">{deletePost?.title}</span>
-                    ?
+                    Bạn có chắc muốn xóa bài đăng{' '}
+                    <span className="font-semibold text-gray-900">{deletePost?.title}</span>?
                 </p>
             </Modal>
 
+            {/* Modal thêm/sửa */}
             <Modal
                 title={editingPost ? 'Sửa bài đăng' : 'Thêm bài đăng'}
                 isOpen={modalOpen}

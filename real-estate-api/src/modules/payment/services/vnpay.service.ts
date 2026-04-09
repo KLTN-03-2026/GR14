@@ -11,7 +11,6 @@ export class VNPayService {
     private vnp_ReturnUrl: string;
 
     constructor(private configService: ConfigService) {
-        // Lấy từ .env file
         this.vnp_TmnCode = this.configService.get('VNPAY_TMN_CODE') || '9CS3IU3N';
         this.vnp_HashSecret = this.configService.get('VNPAY_HASH_SECRET') || '3WDE5U7C8XPS6ICTGRM4KEEIABLY42ED';
         this.vnp_Url = this.configService.get('VNPAY_URL') || 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html';
@@ -53,17 +52,14 @@ export class VNPayService {
         vnp_Params['vnp_CreateDate'] = createDate;
         vnp_Params['vnp_ExpireDate'] = expireDate;
 
-        // Sắp xếp và TỰ ĐỘNG ENCODE params theo chuẩn VNPay
         const sortedParams = this.sortObject(vnp_Params);
 
-        // Build signData - lúc này các value trong sortedParams đã được encode chuẩn
         const signData = Object.keys(sortedParams)
             .map(key => `${key}=${sortedParams[key]}`)
             .join('&');
 
         const secureHash = this.createHmacSha512(signData, this.vnp_HashSecret);
 
-        // Nối thẳng chuỗi truy vấn, KHÔNG DÙNG URLSearchParams nữa
         const paymentUrl = `${this.vnp_Url}?${signData}&vnp_SecureHash=${secureHash}`;
 
         return paymentUrl;
@@ -72,13 +68,11 @@ export class VNPayService {
     verifyReturnUrl(vnp_Params: Record<string, string>): { isValid: boolean; responseCode: string } {
         const secureHash = vnp_Params['vnp_SecureHash'];
 
-        // Xóa các field hash ra khỏi params trước khi verify
         const params = { ...vnp_Params };
         delete params['vnp_SecureHash'];
         delete params['vnp_SecureHashType'];
 
         const sortedParams = this.sortObject(params);
-        // Verify cũng dùng qs.stringify no encode để match
         const signData = qs.stringify(sortedParams, { encode: false });
         const checkSum = this.createHmacSha512(signData, this.vnp_HashSecret);
 
@@ -89,8 +83,6 @@ export class VNPayService {
     }
 
     private formatDateTime(date: Date): string {
-        // VNPay yêu cầu múi giờ Việt Nam (UTC+7)
-        // Docker container chạy UTC nên cần cộng thêm 7 tiếng
         const vnDate = new Date(date.getTime() + 7 * 60 * 60 * 1000);
         const year = vnDate.getUTCFullYear();
         const month = String(vnDate.getUTCMonth() + 1).padStart(2, '0');
@@ -103,16 +95,11 @@ export class VNPayService {
 
     private sortObject(obj: Record<string, string | number>): Record<string, string> {
         const sorted: Record<string, string> = {};
-
-        // Lấy danh sách các key, sắp xếp theo bảng chữ cái
         const keys = Object.keys(obj).sort();
 
-        // Lặp qua từng key để đưa vào object mới
         for (const key of keys) {
-            // Encode cả key lẫn value, đồng thời replace khoảng trắng (%20) thành dấu +
             const encodedKey = encodeURIComponent(key);
             const encodedValue = encodeURIComponent(String(obj[key])).replace(/%20/g, '+');
-
             sorted[encodedKey] = encodedValue;
         }
 

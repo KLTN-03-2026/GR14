@@ -1,11 +1,10 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CloudinaryService } from '../../common/cloudinary/cloudinary.service';
 import { CreatePostDto, UpdatePostDto, PostType } from './dto/post.dto';
 import { MailProducerService } from '../../common/mail/mail-producer.service';
 import { MailService } from '../../common/mail/mail.service';
-import { AiService } from '../ai/ai.service';
 
 @Injectable()
 export class PostService {
@@ -14,25 +13,20 @@ export class PostService {
         private cloudinaryService: CloudinaryService,
         private mailProducer: MailProducerService,
         private mailService: MailService,
-        private aiService: AiService,
-    ) { }
+    ) {}
 
     private isVipSchemaMismatchError(error: unknown): boolean {
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
-            // P2021: table does not exist, P2022: column does not exist
             return error.code === 'P2021' || error.code === 'P2022';
         }
-
         if (error instanceof Prisma.PrismaClientValidationError) {
             const msg = error.message.toLowerCase();
             return msg.includes('vipsubscriptions') || msg.includes('vip_subscriptions');
         }
-
         if (error instanceof Error) {
             const msg = error.message.toLowerCase();
             return msg.includes('vipsubscriptions') || msg.includes('vip_subscriptions');
         }
-
         return false;
     }
 
@@ -46,7 +40,6 @@ export class PostService {
             where: { userId },
             include: { role: { select: { code: true } } },
         });
-
         const roleCodes = userRoles.map((r) => r.role.code);
         return !this.isAdminOrEmployee(roleCodes);
     }
@@ -58,48 +51,37 @@ export class PostService {
             where: { userId },
             include: { role: { select: { code: true } } },
         });
-
         return rows.map((r) => r.role.code);
     }
 
-    // Validate required fields based on post type
     private validatePostData(dto: CreatePostDto | UpdatePostDto): void {
         const { postType } = dto;
 
-        // Validate based on post type
         switch (postType) {
             case PostType.SELL_HOUSE:
             case PostType.RENT_HOUSE:
             case PostType.SELL_LAND:
             case PostType.RENT_LAND:
-                // BĐS requires: city, ward, address, price, area (district is optional)
                 if (!dto.city || !dto.ward || !dto.address || !dto.price || !dto.area) {
-                    throw new BadRequestException(
-                        'BĐS yêu cầu: city, ward, address, price, area'
-                    );
+                    throw new BadRequestException('BĐS yêu cầu: city, ward, address, price, area');
                 }
                 break;
 
             case PostType.NEED_BUY:
             case PostType.NEED_RENT:
-                // NEED_BUY/NEED_RENT requires: city, minPrice, maxPrice, minArea, maxArea (district is optional)
                 if (!dto.city || !dto.minPrice || !dto.maxPrice || !dto.minArea || !dto.maxArea) {
-                    throw new BadRequestException(
-                        'Tin cần mua/thuê yêu cầu: city, minPrice, maxPrice, minArea, maxArea'
-                    );
+                    throw new BadRequestException('Tin cần mua/thuê yêu cầu: city, minPrice, maxPrice, minArea, maxArea');
                 }
-                // Validate min <= max
-                if (dto.minPrice > dto.maxPrice) {
+                if ((dto.minPrice ?? 0) > (dto.maxPrice ?? 0)) {
                     throw new BadRequestException('minPrice phải nhỏ hơn hoặc bằng maxPrice');
                 }
-                if (dto.minArea > dto.maxArea) {
+                if ((dto.minArea ?? 0) > (dto.maxArea ?? 0)) {
                     throw new BadRequestException('minArea phải nhỏ hơn hoặc bằng maxArea');
                 }
                 break;
 
             case PostType.NEWS:
             case PostType.PROMOTION:
-                // NEWS/PROMOTION only requires title and description (already validated by DTO)
                 break;
 
             default:
@@ -107,7 +89,6 @@ export class PostService {
         }
     }
 
-    // Build data object based on post type
     private buildPostData(dto: CreatePostDto | UpdatePostDto, userId?: number): any {
         const { postType } = dto;
         const data: any = {
@@ -118,17 +99,14 @@ export class PostService {
             description: dto.description,
         };
 
-        // Add userId for create
         if (userId) {
             data.userId = userId;
-            data.status = 1; // Default pending
+            data.status = 1;
         }
 
-        // Add fields based on post type
         switch (postType) {
             case PostType.SELL_HOUSE:
             case PostType.RENT_HOUSE:
-                // House posts
                 data.city = dto.city;
                 data.district = dto.district;
                 data.ward = dto.ward;
@@ -143,7 +121,6 @@ export class PostService {
 
             case PostType.SELL_LAND:
             case PostType.RENT_LAND:
-                // Land posts
                 data.city = dto.city;
                 data.district = dto.district;
                 data.ward = dto.ward;
@@ -159,7 +136,6 @@ export class PostService {
 
             case PostType.NEED_BUY:
             case PostType.NEED_RENT:
-                // Need buy/rent posts
                 data.city = dto.city;
                 data.district = dto.district;
                 data.ward = dto.ward;
@@ -173,7 +149,6 @@ export class PostService {
 
             case PostType.NEWS:
             case PostType.PROMOTION:
-                // News/Promotion posts
                 data.startDate = dto.startDate ? new Date(dto.startDate) : null;
                 data.endDate = dto.endDate ? new Date(dto.endDate) : null;
                 data.discountCode = dto.discountCode;
@@ -183,24 +158,59 @@ export class PostService {
         return data;
     }
 
+    // ==================== CREATE ====================
     async create(dto: CreatePostDto, userId: number, files?: Express.Multer.File[], actorRoles?: string[]) {
-        // Validate post data
         this.validatePostData(dto);
 
-        // Build data based on post type
         const data = this.buildPostData(dto, userId);
-
         const resolvedRoles = await this.resolveActorRoles(userId, actorRoles);
 
-        // Admin/Employee posts are auto-approved and should not trigger approval mail flow.
         if (this.isAdminOrEmployee(resolvedRoles)) {
             data.status = 2;
             data.approvedAt = new Date();
         }
 
-        // Use transaction to ensure if image upload fails, Post is not created
         return this.prisma.$transaction(async (tx) => {
             const post = await tx.post.create({ data });
+
+            // Nếu user có VIP tài khoản còn hạn (ACCOUNT_VIP) thì gắn VIP cho bài đăng này
+            // Quy ước tier: 30 ngày → VIP 3, 15 ngày → VIP 2, 7 ngày → VIP 1 (theo priorityLevel của package)
+            // Lưu ý: vipSubscription cho account có postId = null; ta tạo thêm 1 bản ghi cho post để admin UI hiển thị đúng gói VIP.
+            if (!this.isAdminOrEmployee(resolvedRoles)) {
+                const now = new Date();
+                const activeAccountVip = await tx.vipSubscription.findFirst({
+                    where: {
+                        userId,
+                        postId: null,
+                        status: 1,
+                        endDate: { gt: now },
+                    },
+                    include: { package: true },
+                    orderBy: { endDate: 'desc' },
+                });
+
+                if (activeAccountVip?.endDate && activeAccountVip.packageId) {
+                    await tx.post.update({
+                        where: { id: post.id },
+                        data: ({
+                            isVip: true,
+                            vipExpiry: activeAccountVip.endDate,
+                            vipPriorityLevel: activeAccountVip.package?.priorityLevel ?? 0,
+                        } as any),
+                    });
+
+                    await tx.vipSubscription.create({
+                        data: {
+                            postId: post.id,
+                            packageId: activeAccountVip.packageId,
+                            userId,
+                            status: 1,
+                            startDate: now,
+                            endDate: activeAccountVip.endDate,
+                        },
+                    });
+                }
+            }
 
             if (files?.length) {
                 const uploads = await this.cloudinaryService.uploadImages(files);
@@ -218,29 +228,131 @@ export class PostService {
                 include: {
                     images: { select: { id: true, url: true, position: true }, orderBy: { position: 'asc' } },
                     user: { select: { id: true, username: true, fullName: true, phone: true } },
+                    vipSubscriptions: {
+                        include: { package: { select: { name: true, priorityLevel: true } } },
+                        orderBy: { endDate: 'desc' },
+                        take: 1,
+                    },
                 },
             });
-
-            if (data.status === 2) {
-                this.aiService.indexOne('post', post.id).catch(() => { });
-            }
 
             return createdPost;
         });
     }
 
-    async findApproved(page = 1, limit = 6, postType?: PostType) {
+    // ==================== FIND ALL (Admin) - ĐÃ SỬA ĐỂ KHỚP VỚI CONTROLLER ====================
+    // ==================== FIND ALL (Admin) ====================
+    async findAll(query: {
+        page?: number;
+        limit?: number;
+        status?: number;
+        search?: string;
+        postType?: PostType;
+    }) {
+        const { page = 1, limit = 10, status, search, postType } = query;
         const skip = (page - 1) * limit;
-        const now = new Date();
 
-        // Build where clause
-        const where: Record<string, unknown> = { status: 2 };
+        const where: any = {};
+
+        if (status !== undefined) {
+            where.status = Number(status);
+        } else {
+            where.status = { not: 0 };
+        }
+
         if (postType) {
             where.postType = postType;
         }
 
-        // Try VIP-aware query first; fallback to basic query if VIP tables/relations are unavailable.
-        let formattedPosts: Record<string, unknown>[] = [];
+        if (search) {
+            where.OR = [
+                { title: { contains: search, mode: 'insensitive' } },
+                { address: { contains: search, mode: 'insensitive' } },
+                { description: { contains: search, mode: 'insensitive' } },
+            ];
+        }
+
+        try {
+            const [posts, total] = await Promise.all([
+                this.prisma.post.findMany({
+                    where,
+                    include: {
+                        user: { select: { id: true, username: true, fullName: true, phone: true } },
+                        images: { select: { id: true, url: true, position: true }, orderBy: { position: 'asc' } },
+                        vipSubscriptions: {
+                            include: { package: { select: { name: true, priorityLevel: true } } },
+                            orderBy: { endDate: 'desc' },
+                            take: 1,
+                        },
+                    },
+                    orderBy: ([
+                        { vipPriorityLevel: 'desc' },
+                        { postedAt: 'desc' },
+                    ] as any),
+                    skip,
+                    take: Number(limit),
+                }),
+                this.prisma.post.count({ where }),
+            ]);
+
+            const formattedPosts = posts.map((post) => {
+                const vip = (post as any).vipSubscriptions?.[0];
+                return {
+                    ...post,
+                    isVip: Boolean(post.isVip || vip),
+                    vipPackageName: vip?.package?.name || null,
+                    vipPriorityLevel: vip?.package?.priorityLevel || null,
+                    vipSubscriptions: undefined,
+                };
+            });
+
+            return {
+                currentPage: Number(page),
+                totalPages: Math.ceil(total / limit),
+                totalItems: total,
+                data: formattedPosts,
+            };
+        } catch (error) {
+            if (!this.isVipSchemaMismatchError(error)) throw error;
+
+            console.warn('VIP query unavailable, using basic query');
+
+            const [posts, total] = await Promise.all([
+                this.prisma.post.findMany({
+                    where,
+                    include: {
+                        user: { select: { id: true, username: true, fullName: true, phone: true } },
+                        images: { select: { id: true, url: true, position: true }, orderBy: { position: 'asc' } },
+                    },
+                    // Fallback khi DB thiếu các cột VIP (vip_priority_level / vip_subscriptions...)
+                    orderBy: { postedAt: 'desc' },
+                    skip,
+                    take: Number(limit),
+                }),
+                this.prisma.post.count({ where }),
+            ]);
+
+            const formattedPosts = posts.map((post) => ({
+                ...post,
+                isVip: Boolean(post.isVip),
+                vipPackageName: null,
+                vipPriorityLevel: null,
+            }));
+
+            return {
+                currentPage: Number(page),
+                totalPages: Math.ceil(total / limit),
+                totalItems: total,
+                data: formattedPosts,
+            };
+        }
+    }
+
+    async findApproved(page = 1, limit = 6, postType?: PostType) {
+        const skip = (page - 1) * limit;
+        const where: any = { status: 2 };
+        if (postType) where.postType = postType;
+
         const total = await this.prisma.post.count({ where });
 
         try {
@@ -250,21 +362,21 @@ export class PostService {
                     user: { select: { id: true, username: true, fullName: true, phone: true } },
                     images: { select: { id: true, url: true, position: true }, orderBy: { position: 'asc' } },
                     vipSubscriptions: {
-                        where: { status: 1, endDate: { gte: now } },
+                        where: { status: 1, endDate: { gte: new Date() } },
                         include: { package: { select: { name: true, priorityLevel: true } } },
                         take: 1,
                     },
                 },
-                orderBy: [
-                    { vipSubscriptions: { _count: 'desc' } },
+                orderBy: ([
+                    { vipPriorityLevel: 'desc' },
                     { postedAt: 'desc' },
-                ],
+                ] as any),
                 skip,
                 take: limit,
             });
 
-            formattedPosts = posts.map((post) => {
-                const vip = post.vipSubscriptions?.[0];
+            const formattedPosts = posts.map((post) => {
+                const vip = (post as any).vipSubscriptions?.[0];
                 return {
                     ...post,
                     isVip: !!vip,
@@ -273,12 +385,17 @@ export class PostService {
                     vipSubscriptions: undefined,
                 };
             });
-        } catch (error) {
-            if (!this.isVipSchemaMismatchError(error)) {
-                throw error;
-            }
 
-            console.warn('VIP query unavailable in findApproved, fallback to basic query:', (error as Error).message);
+            return {
+                currentPage: page,
+                totalPages: Math.ceil(total / limit),
+                totalItems: total,
+                data: formattedPosts,
+            };
+        } catch (error) {
+            if (!this.isVipSchemaMismatchError(error)) throw error;
+
+            console.warn('VIP query unavailable, using basic query');
 
             const posts = await this.prisma.post.findMany({
                 where,
@@ -286,32 +403,31 @@ export class PostService {
                     user: { select: { id: true, username: true, fullName: true, phone: true } },
                     images: { select: { id: true, url: true, position: true }, orderBy: { position: 'asc' } },
                 },
+                // Fallback khi DB thiếu các cột VIP (vip_priority_level / vip_subscriptions...)
                 orderBy: { postedAt: 'desc' },
                 skip,
                 take: limit,
             });
 
-            formattedPosts = posts.map((post) => ({
+            const formattedPosts = posts.map((post) => ({
                 ...post,
                 isVip: Boolean(post.isVip),
                 vipPackageName: null,
                 vipPriorityLevel: null,
             }));
-        }
 
-        return {
-            currentPage: page,
-            totalPages: Math.ceil(total / limit),
-            totalItems: total,
-            data: formattedPosts,
-        };
+            return {
+                currentPage: page,
+                totalPages: Math.ceil(total / limit),
+                totalItems: total,
+                data: formattedPosts,
+            };
+        }
     }
 
     async findPending(postType?: PostType) {
-        const where: Record<string, unknown> = { status: 1 };
-        if (postType) {
-            where.postType = postType;
-        }
+        const where: any = { status: 1 };
+        if (postType) where.postType = postType;
 
         return this.prisma.post.findMany({
             where,
@@ -319,70 +435,11 @@ export class PostService {
                 user: { select: { id: true, username: true, fullName: true, phone: true } },
                 images: { select: { id: true, url: true, position: true }, orderBy: { position: 'asc' } },
             },
-            orderBy: { postedAt: 'desc' },
+            orderBy: ([
+                { vipPriorityLevel: 'desc' },
+                { postedAt: 'desc' },
+            ] as any),
         });
-    }
-
-    async findAll(postType?: PostType) {
-        const where: Record<string, unknown> = {};
-        if (postType) {
-            where.postType = postType;
-        }
-
-        try {
-            const posts = await this.prisma.post.findMany({
-                where,
-                include: {
-                    user: { select: { id: true, username: true, fullName: true, phone: true } },
-                    images: { select: { id: true, url: true, position: true }, orderBy: { position: 'asc' } },
-                    vipSubscriptions: {
-                        include: {
-                            package: { select: { name: true, priorityLevel: true, durationDays: true } },
-                        },
-                        orderBy: { endDate: 'desc' },
-                        take: 1,
-                    },
-                },
-                orderBy: { postedAt: 'desc' },
-            });
-
-            return posts.map((post) => {
-                const vip = post.vipSubscriptions?.[0];
-                return {
-                    ...post,
-                    isVip: Boolean(post.isVip || vip),
-                    vipPackageName: vip?.package?.name || null,
-                    vipPriorityLevel: vip?.package?.priorityLevel || null,
-                    vipSubscriptionStatus: vip?.status ?? null,
-                    vipExpiry: vip?.endDate || post.vipExpiry || null,
-                    vipSubscriptions: undefined,
-                };
-            });
-        } catch (error) {
-            if (!this.isVipSchemaMismatchError(error)) {
-                throw error;
-            }
-
-            console.warn('VIP query unavailable in findAll, fallback to basic query:', (error as Error).message);
-
-            const posts = await this.prisma.post.findMany({
-                where,
-                include: {
-                    user: { select: { id: true, username: true, fullName: true, phone: true } },
-                    images: { select: { id: true, url: true, position: true }, orderBy: { position: 'asc' } },
-                },
-                orderBy: { postedAt: 'desc' },
-            });
-
-            return posts.map((post) => ({
-                ...post,
-                isVip: Boolean(post.isVip),
-                vipPackageName: null,
-                vipPriorityLevel: null,
-                vipSubscriptionStatus: null,
-                vipExpiry: post.vipExpiry || null,
-            }));
-        }
     }
 
     async findById(id: number) {
@@ -393,8 +450,25 @@ export class PostService {
                 images: { select: { id: true, url: true, position: true }, orderBy: { position: 'asc' } },
             },
         });
+
         if (!post) throw new NotFoundException('Không tìm thấy bài đăng');
         return post;
+    }
+
+    async findByUser(userId: number, postType?: PostType) {
+        const where: any = { userId };
+        if (postType) where.postType = postType;
+
+        return this.prisma.post.findMany({
+            where,
+            include: {
+                images: { select: { id: true, url: true, position: true }, orderBy: { position: 'asc' } },
+            },
+            orderBy: ([
+                { vipPriorityLevel: 'desc' },
+                { postedAt: 'desc' },
+            ] as any),
+        });
     }
 
     async approve(id: number) {
@@ -414,9 +488,6 @@ export class PostService {
             const html = this.mailService.getPostApprovedEmailHtml(post.user.fullName || 'Quý khách', post.title);
             this.mailProducer.sendMail(post.user.email, 'Bài đăng đã được duyệt', html);
         }
-
-        // Trigger Qdrant indexing (fire-and-forget)
-        this.aiService.indexOne('post', id).catch(() => { });
 
         return { message: 'Đã duyệt bài đăng', data: updated };
     }
@@ -442,57 +513,27 @@ export class PostService {
         return { message: 'Đã từ chối bài đăng', data: updated };
     }
 
-    async delete(id: number) {
-        const post = await this.prisma.post.findUnique({ where: { id } });
-        if (!post) throw new NotFoundException('Bài đăng không tồn tại');
-
-        await this.prisma.$transaction(async (tx) => {
-            // Delete related images first
-            await tx.postImage.deleteMany({ where: { postId: id } });
-            // Delete post
-            await tx.post.delete({ where: { id } });
-        });
-
-        return { message: 'Xóa bài đăng thành công' };
-    }
-
-    async findByUser(userId: number, postType?: PostType) {
-        const where: Record<string, unknown> = { userId };
-        if (postType) {
-            where.postType = postType;
-        }
-
-        return this.prisma.post.findMany({
-            where,
-            include: {
-                images: { select: { id: true, url: true, position: true }, orderBy: { position: 'asc' } },
-            },
-            orderBy: { postedAt: 'desc' },
-        });
-    }
-
-    async update(id: number, dto: UpdatePostDto, files?: Express.Multer.File[]) {
+    async update(id: number, dto: UpdatePostDto, userId: number, files?: Express.Multer.File[]) {
         const post = await this.prisma.post.findUnique({ where: { id } });
         if (!post) throw new NotFoundException('Không tìm thấy bài đăng');
 
-        // Validate post data if postType is provided
+        if (post.userId !== userId) {
+            throw new ForbiddenException('Bạn không có quyền chỉnh sửa bài đăng này');
+        }
+
         if (dto.postType) {
             this.validatePostData(dto as CreatePostDto);
         }
 
-        // Build data based on post type
         const data = this.buildPostData(dto);
 
         return this.prisma.$transaction(async (tx) => {
-            // Update text/number fields
-            const updatedPost = await tx.post.update({
+            await tx.post.update({
                 where: { id },
                 data,
             });
 
-            // If new images are uploaded
             if (files && files.length > 0) {
-                // Delete old images in DB
                 await tx.postImage.deleteMany({ where: { postId: id } });
 
                 const uploads = await this.cloudinaryService.uploadImages(files);
@@ -513,5 +554,21 @@ export class PostService {
                 },
             });
         });
+    }
+
+    async delete(id: number, userId: number) {
+        const post = await this.prisma.post.findUnique({ where: { id } });
+        if (!post) throw new NotFoundException('Bài đăng không tồn tại');
+
+        if (post.userId !== userId) {
+            throw new ForbiddenException('Bạn không có quyền xóa bài đăng này');
+        }
+
+        await this.prisma.$transaction(async (tx) => {
+            await tx.postImage.deleteMany({ where: { postId: id } });
+            await tx.post.delete({ where: { id } });
+        });
+
+        return { message: 'Xóa bài đăng thành công' };
     }
 }

@@ -174,44 +174,67 @@ export class CustomerService {
     }
 
     async update(id: number, dto: UpdateCustomerDto) {
+        console.log(`\n=== UPDATE CUSTOMER ${id} ===`);
+        console.log('DTO received:', dto);
+        
         const customer = await this.prisma.customer.findUnique({ where: { id } });
         if (!customer) throw new NotFoundException('Customer not found');
 
-        this.ensureNotBlank(dto.username, 'Tên đăng nhập');
-        this.ensureNotBlank(dto.password, 'Mật khẩu');
-        this.ensureNotBlank(dto.phone, 'Số điện thoại');
-        this.ensureNotBlank(dto.email, 'Email');
+        // Chỉ validate những field được truyền lên
+        if (dto.username !== undefined) this.ensureNotBlank(dto.username, 'Tên đăng nhập');
+        if (dto.password !== undefined) this.ensureNotBlank(dto.password, 'Mật khẩu');
+        if (dto.phone !== undefined) this.ensureNotBlank(dto.phone, 'Số điện thoại');
+        if (dto.email !== undefined) this.ensureNotBlank(dto.email, 'Email');
 
         const normalizedUsername = this.normalizeOptional(dto.username);
         const normalizedEmail = this.normalizeOptional(dto.email);
         const normalizedPhone = this.normalizeOptional(dto.phone);
 
-        await this.ensureUniqueUserFields({
-            username: normalizedUsername,
-            email: normalizedEmail,
-            phone: normalizedPhone,
-            excludeUserId: customer.userId,
-        });
+        // Chỉ check unique nếu có update field này
+        if (normalizedUsername || normalizedEmail || normalizedPhone) {
+            await this.ensureUniqueUserFields({
+                username: normalizedUsername,
+                email: normalizedEmail,
+                phone: normalizedPhone,
+                excludeUserId: customer.userId,
+            });
+        }
 
-        const data: any = { ...dto };
+        const data: any = {};
         if (dto.username !== undefined) data.username = normalizedUsername;
         if (dto.email !== undefined) data.email = normalizedEmail;
         if (dto.phone !== undefined) data.phone = normalizedPhone;
+        if (dto.fullName !== undefined) data.fullName = dto.fullName;
+        if (dto.address !== undefined) data.address = dto.address;
+        if (dto.isVip !== undefined) data.isVip = dto.isVip;
+
+        console.log('Data to update:', data);
 
         if (dto.password !== undefined) {
             data.password = await bcrypt.hash(dto.password, 10);
         }
 
         try {
-            await this.prisma.user.update({
+            const updateResult = await this.prisma.user.update({
                 where: { id: customer.userId },
                 data,
             });
+            console.log('Update result:', updateResult);
         } catch (error) {
+            console.error('Update error:', error);
             this.throwFriendlyUniqueError(error);
         }
 
-        return { message: 'Updated' };
+        // Trả về customer data được update
+        const updatedCustomer = await this.prisma.customer.findUnique({
+            where: { id },
+            include: { user: true }
+        });
+        
+        console.log('Updated customer returned:', updatedCustomer);
+        console.log(`=== END UPDATE CUSTOMER ${id} ===\n`);
+
+        return { message: 'Updated', data: updatedCustomer };
     }
 
     async delete(id: number) {

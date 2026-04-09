@@ -4,6 +4,10 @@ import type { LoginRequest, RegisterRequest, AuthResponse, ForgotPasswordRequest
 export const authApi = {
     login: (data: LoginRequest) =>
         apiClient.post<AuthResponse>('/login', data),
+    
+    getMe: () =>
+        apiClient.get('/me'),
+
     register: (data: RegisterRequest) =>
         apiClient.post('/register', data),
 

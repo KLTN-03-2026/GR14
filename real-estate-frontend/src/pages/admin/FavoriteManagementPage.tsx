@@ -1,13 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { toast } from 'react-hot-toast';
 import { favoriteApi } from '@/api';
+import { useFavorites } from '@/context/FavoritesContext';
 import { PropertyCard } from '@/components/common';
 import { Button } from '@/components/ui';
 import type { Favorite, House } from '@/types';
 
 const FavoriteManagementPage: React.FC = () => {
-    const [favorites, setFavorites] = useState<Favorite[]>([]);
+    const [allFavorites, setAllFavorites] = useState<Favorite[]>([]);
     const [loading, setLoading] = useState(false);
+    const { favoriteHouseIds, favoriteLandIds } = useFavorites();
 
     useEffect(() => {
         loadFavorites();
@@ -17,13 +19,23 @@ const FavoriteManagementPage: React.FC = () => {
         setLoading(true);
         try {
             const res = await favoriteApi.getAll();
-            setFavorites(res.data.data || res.data);
+            setAllFavorites(res.data.data || res.data);
         } catch {
             toast.error('Lỗi tải dữ liệu');
         } finally {
             setLoading(false);
         }
     };
+
+    // Filter favorites dựa trên IDs từ context (auto update when user unfavorite)
+    const favorites = useMemo(
+        () => allFavorites.filter((fav: Favorite) => {
+            if (fav.houseId) return favoriteHouseIds.includes(fav.houseId);
+            if (fav.landId) return favoriteLandIds.includes(fav.landId);
+            return true;
+        }),
+        [allFavorites, favoriteHouseIds, favoriteLandIds]
+    );
 
     const handleRemove = async (fav: Favorite) => {
         try {

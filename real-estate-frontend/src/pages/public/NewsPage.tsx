@@ -2,19 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import NewsCard from "@/components/common/NewsCard";
-import type { Post } from "@/types/post";
-
-interface PostImage {
-  url: string;
-  position: number;
-}
+import type { Post, PostImage } from "@/types/post";
 
 const API_URL = "http://localhost:5000/api/posts/approved";
 
 const getThumbnail = (images?: PostImage[]) => {
   if (!images?.length)
     return "https://via.placeholder.com/600x400?text=No+Image";
-  return [...images].sort((a, b) => a.position - b.position)[0]?.url;
+  return [...images].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))[0]?.url;
 };
 
 const NewsPage = () => {
@@ -133,7 +128,7 @@ const NewsPage = () => {
                 )}
                 <h2 className="text-xl font-bold line-clamp-2">{heroPost.title}</h2>
                 <div className="text-sm opacity-80">
-                  📍 {heroPost.district}, {heroPost.city}
+                  📍 {[heroPost.district, heroPost.city].filter(Boolean).join(", ") || "—"}
                 </div>
               </div>
             </div>

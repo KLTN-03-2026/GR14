@@ -13,7 +13,6 @@ export class MoMoService {
     private notifyUrl: string;
 
     constructor(private configService: ConfigService) {
-        // Lấy từ .env file
         this.partnerCode = this.configService.get('MOMO_PARTNER_CODE') || '';
         this.accessKey = this.configService.get('MOMO_ACCESS_KEY') || '';
         this.secretKey = this.configService.get('MOMO_SECRET_KEY') || '';

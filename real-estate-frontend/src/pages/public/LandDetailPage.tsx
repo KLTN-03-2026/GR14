@@ -2,7 +2,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { message } from 'antd';
 import { HeartOutlined, HeartFilled, CalendarOutlined } from '@ant-design/icons';
-import { landApi, favoriteApi, recommendationApi } from '@/api';
+import { landApi, recommendationApi } from '@/api';
+import { useFavorites } from '@/context/FavoritesContext';
 import { Loading } from '@/components/common';
 import { formatCurrency, formatArea, getFullAddress, formatDateTime } from '@/utils';
 import { useAuthStore } from '@/stores/authStore';
@@ -342,9 +343,9 @@ const LandDetailPage: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const { isAuthenticated } = useAuthStore();
+    const { isFavoritedLand, addLandFavorite, removeFavoritedLand } = useFavorites();
     const [land, setLand] = useState<Land | null>(null);
     const [loading, setLoading] = useState(true);
-    const [isFavorited, setIsFavorited] = useState(false);
 
     // Quay lại đúng trang + filter:
     // List page truyền: navigate(`/lands/${id}?from=${encodeURIComponent(location.pathname + location.search)}`)
@@ -382,14 +383,15 @@ const LandDetailPage: React.FC = () => {
             return;
         }
         try {
-            if (isFavorited) {
-                await favoriteApi.removeLand(land!.id);
+            const isFav = isFavoritedLand(land!.id);
+            if (isFav) {
+                await removeFavoritedLand(land!.id);
+                message.success('Đã bỏ yêu thích');
             } else {
-                await favoriteApi.addLand(land!.id);
+                await addLandFavorite(land!.id);
+                message.success('Đã thêm vào yêu thích');
                 recommendationApi.trackBehavior({ action: 'save', landId: land!.id }).catch(() => { });
             }
-            setIsFavorited(!isFavorited);
-            message.success(isFavorited ? 'Đã bỏ yêu thích' : 'Đã thêm vào yêu thích');
         } catch {
             message.error('Có lỗi xảy ra');
         }
@@ -539,13 +541,13 @@ const LandDetailPage: React.FC = () => {
                             {/* Nút Yêu thích */}
                             <button
                                 onClick={handleFavorite}
-                                className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border text-[14px] font-semibold mb-3 transition-all duration-200 ${isFavorited
+                                className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border text-[14px] font-semibold mb-3 transition-all duration-200 ${isFavoritedLand(land.id)
                                     ? 'bg-red-500 border-red-500 text-white hover:bg-red-600'
                                     : 'bg-white border-gray-300 text-gray-700 hover:border-[#254b86] hover:text-[#254b86]'
                                     }`}
                             >
-                                {isFavorited ? <HeartFilled className="text-[15px]" /> : <HeartOutlined className="text-[15px]" />}
-                                {isFavorited ? 'Đã yêu thích' : 'Yêu thích'}
+                                {isFavoritedLand(land.id) ? <HeartFilled className="text-[15px]" /> : <HeartOutlined className="text-[15px]" />}
+                                {isFavoritedLand(land.id) ? 'Đã yêu thích' : 'Yêu thích'}
                             </button>
 
                             {/* Nút Đặt lịch hẹn — dùng landId (logic riêng của Land) */}

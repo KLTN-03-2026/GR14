@@ -19,7 +19,7 @@ export const paymentApi = {
     getPaymentById: (id: number) =>
         apiClient.get(`/payment/${id}`),
 
-    // Mock/Test - simulate successful payment
+    // Mock/Test
     simulateSuccess: (paymentId: number) =>
         apiClient.post(`/payment/${paymentId}/simulate-success`),
 
@@ -29,4 +29,7 @@ export const paymentApi = {
 
     cancelSubscription: (id: number) =>
         apiClient.post(`/vip-packages/subscriptions/${id}/cancel`),
+
+    verifyVNPayReturn: (queryString: string) => 
+        apiClient.get(`/payment/vnpay-return${queryString}`),
 };

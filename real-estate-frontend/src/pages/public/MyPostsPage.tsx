@@ -3,7 +3,7 @@ import { Table, Tag, Button, message, Spin, Empty, Popconfirm } from 'antd';
 import { EditOutlined, DeleteOutlined, PlusOutlined, EyeOutlined } from '@ant-design/icons';
 import { postApi } from '@/api';
 import { Link, useNavigate } from 'react-router-dom';
-import { POST_TYPE_LABELS, POST_STATUS_LABELS } from '@/types/post';
+import { POST_TYPE_LABELS } from '@/types/post';
 
 const MyPostsPage: React.FC = () => {
     const navigate = useNavigate();
@@ -85,7 +85,12 @@ const MyPostsPage: React.FC = () => {
             render: (_: any, record: any) => (
                 <div className="flex gap-2">
                     <Link to={`/posts/${record.id}`}><Button icon={<EyeOutlined />} size="small" /></Link>
-                    <Button icon={<EditOutlined />} size="small" className="text-blue-600" />
+                    <Button
+                        icon={<EditOutlined />}
+                        size="small"
+                        className="text-blue-600"
+                        onClick={() => navigate(`/posts/${record.id}/edit`)}
+                    />
                     <Popconfirm title="Xóa bài đăng này?" onConfirm={() => handleDelete(record.id)}>
                         <Button icon={<DeleteOutlined />} danger size="small" />
                     </Popconfirm>
@@ -104,7 +109,7 @@ const MyPostsPage: React.FC = () => {
                             type="primary"
                             icon={<PlusOutlined />}
                             className="bg-[#254b86] h-10 px-6 font-semibold"
-                            onClick={() => navigate('/create-post')}
+                            onClick={() => navigate('/posts/new')}
                         >
                             Đăng bài mới
                         </Button>

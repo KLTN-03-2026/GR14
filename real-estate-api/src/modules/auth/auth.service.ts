@@ -27,6 +27,40 @@ export class AuthService {
         this.maxTokens = parseInt(this.configService.get('MAX_REFRESH_TOKENS_PER_USER') || '5');
     }
 
+    async getMe(userId: number) {
+        const user = await this.prisma.user.findUnique({
+            where: { id: userId },
+            include: {
+                userRoles: { include: { role: { select: { code: true } } } },
+            },
+        });
+
+        if (!user) throw new NotFoundException('User not found');
+
+        const roles = user.userRoles?.map((ur) => ur.role.code) || [];
+
+        let employeeId: number | null = null;
+        if (roles.includes('EMPLOYEE')) {
+            const employee = await this.prisma.employee.findUnique({ where: { userId: user.id } });
+            if (employee) employeeId = employee.id;
+        }
+
+        return {
+            user: {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                fullName: user.fullName,
+                phone: user.phone,
+                address: user.address,
+                isVip: user.isVip || false,
+                vipExpiry: user.vipExpiry || null,
+                roles,
+                employeeId,
+            },
+        };
+    }
+
     async login(dto: LoginDto) {
         const { username, password } = dto;
 
@@ -93,6 +127,8 @@ export class AuthService {
                 fullName: user.fullName,
                 phone: user.phone,
                 address: user.address,
+                isVip: user.isVip || false,
+                vipExpiry: user.vipExpiry || null,
                 roles,
                 employeeId,
             },
@@ -348,6 +384,8 @@ export class AuthService {
                 fullName: user.fullName,
                 phone: user.phone,
                 address: user.address || null,
+                isVip: user.isVip,
+                vipExpiry: user.vipExpiry,
                 roles,
             },
             accessToken,
