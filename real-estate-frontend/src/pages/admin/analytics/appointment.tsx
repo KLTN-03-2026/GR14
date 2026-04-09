@@ -1,8 +1,8 @@
 // src/pages/admin/analytics/appointment.tsx
 import { useEffect, useState } from "react";
-import { useOutletContext } from "react-router-dom";
 import { Calendar, CheckCircle, XCircle, Award } from "lucide-react";
 import { analyticsApi } from "@/api/analytics";
+import { useAnalyticsContext } from "@/pages/admin/DashboardPage";
 import type {
   TimeType,
   TimeSeriesPoint,
@@ -20,10 +20,6 @@ import {
   EmptyState,
 } from "@/components/analytics/charts";
 
-interface OutletCtx {
-  timeType: TimeType;
-}
-
 const TIME_LABEL: Record<TimeType, string> = {
   day: "ngày",
   month: "tháng",
@@ -39,7 +35,7 @@ function completionColor(rate: number): string {
 }
 
 export default function AppointmentAnalyticsPage() {
-  const { timeType } = useOutletContext<OutletCtx>();
+  const { timeType } = useAnalyticsContext();
 
   const [apptTime, setApptTime] = useState<TimeSeriesPoint[]>([]);
   const [rates, setRates] = useState<AppointmentRates | null>(null);
@@ -76,7 +72,7 @@ export default function AppointmentAnalyticsPage() {
   const STATUS_SUMMARY = rates
     ? [
         { label: "Chờ duyệt", val: rates.pending, color: "#f59e0b" },
-        { label: "Đã duyệt", val: rates.approved, color: "#34d399" },
+        { label: "Đã duyệt", val: rates.approved, color: "#10b981" },
         { label: "Từ chối", val: rates.rejected, color: "#f43f5e" },
       ]
     : [];
@@ -156,14 +152,14 @@ export default function AppointmentAnalyticsPage() {
                     <div
                       key={s.label}
                       className="rounded-xl p-3 text-center"
-                      style={{ background: `${s.color}14` }}
+                      style={{ background: `${s.color}10` }}
                     >
                       <p className="text-xs" style={{ color: s.color }}>
                         {s.label}
                       </p>
                       <p
                         className="text-lg font-bold mt-1"
-                        style={{ color: "#f1f5f9" }}
+                        style={{ color: "#0f172a" }}
                       >
                         {s.val}
                       </p>
@@ -192,13 +188,16 @@ export default function AppointmentAnalyticsPage() {
                   <div
                     key={emp.employeeId}
                     className="rounded-xl p-3"
-                    style={{ background: "rgba(255,255,255,0.04)" }}
+                    style={{
+                      background: "#ffffff",
+                      border: "1px solid #e5e7eb",
+                    }}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <div>
                         <p
                           className="text-sm font-medium"
-                          style={{ color: "#f1f5f9" }}
+                          style={{ color: "#0f172a" }}
                         >
                           {emp.fullName}
                         </p>
@@ -218,7 +217,7 @@ export default function AppointmentAnalyticsPage() {
                     {/* Progress bar */}
                     <div
                       className="h-1.5 rounded-full overflow-hidden"
-                      style={{ background: "rgba(255,255,255,0.06)" }}
+                      style={{ background: "#f1f5f9" }}
                     >
                       <div
                         className="h-1.5 rounded-full transition-all duration-700"

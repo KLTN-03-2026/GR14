@@ -17,6 +17,10 @@ import NewsPage from "@/pages/public/NewsPage";
 import NewsDetailPage from "@/pages/public/NewsDetailPage";
 import FavoritesPage from "@/pages/public/FavoritesPage";
 import AboutMe from "@/pages/public/AboutMe";
+import AppointmentBookingPage from "@/pages/public/AppointmentBookingPage";
+import FengshuiPage from "@/pages/public/FengShui";
+import CreatePostPage from "@/pages/public/CreatePostPage";
+import PaymentResultPage from "@/pages/public/PaymentResultPage";
 
 // Auth pages
 import LoginPage from "@/pages/auth/LoginPage";
@@ -24,6 +28,7 @@ import RegisterPage from "@/pages/auth/RegisterPage";
 import ForgotPasswordPage from "@/pages/auth/ForgotPasswordPage";
 import ConfirmOTP from "@/pages/auth/ConfirmOTP";
 import PublicProfilePage from "@/pages/auth/ProfilePage";
+
 // Admin pages
 import DashboardPage from "@/pages/admin/DashboardPage";
 import HouseManagementPage from "@/pages/admin/HouseManagementPage";
@@ -44,39 +49,19 @@ import ProfilePage from "@/pages/admin/ProfilePage";
 import PaymentHistoryPage from "@/pages/admin/PaymentHistoryPage";
 import VipPackageManagementPage from "@/pages/admin/VipPackageManagementPage";
 import VipPackageFormPage from "@/pages/admin/VipPackageFormPage";
-import PaymentResultPage from "@/pages/public/PaymentResultPage";
+
+// Employee pages
 import EmployeeAppointmentPage from "@/pages/employee/EmployeeAppointmentPage";
 import EmployeeCalendarPage from "@/pages/employee/EmployeeCalendarPage";
-import AnalyticsLayout from "@/pages/admin/analytics";
-import UserGrowth from "@/pages/admin/analytics/user-growth";
-import PostAnalytics from "@/pages/admin/analytics/post";
-import RevenueAnalytics from "@/pages/admin/analytics/revenue";
-import AppointmentAnalytics from "@/pages/admin/analytics/appointment";
-import BehaviorAnalytics from "@/pages/admin/analytics/behavior";
-import AppointmentBookingPage from "@/pages/public/AppointmentBookingPage";
-import FengshuiPage from "@/pages/public/FengShui";
-import CreatePostPage from "@/pages/public/CreatePostPage";
 
 const router = createBrowserRouter([
-  // Auth routes
+  // ── Auth ────────────────────────────────────────────────────────────────────
+  { path: "/login", element: <LoginPage /> },
+  { path: "/register", element: <RegisterPage /> },
+  { path: "/otp", element: <ConfirmOTP /> },
+  { path: "/forgot-password", element: <ForgotPasswordPage /> },
   {
-    path: "/login",
-    element: <LoginPage />,
-  },
-  {
-    path: "/register",
-    element: <RegisterPage />,
-  },
-  {
-    path: "/otp",
-    element: <ConfirmOTP />,
-  },
-  {
-    path: "/forgot-password",
-    element: <ForgotPasswordPage />,
-  },
-  {
-    path: "profile",
+    path: "/profile",
     element: (
       <ProtectedRoute>
         <PublicProfilePage />
@@ -84,7 +69,12 @@ const router = createBrowserRouter([
     ),
   },
 
-  // Public routes
+  // ── Payment result (public, after gateway redirect) ──────────────────────
+  { path: "/payment/result", element: <PaymentResultPage /> },
+  { path: "/payment/success", element: <PaymentResultPage /> },
+  { path: "/payment/failed", element: <PaymentResultPage /> },
+
+  // ── Public ──────────────────────────────────────────────────────────────────
   {
     path: "/",
     element: <PublicLayout />,
@@ -95,112 +85,38 @@ const router = createBrowserRouter([
       { path: "lands", element: <LandListPage /> },
       { path: "lands/:id", element: <LandDetailPage /> },
       { path: "posts", element: <NewsPage /> },
-      { path: "/posts/:id", element: <NewsDetailPage /> },
+      { path: "posts/:id", element: <NewsDetailPage /> },
       { path: "about", element: <AboutMe /> },
+      { path: "fengshui", element: <FengshuiPage /> },
+      { path: "favorites", element: <FavoritesPage /> },
       {
-        path: "favorites",
-        element: <FavoritesPage />,
+        path: "appointment",
+        element: (
+          <ProtectedRoute requiredRoles={["CUSTOMER"]}>
+            <AppointmentBookingPage />
+          </ProtectedRoute>
+        ),
       },
       {
         path: "my-posts",
         element: (
           <ProtectedRoute>
-            <PublicProfilePage />
+            <MyPostsPage />
           </ProtectedRoute>
         ),
       },
-
-      // Public routes
       {
-        path: "/",
-        element: <PublicLayout />,
-        children: [
-          { index: true, element: <HomePage /> },
-          { path: "houses", element: <HouseListPage /> },
-          { path: "houses/:id", element: <HouseDetailPage /> },
-          { path: "lands", element: <LandListPage /> },
-          { path: "lands/:id", element: <LandDetailPage /> },
-          { path: "posts", element: <NewsPage /> },
-          { path: "/posts/:id", element: <NewsDetailPage /> },
-          { path: "about", element: <AboutMe /> },
-          { path: "fengshui", element: <FengshuiPage /> },
-          {
-            path: "appointment",
-            element: (
-              <ProtectedRoute requiredRoles={["CUSTOMER"]}>
-                <AppointmentBookingPage />
-              </ProtectedRoute>
-            ),
-          },
-          {
-            path: "favorites",
-            element: <FavoritesPage />,
-          },
-          {
-            path: "my-posts",
-            element: (
-              <ProtectedRoute>
-                <MyPostsPage />
-              </ProtectedRoute>
-            ),
-          },
-          {
-            path: "create-post",
-            element: (
-              <ProtectedRoute>
-                <CreatePostPage />
-              </ProtectedRoute>
-            ),
-          },
-        ],
-      },
-
-      // Payment result page (public, after redirect from payment gateway)
-      {
-        path: "/payment/result",
-        element: <PaymentResultPage />,
-      },
-      {
-        path: "/payment/success",
-        element: <PaymentResultPage />,
-      },
-      {
-        path: "/payment/failed",
-        element: <PaymentResultPage />,
-      },
-
-      // Admin routes (protected - ADMIN only)
-      {
-        path: "/admin",
+        path: "create-post",
         element: (
-          <>
-            <ProtectedRoute requiredRoles={["ADMIN"]}>
-              <AdminLayout />
-            </ProtectedRoute>
-            <ProtectedRoute>
-              <MyPostsPage />
-            </ProtectedRoute>
-          </>
+          <ProtectedRoute>
+            <CreatePostPage />
+          </ProtectedRoute>
         ),
       },
     ],
   },
 
-  // Payment result page (public, after redirect from payment gateway)
-  {
-    path: "/payment/result",
-    element: <PaymentResultPage />,
-  },
-  {
-    path: "/payment/success",
-    element: <PaymentResultPage />,
-  },
-  {
-    path: "/payment/failed",
-    element: <PaymentResultPage />,
-  },
-
-  // Admin routes (protected - ADMIN only)
+  // ── Admin ───────────────────────────────────────────────────────────────────
   {
     path: "/admin",
     element: (
@@ -209,6 +125,7 @@ const router = createBrowserRouter([
       </ProtectedRoute>
     ),
     children: [
+      // Dashboard (analytics now lives here via useState tabs)
       { index: true, element: <DashboardPage /> },
 
       // Houses
@@ -226,6 +143,7 @@ const router = createBrowserRouter([
 
       // Appointments
       { path: "appointments", element: <AppointmentManagementPage /> },
+      { path: "appointments/calendar", element: <AppointmentCalendarPage /> },
       { path: "appointments/create", element: <AppointmentFormPage /> },
       { path: "appointments/:id/edit", element: <AppointmentFormPage /> },
 
@@ -244,66 +162,13 @@ const router = createBrowserRouter([
 
       // VIP & Payment
       { path: "payment-history", element: <PaymentHistoryPage /> },
-
-      // Analytics
-      {
-        path: "analytics",
-        element: <AnalyticsLayout />,
-        children: [
-          { index: true, element: <DashboardPage /> },
-
-          // Houses
-          { path: "houses", element: <HouseManagementPage /> },
-          { path: "houses/create", element: <HouseFormPage /> },
-          { path: "houses/:id/edit", element: <HouseFormPage /> },
-
-          // Lands
-          { path: "lands", element: <LandManagementPage /> },
-          { path: "lands/create", element: <LandFormPage /> },
-          { path: "lands/:id/edit", element: <LandFormPage /> },
-
-          // Posts
-          { path: "posts", element: <PostManagementPage /> },
-
-          // Appointments
-          { path: "appointments", element: <AppointmentManagementPage /> },
-          {
-            path: "appointments/calendar",
-            element: <AppointmentCalendarPage />,
-          },
-          { path: "appointments/create", element: <AppointmentFormPage /> },
-          { path: "appointments/:id/edit", element: <AppointmentFormPage /> },
-
-          // Users
-          { path: "users", element: <UserManagementPage /> },
-          { path: "customers", element: <CustomerManagementPage /> },
-          { path: "employees", element: <EmployeeManagementPage /> },
-
-          // Roles & Categories
-          { path: "roles", element: <RoleManagementPage /> },
-          { path: "categories", element: <CategoryManagementPage /> },
-
-          // Favorites & Profile
-          { path: "favorites", element: <FavoriteManagementPage /> },
-          { path: "profile", element: <ProfilePage /> },
-
-          // VIP & Payment
-          { path: "payment-history", element: <PaymentHistoryPage /> },
-          { path: "vip-packages", element: <VipPackageManagementPage /> },
-          { path: "vip-packages/create", element: <VipPackageFormPage /> },
-          { path: "vip-packages/:id", element: <VipPackageFormPage /> },
-          { index: true, element: <UserGrowth /> },
-          { path: "user-growth", element: <UserGrowth /> },
-          { path: "post", element: <PostAnalytics /> },
-          { path: "revenue", element: <RevenueAnalytics /> },
-          { path: "appointment", element: <AppointmentAnalytics /> },
-          { path: "behavior", element: <BehaviorAnalytics /> },
-        ],
-      },
+      { path: "vip-packages", element: <VipPackageManagementPage /> },
+      { path: "vip-packages/create", element: <VipPackageFormPage /> },
+      { path: "vip-packages/:id", element: <VipPackageFormPage /> },
     ],
   },
 
-  // Employee routes (protected - EMPLOYEE only)
+  // ── Employee ─────────────────────────────────────────────────────────────────
   {
     path: "/employee",
     element: (
@@ -315,20 +180,6 @@ const router = createBrowserRouter([
       { index: true, element: <EmployeeAppointmentPage /> },
       { path: "appointments", element: <EmployeeAppointmentPage /> },
       { path: "calendar", element: <EmployeeCalendarPage /> },
-      { path: "profile", element: <ProfilePage /> },
-    ],
-  },
-  // Employee routes (protected - EMPLOYEE only)
-  {
-    path: "/employee",
-    element: (
-      <ProtectedRoute requiredRoles={["EMPLOYEE"]}>
-        <EmployeeLayout />
-      </ProtectedRoute>
-    ),
-    children: [
-      { index: true, element: <EmployeeAppointmentPage /> },
-      { path: "appointments", element: <EmployeeAppointmentPage /> },
       { path: "profile", element: <ProfilePage /> },
     ],
   },

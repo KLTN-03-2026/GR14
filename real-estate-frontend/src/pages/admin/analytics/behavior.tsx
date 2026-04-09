@@ -1,8 +1,8 @@
 // src/pages/admin/analytics/behavior.tsx
 import { useEffect, useState } from "react";
-import { useOutletContext } from "react-router-dom";
 import { Heart, MapPin, Home, TrendingUp } from "lucide-react";
 import { analyticsApi } from "@/api/analytics";
+import { useAnalyticsContext } from "@/pages/admin/DashboardPage";
 import type {
   TimeType,
   TimeSeriesPoint,
@@ -22,10 +22,6 @@ import {
   EmptyState,
 } from "@/components/analytics/charts";
 
-interface OutletCtx {
-  timeType: TimeType;
-}
-
 const CITY_COLOR = "#f43f5e";
 const HOUSE_COLOR = "#3b82f6";
 const LAND_COLOR = "#f59e0b";
@@ -37,7 +33,7 @@ const TIME_LABEL: Record<TimeType, string> = {
 };
 
 export default function BehaviorAnalyticsPage() {
-  const { timeType } = useOutletContext<OutletCtx>();
+  const { timeType } = useAnalyticsContext();
 
   const [favTrend, setFavTrend] = useState<TimeSeriesPoint[]>([]);
   const [locations, setLocations] = useState<LocationStat[]>([]);
@@ -176,8 +172,8 @@ export default function BehaviorAnalyticsPage() {
                     key={c.type}
                     className="rounded-xl p-4 text-center"
                     style={{
-                      background: `${PROP_COLORS[i]}14`,
-                      border: `1px solid ${PROP_COLORS[i]}30`,
+                      background: `${PROP_COLORS[i]}10`,
+                      border: `1px solid ${PROP_COLORS[i]}25`,
                     }}
                   >
                     <p
@@ -188,7 +184,7 @@ export default function BehaviorAnalyticsPage() {
                     </p>
                     <p
                       className="text-2xl font-bold"
-                      style={{ color: "#f1f5f9" }}
+                      style={{ color: "#0f172a" }}
                     >
                       {c.total.toLocaleString("vi-VN")}
                     </p>

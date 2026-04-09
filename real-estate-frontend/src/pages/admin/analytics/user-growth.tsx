@@ -1,8 +1,8 @@
 // src/pages/admin/analytics/user-growth.tsx
 import { useEffect, useState } from "react";
-import { useOutletContext } from "react-router-dom";
 import { Users, UserCheck, Activity, RefreshCw } from "lucide-react";
 import { analyticsApi } from "@/api/analytics";
+import { useAnalyticsContext } from "@/pages/admin/DashboardPage";
 import type {
   TimeType,
   TimeSeriesPoint,
@@ -20,10 +20,6 @@ import {
   EmptyState,
 } from "@/components/analytics/charts";
 
-interface OutletCtx {
-  timeType: TimeType;
-}
-
 const TIME_LABEL: Record<TimeType, string> = {
   day: "ngày",
   month: "tháng",
@@ -31,7 +27,7 @@ const TIME_LABEL: Record<TimeType, string> = {
 };
 
 export default function UserGrowthPage() {
-  const { timeType } = useOutletContext<OutletCtx>();
+  const { timeType } = useAnalyticsContext();
 
   const [summary, setSummary] = useState<SummaryKPI | null>(null);
   const [growth, setGrowth] = useState<TimeSeriesPoint[]>([]);
@@ -70,7 +66,7 @@ export default function UserGrowthPage() {
     r ? `${(r.rate * 100).toFixed(1)}%` : "—";
 
   const RETENTION_ROWS = [
-    { label: "D1 — Hôm sau", data: retention.d1, color: "#34d399" },
+    { label: "D1 — Hôm sau", data: retention.d1, color: "#10b981" },
     { label: "D7 — Tuần sau", data: retention.d7, color: "#6366f1" },
     { label: "D30 — Tháng sau", data: retention.d30, color: "#f59e0b" },
   ] as const;
@@ -179,8 +175,8 @@ export default function UserGrowthPage() {
               key={r.label}
               className="rounded-xl p-5 text-center"
               style={{
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.07)",
+                background: "#ffffff",
+                border: "1px solid #e5e7eb",
               }}
             >
               <p
@@ -193,7 +189,7 @@ export default function UserGrowthPage() {
                 {fmtPct(r.data)}
               </p>
               {r.data && (
-                <p className="text-xs mt-2" style={{ color: "#475569" }}>
+                <p className="text-xs mt-2" style={{ color: "#94a3b8" }}>
                   {r.data.retained} / {r.data.total} users
                 </p>
               )}

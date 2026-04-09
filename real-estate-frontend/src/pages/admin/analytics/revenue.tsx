@@ -1,8 +1,8 @@
 // src/pages/admin/analytics/revenue.tsx
 import { useEffect, useState } from "react";
-import { useOutletContext } from "react-router-dom";
 import { DollarSign, CreditCard, TrendingUp, Users } from "lucide-react";
 import { analyticsApi } from "@/api/analytics";
+import { useAnalyticsContext } from "@/pages/admin/DashboardPage";
 import type {
   TimeType,
   TimeSeriesPoint,
@@ -22,10 +22,6 @@ import {
   EmptyState,
 } from "@/components/analytics/charts";
 
-interface OutletCtx {
-  timeType: TimeType;
-}
-
 const GATEWAY_COLORS = ["#3b82f6", "#f43f5e", "#f59e0b", "#34d399"];
 const PACKAGE_COLORS = ["#6366f1", "#8b5cf6", "#a855f7", "#d946ef"];
 
@@ -38,7 +34,7 @@ const formatVND = (v: number) =>
   }).format(v);
 
 export default function RevenueAnalyticsPage() {
-  const { timeType } = useOutletContext<OutletCtx>();
+  const { timeType } = useAnalyticsContext();
 
   const [summary, setSummary] = useState<SummaryKPI | null>(null);
   const [revenue, setRevenue] = useState<TimeSeriesPoint[]>([]);
@@ -150,7 +146,7 @@ export default function RevenueAnalyticsPage() {
                   <div
                     key={g.gateway}
                     className="flex items-center justify-between rounded-xl px-4 py-3"
-                    style={{ background: "rgba(255,255,255,0.04)" }}
+                    style={{ background: "#ffffff" }}
                   >
                     <div className="flex items-center gap-2">
                       <div
@@ -162,7 +158,7 @@ export default function RevenueAnalyticsPage() {
                       />
                       <span
                         className="text-sm font-medium"
-                        style={{ color: "#f1f5f9" }}
+                        style={{ color: "#0f172a" }}
                       >
                         {g.gateway.toUpperCase()}
                       </span>
@@ -170,7 +166,7 @@ export default function RevenueAnalyticsPage() {
                     <div className="text-right">
                       <p
                         className="text-sm font-bold"
-                        style={{ color: "#f1f5f9" }}
+                        style={{ color: "#0f172a" }}
                       >
                         {formatVND(g.revenue)}
                       </p>
@@ -232,9 +228,7 @@ export default function RevenueAnalyticsPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr
-                  style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
-                >
+                <tr style={{ borderBottom: "1px solid #f1f5f9" }}>
                   {["#", "Họ tên", "Email", "Tổng chi tiêu", "Giao dịch"].map(
                     (h) => (
                       <th
@@ -252,23 +246,20 @@ export default function RevenueAnalyticsPage() {
                 {topSpenders.map((s) => (
                   <tr
                     key={s.userId}
-                    style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                    style={{ borderBottom: "1px solid #f1f5f9" }}
                   >
                     <td className="py-3 pr-4">
                       <div
                         className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
                         style={{
-                          background:
-                            s.rank <= 3
-                              ? "#f59e0b33"
-                              : "rgba(255,255,255,0.06)",
+                          background: s.rank <= 3 ? "#f59e0b33" : "#f1f5f9",
                           color: s.rank <= 3 ? "#f59e0b" : "#64748b",
                         }}
                       >
                         {s.rank}
                       </div>
                     </td>
-                    <td className="py-3 pr-4" style={{ color: "#f1f5f9" }}>
+                    <td className="py-3 pr-4" style={{ color: "#0f172a" }}>
                       {s.fullName}
                     </td>
                     <td className="py-3 pr-4" style={{ color: "#64748b" }}>
@@ -276,7 +267,7 @@ export default function RevenueAnalyticsPage() {
                     </td>
                     <td
                       className="py-3 pr-4 font-semibold"
-                      style={{ color: "#34d399" }}
+                      style={{ color: "#10b981" }}
                     >
                       {formatVND(s.totalSpent)}
                     </td>

@@ -1,8 +1,8 @@
 // src/pages/admin/analytics/post.tsx
 import { useEffect, useState } from "react";
-import { useOutletContext } from "react-router-dom";
 import { FileText, CheckCircle, XCircle, Clock, Star } from "lucide-react";
 import { analyticsApi } from "@/api/analytics";
+import { useAnalyticsContext } from "@/pages/admin/DashboardPage";
 import type {
   TimeType,
   TimeSeriesPoint,
@@ -20,10 +20,6 @@ import {
   EmptyState,
 } from "@/components/analytics/charts";
 
-interface OutletCtx {
-  timeType: TimeType;
-}
-
 const FUNNEL_COLORS = ["#f59e0b", "#34d399", "#f43f5e"];
 
 const TIME_LABEL: Record<TimeType, string> = {
@@ -38,7 +34,7 @@ function funnelToDonut(items: PostFunnelItem[]) {
 }
 
 export default function PostAnalyticsPage() {
-  const { timeType } = useOutletContext<OutletCtx>();
+  const { timeType } = useAnalyticsContext();
 
   const [postTime, setPostTime] = useState<TimeSeriesPoint[]>([]);
   const [funnel, setFunnel] = useState<{ name: string; value: number }[]>([]);
@@ -74,7 +70,7 @@ export default function PostAnalyticsPage() {
   const STATUS_SUMMARY = approval
     ? [
         { label: "Chờ duyệt", val: approval.pending, color: "#f59e0b" },
-        { label: "Đã duyệt", val: approval.approved, color: "#34d399" },
+        { label: "Đã duyệt", val: approval.approved, color: "#10b981" },
         { label: "Từ chối", val: approval.rejected, color: "#f43f5e" },
       ]
     : [];
@@ -91,7 +87,7 @@ export default function PostAnalyticsPage() {
           label: "Tỷ lệ duyệt",
           value: approvalPct,
           icon: <CheckCircle size={16} />,
-          color: "#34d399",
+          color: "#10b981",
         },
         {
           label: "Chờ xử lý",
@@ -184,8 +180,8 @@ export default function PostAnalyticsPage() {
                       key={s.label}
                       className="rounded-xl p-3 text-center"
                       style={{
-                        background: `${s.color}14`,
-                        border: `1px solid ${s.color}30`,
+                        background: `${s.color}10`,
+                        border: `1px solid ${s.color}25`,
                       }}
                     >
                       <p className="text-xs" style={{ color: s.color }}>
@@ -193,7 +189,7 @@ export default function PostAnalyticsPage() {
                       </p>
                       <p
                         className="text-lg font-bold mt-1"
-                        style={{ color: "#f1f5f9" }}
+                        style={{ color: "#0f172a" }}
                       >
                         {s.val.toLocaleString("vi-VN")}
                       </p>
@@ -236,14 +232,14 @@ export default function PostAnalyticsPage() {
               <div
                 key={item.label}
                 className="flex items-center gap-3 rounded-xl p-4"
-                style={{ background: "rgba(255,255,255,0.04)" }}
+                style={{ background: "#ffffff", border: "1px solid #e5e7eb" }}
               >
                 <div style={{ color: item.color }}>{item.icon}</div>
                 <div>
                   <p className="text-xs" style={{ color: "#64748b" }}>
                     {item.label}
                   </p>
-                  <p className="text-lg font-bold" style={{ color: "#f1f5f9" }}>
+                  <p className="text-lg font-bold" style={{ color: "#0f172a" }}>
                     {typeof item.value === "number"
                       ? item.value.toLocaleString("vi-VN")
                       : item.value}

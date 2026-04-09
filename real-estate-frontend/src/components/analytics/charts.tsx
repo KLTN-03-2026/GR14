@@ -97,6 +97,11 @@ interface HeatmapChartProps {
   data: { hour: number; label: string; total: number }[];
 }
 
+// ─── Light-theme constants ────────────────────────────────────────────────────
+const AXIS_STYLE = { fill: "#64748b", fontSize: 11 };
+const GRID_COLOR = "#e5e7eb";
+
+// ─── ChartCard ────────────────────────────────────────────────────────────────
 export function ChartCard({
   title,
   subtitle,
@@ -107,14 +112,14 @@ export function ChartCard({
     <div
       className="rounded-2xl p-6"
       style={{
-        background: "rgba(255,255,255,0.04)",
-        border: "1px solid rgba(255,255,255,0.08)",
-        backdropFilter: "blur(12px)",
+        background: "#ffffff",
+        border: "1px solid #e5e7eb",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
       }}
     >
       <div className="flex items-start justify-between mb-5">
         <div>
-          <h3 className="font-semibold text-base" style={{ color: "#f1f5f9" }}>
+          <h3 className="font-semibold text-base" style={{ color: "#0f172a" }}>
             {title}
           </h3>
           {subtitle && (
@@ -130,35 +135,37 @@ export function ChartCard({
   );
 }
 
+// ─── KPICard ──────────────────────────────────────────────────────────────────
 export function KPICard({ title, value, growth, icon, accent }: KPICardProps) {
   return (
     <div
       className="rounded-2xl p-5 relative overflow-hidden"
       style={{
-        background: "rgba(255,255,255,0.04)",
-        border: "1px solid rgba(255,255,255,0.08)",
+        background: "#ffffff",
+        border: "1px solid #e5e7eb",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
       }}
     >
-      {/* Accent glow */}
+      {/* Soft accent tint */}
       <div
-        className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-20 pointer-events-none"
+        className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10 pointer-events-none"
         style={{ background: accent, filter: "blur(20px)" }}
       />
       <div className="flex items-start justify-between relative">
         <div>
           <p
             className="text-xs font-medium uppercase tracking-wider mb-3"
-            style={{ color: "#64748b" }}
+            style={{ color: "#94a3b8" }}
           >
             {title}
           </p>
-          <p className="text-2xl font-bold" style={{ color: "#f1f5f9" }}>
+          <p className="text-2xl font-bold" style={{ color: "#0f172a" }}>
             {value}
           </p>
           {growth !== undefined && growth !== null && (
             <p
               className="text-xs mt-1.5 font-medium"
-              style={{ color: growth >= 0 ? "#34d399" : "#f87171" }}
+              style={{ color: growth >= 0 ? "#10b981" : "#ef4444" }}
             >
               {growth >= 0 ? "▲" : "▼"} {Math.abs(growth)}% so với tháng trước
             </p>
@@ -166,7 +173,7 @@ export function KPICard({ title, value, growth, icon, accent }: KPICardProps) {
         </div>
         <div
           className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-          style={{ background: `${accent}33`, color: accent }}
+          style={{ background: `${accent}18`, color: accent }}
         >
           {icon}
         </div>
@@ -175,6 +182,7 @@ export function KPICard({ title, value, growth, icon, accent }: KPICardProps) {
   );
 }
 
+// ─── Shared Tooltip ───────────────────────────────────────────────────────────
 function ChartTooltip({
   active,
   payload,
@@ -189,14 +197,14 @@ function ChartTooltip({
   if (!active || !payload?.length) return null;
   return (
     <div
-      className="rounded-xl px-4 py-3 text-sm shadow-xl"
+      className="rounded-xl px-4 py-3 text-sm shadow-lg"
       style={{
-        background: "#0f172a",
-        border: "1px solid rgba(255,255,255,0.12)",
-        color: "#f1f5f9",
+        background: "#ffffff",
+        border: "1px solid #e5e7eb",
+        color: "#0f172a",
       }}
     >
-      <p className="font-medium mb-2" style={{ color: "#94a3b8" }}>
+      <p className="font-medium mb-2" style={{ color: "#64748b" }}>
         {label}
       </p>
       {payload.map((entry) => (
@@ -205,8 +213,8 @@ function ChartTooltip({
             className="w-2 h-2 rounded-full"
             style={{ background: entry.color }}
           />
-          <span style={{ color: "#94a3b8" }}>{entry.name}:</span>
-          <span className="font-semibold">
+          <span style={{ color: "#64748b" }}>{entry.name}:</span>
+          <span className="font-semibold" style={{ color: "#0f172a" }}>
             {formatter
               ? formatter(entry.value)
               : entry.value.toLocaleString("vi-VN")}
@@ -217,8 +225,7 @@ function ChartTooltip({
   );
 }
 
-const AXIS_STYLE = { fill: "#475569", fontSize: 11 };
-
+// ─── Area Chart ───────────────────────────────────────────────────────────────
 export function AnalyticsAreaChart({
   data,
   dataKey,
@@ -234,11 +241,11 @@ export function AnalyticsAreaChart({
       <AreaChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
         <defs>
           <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor={color} stopOpacity={0.25} />
+            <stop offset="5%" stopColor={color} stopOpacity={0.2} />
             <stop offset="95%" stopColor={color} stopOpacity={0} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+        <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
         <XAxis
           dataKey={xKey}
           tick={AXIS_STYLE}
@@ -276,6 +283,7 @@ export function AnalyticsAreaChart({
   );
 }
 
+// ─── Multi-Line Chart ─────────────────────────────────────────────────────────
 export function AnalyticsMultiLineChart({
   data,
   lines,
@@ -286,7 +294,7 @@ export function AnalyticsMultiLineChart({
   return (
     <ResponsiveContainer width="100%" height={height}>
       <LineChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+        <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
         <XAxis
           dataKey={xKey}
           tick={AXIS_STYLE}
@@ -329,6 +337,7 @@ export function AnalyticsMultiLineChart({
   );
 }
 
+// ─── Bar Chart ────────────────────────────────────────────────────────────────
 export function AnalyticsBarChart({
   data,
   bars,
@@ -339,7 +348,7 @@ export function AnalyticsBarChart({
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+        <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
         <XAxis
           dataKey={xKey}
           tick={AXIS_STYLE}
@@ -381,6 +390,7 @@ export function AnalyticsBarChart({
   );
 }
 
+// ─── Donut Chart ──────────────────────────────────────────────────────────────
 export function AnalyticsDonutChart({
   data,
   nameKey = "name",
@@ -411,11 +421,11 @@ export function AnalyticsDonutChart({
             const item = payload[0] as TooltipEntry;
             return (
               <div
-                className="rounded-xl px-4 py-3 text-sm shadow-xl"
+                className="rounded-xl px-4 py-3 text-sm shadow-lg"
                 style={{
-                  background: "#0f172a",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  color: "#f1f5f9",
+                  background: "#ffffff",
+                  border: "1px solid #e5e7eb",
+                  color: "#0f172a",
                 }}
               >
                 <div className="flex items-center gap-2">
@@ -423,8 +433,8 @@ export function AnalyticsDonutChart({
                     className="w-2 h-2 rounded-full"
                     style={{ background: item.color }}
                   />
-                  <span>{item.name}:</span>
-                  <span className="font-bold">
+                  <span style={{ color: "#64748b" }}>{item.name}:</span>
+                  <span className="font-bold" style={{ color: "#0f172a" }}>
                     {item.value.toLocaleString("vi-VN")}
                   </span>
                 </div>
@@ -442,6 +452,7 @@ export function AnalyticsDonutChart({
   );
 }
 
+// ─── Horizontal Bar ───────────────────────────────────────────────────────────
 export function HorizontalBar({
   label,
   value,
@@ -452,12 +463,12 @@ export function HorizontalBar({
   const pct = max > 0 ? (value / max) * 100 : 0;
   return (
     <div className="flex items-center gap-3">
-      <div className="w-32 text-xs truncate" style={{ color: "#94a3b8" }}>
+      <div className="w-32 text-xs truncate" style={{ color: "#64748b" }}>
         {label}
       </div>
       <div
         className="flex-1 h-2 rounded-full"
-        style={{ background: "rgba(255,255,255,0.06)" }}
+        style={{ background: "#f1f5f9" }}
       >
         <div
           className="h-2 rounded-full transition-all duration-700"
@@ -466,7 +477,7 @@ export function HorizontalBar({
       </div>
       <div
         className="text-xs font-semibold w-20 text-right"
-        style={{ color: "#f1f5f9" }}
+        style={{ color: "#0f172a" }}
       >
         {value.toLocaleString("vi-VN")}
         {suffix}
@@ -475,6 +486,7 @@ export function HorizontalBar({
   );
 }
 
+// ─── Heatmap Chart ────────────────────────────────────────────────────────────
 export function HeatmapChart({ data }: HeatmapChartProps) {
   const max = Math.max(...data.map((d) => d.total), 1);
 
@@ -482,7 +494,8 @@ export function HeatmapChart({ data }: HeatmapChartProps) {
     <div className="grid grid-cols-12 gap-1.5">
       {data.map((d) => {
         const intensity = d.total / max;
-        const bg = `rgba(99,102,241,${0.08 + intensity * 0.85})`;
+        const bg = `rgba(99,102,241,${0.06 + intensity * 0.7})`;
+        const textColor = intensity > 0.55 ? "#ffffff" : "#0f172a";
         return (
           <div key={d.hour} className="group relative">
             <div
@@ -492,7 +505,7 @@ export function HeatmapChart({ data }: HeatmapChartProps) {
               {d.total > 0 && (
                 <span
                   className="text-xs font-bold"
-                  style={{ color: "#f1f5f9" }}
+                  style={{ color: textColor }}
                 >
                   {d.total}
                 </span>
@@ -500,17 +513,17 @@ export function HeatmapChart({ data }: HeatmapChartProps) {
             </div>
             <p
               className="text-center mt-1"
-              style={{ color: "#475569", fontSize: 10 }}
+              style={{ color: "#94a3b8", fontSize: 10 }}
             >
               {d.label}
             </p>
-            {/* Hover tooltip */}
             <div
               className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-10 rounded-lg px-2 py-1 text-xs whitespace-nowrap pointer-events-none"
               style={{
-                background: "#0f172a",
-                border: "1px solid rgba(255,255,255,0.12)",
-                color: "#f1f5f9",
+                background: "#ffffff",
+                border: "1px solid #e5e7eb",
+                color: "#0f172a",
+                boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
               }}
             >
               {d.label}: {d.total} lịch
@@ -522,11 +535,12 @@ export function HeatmapChart({ data }: HeatmapChartProps) {
   );
 }
 
+// ─── Skeleton / Empty ─────────────────────────────────────────────────────────
 export function ChartSkeleton({ height = 280 }: { height?: number }) {
   return (
     <div
       className="rounded-xl animate-pulse"
-      style={{ height, background: "rgba(255,255,255,0.04)" }}
+      style={{ height, background: "#f1f5f9" }}
     />
   );
 }
@@ -539,9 +553,13 @@ export function EmptyState({
   return (
     <div
       className="flex items-center justify-center rounded-xl"
-      style={{ height: 200, background: "rgba(255,255,255,0.02)" }}
+      style={{
+        height: 200,
+        background: "#f8fafc",
+        border: "1px solid #e5e7eb",
+      }}
     >
-      <p style={{ color: "#475569" }}>{message}</p>
+      <p style={{ color: "#94a3b8" }}>{message}</p>
     </div>
   );
 }

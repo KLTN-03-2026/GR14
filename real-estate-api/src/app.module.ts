@@ -57,13 +57,13 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
     AiModule,
     RecommendationModule,
     FengshuiModule,
+    AnalyticsModule,
   ],
   providers: [
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
-    AnalyticsModule,
   ],
 })
 export class AppModule {}
