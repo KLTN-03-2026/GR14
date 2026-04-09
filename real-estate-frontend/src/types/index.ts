@@ -10,6 +10,9 @@ export interface User {
     status: number;
     isVip?: boolean;
     vipExpiry?: string; // ISO date string
+    vipPackageName?: string | null;
+    vipPriorityLevel?: number | null;
+    vipDurationDays?: number | null;
     createdAt: string;
     updatedAt: string;
     roles?: string[];

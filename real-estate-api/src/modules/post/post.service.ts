@@ -173,6 +173,45 @@ export class PostService {
         return this.prisma.$transaction(async (tx) => {
             const post = await tx.post.create({ data });
 
+            // Nếu user có VIP tài khoản còn hạn (ACCOUNT_VIP) thì gắn VIP cho bài đăng này
+            // Quy ước tier: 30 ngày → VIP 3, 15 ngày → VIP 2, 7 ngày → VIP 1 (theo priorityLevel của package)
+            // Lưu ý: vipSubscription cho account có postId = null; ta tạo thêm 1 bản ghi cho post để admin UI hiển thị đúng gói VIP.
+            if (!this.isAdminOrEmployee(resolvedRoles)) {
+                const now = new Date();
+                const activeAccountVip = await tx.vipSubscription.findFirst({
+                    where: {
+                        userId,
+                        postId: null,
+                        status: 1,
+                        endDate: { gt: now },
+                    },
+                    include: { package: true },
+                    orderBy: { endDate: 'desc' },
+                });
+
+                if (activeAccountVip?.endDate && activeAccountVip.packageId) {
+                    await tx.post.update({
+                        where: { id: post.id },
+                        data: ({
+                            isVip: true,
+                            vipExpiry: activeAccountVip.endDate,
+                            vipPriorityLevel: activeAccountVip.package?.priorityLevel ?? 0,
+                        } as any),
+                    });
+
+                    await tx.vipSubscription.create({
+                        data: {
+                            postId: post.id,
+                            packageId: activeAccountVip.packageId,
+                            userId,
+                            status: 1,
+                            startDate: now,
+                            endDate: activeAccountVip.endDate,
+                        },
+                    });
+                }
+            }
+
             if (files?.length) {
                 const uploads = await this.cloudinaryService.uploadImages(files);
                 await tx.postImage.createMany({
@@ -189,6 +228,11 @@ export class PostService {
                 include: {
                     images: { select: { id: true, url: true, position: true }, orderBy: { position: 'asc' } },
                     user: { select: { id: true, username: true, fullName: true, phone: true } },
+                    vipSubscriptions: {
+                        include: { package: { select: { name: true, priorityLevel: true } } },
+                        orderBy: { endDate: 'desc' },
+                        take: 1,
+                    },
                 },
             });
 
@@ -241,7 +285,10 @@ export class PostService {
                             take: 1,
                         },
                     },
-                    orderBy: { postedAt: 'desc' },
+                    orderBy: ([
+                        { vipPriorityLevel: 'desc' },
+                        { postedAt: 'desc' },
+                    ] as any),
                     skip,
                     take: Number(limit),
                 }),
@@ -249,7 +296,7 @@ export class PostService {
             ]);
 
             const formattedPosts = posts.map((post) => {
-                const vip = post.vipSubscriptions?.[0];
+                const vip = (post as any).vipSubscriptions?.[0];
                 return {
                     ...post,
                     isVip: Boolean(post.isVip || vip),
@@ -277,6 +324,7 @@ export class PostService {
                         user: { select: { id: true, username: true, fullName: true, phone: true } },
                         images: { select: { id: true, url: true, position: true }, orderBy: { position: 'asc' } },
                     },
+                    // Fallback khi DB thiếu các cột VIP (vip_priority_level / vip_subscriptions...)
                     orderBy: { postedAt: 'desc' },
                     skip,
                     take: Number(limit),
@@ -319,16 +367,16 @@ export class PostService {
                         take: 1,
                     },
                 },
-                orderBy: [
-                    { vipSubscriptions: { _count: 'desc' } },
+                orderBy: ([
+                    { vipPriorityLevel: 'desc' },
                     { postedAt: 'desc' },
-                ],
+                ] as any),
                 skip,
                 take: limit,
             });
 
             const formattedPosts = posts.map((post) => {
-                const vip = post.vipSubscriptions?.[0];
+                const vip = (post as any).vipSubscriptions?.[0];
                 return {
                     ...post,
                     isVip: !!vip,
@@ -355,6 +403,7 @@ export class PostService {
                     user: { select: { id: true, username: true, fullName: true, phone: true } },
                     images: { select: { id: true, url: true, position: true }, orderBy: { position: 'asc' } },
                 },
+                // Fallback khi DB thiếu các cột VIP (vip_priority_level / vip_subscriptions...)
                 orderBy: { postedAt: 'desc' },
                 skip,
                 take: limit,
@@ -386,7 +435,10 @@ export class PostService {
                 user: { select: { id: true, username: true, fullName: true, phone: true } },
                 images: { select: { id: true, url: true, position: true }, orderBy: { position: 'asc' } },
             },
-            orderBy: { postedAt: 'desc' },
+            orderBy: ([
+                { vipPriorityLevel: 'desc' },
+                { postedAt: 'desc' },
+            ] as any),
         });
     }
 
@@ -412,7 +464,10 @@ export class PostService {
             include: {
                 images: { select: { id: true, url: true, position: true }, orderBy: { position: 'asc' } },
             },
-            orderBy: { postedAt: 'desc' },
+            orderBy: ([
+                { vipPriorityLevel: 'desc' },
+                { postedAt: 'desc' },
+            ] as any),
         });
     }
 

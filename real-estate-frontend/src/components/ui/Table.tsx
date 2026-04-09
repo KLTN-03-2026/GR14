@@ -69,6 +69,10 @@ export function DataTable<T extends object>({
     pagination,
 }: DataTableProps<T>) {
     const totalPages = pagination ? Math.ceil(pagination.total / pagination.pageSize) : 0;
+    const minTableWidth = columns.reduce<number>((acc, col) => {
+        if (typeof col.width === 'number') return acc + col.width;
+        return acc;
+    }, 0);
 
     const getNestedValue = (obj: unknown, path: string): unknown => {
         return path
@@ -78,8 +82,13 @@ export function DataTable<T extends object>({
 
     return (
         <div className="admin-form-surface p-0">
-            <div className="overflow-x-auto rounded-xl border border-transparent">
-                <table className="min-w-full divide-y divide-gray-200">
+            {/* 
+              Bọc cả table + pagination trong 1 vùng scroll ngang.
+              Thanh scroll sẽ nằm ở cuối cùng của khối (dưới pagination).
+            */}
+            <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+                <div style={minTableWidth ? { minWidth: `${minTableWidth}px` } : undefined}>
+                <table className="w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50/80">
                         <tr>
                             {columns.map((col, i) => (
@@ -152,58 +161,59 @@ export function DataTable<T extends object>({
                         )}
                     </tbody>
                 </table>
+                {/* Pagination */}
+                {pagination && pagination.total > 0 && (
+                    <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3 bg-white">
+                        <div className="text-sm text-gray-500">
+                            {pagination.showTotal
+                                ? pagination.showTotal(pagination.total)
+                                : `Tổng ${pagination.total} bản ghi`}
+                        </div>
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={() => pagination.onChange(pagination.current - 1)}
+                                disabled={pagination.current <= 1}
+                                className="h-9 px-3 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                Trước
+                            </button>
+                            {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                                let pageNum: number;
+                                if (totalPages <= 5) {
+                                    pageNum = i + 1;
+                                } else if (pagination.current <= 3) {
+                                    pageNum = i + 1;
+                                } else if (pagination.current >= totalPages - 2) {
+                                    pageNum = totalPages - 4 + i;
+                                } else {
+                                    pageNum = pagination.current - 2 + i;
+                                }
+                                return (
+                                    <button
+                                        key={pageNum}
+                                        onClick={() => pagination.onChange(pageNum)}
+                                        className={`h-9 min-w-9 px-3 text-sm rounded-lg border ${pagination.current === pageNum
+                                            ? 'bg-brand-500 text-white border-brand-500'
+                                            : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                                            }`}
+                                    >
+                                        {pageNum}
+                                    </button>
+                                );
+                            })}
+                            <button
+                                onClick={() => pagination.onChange(pagination.current + 1)}
+                                disabled={pagination.current >= totalPages}
+                                className="h-9 px-3 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                Sau
+                            </button>
+                        </div>
+                    </div>
+                )}
+                </div>
             </div>
 
-            {/* Pagination */}
-            {pagination && pagination.total > 0 && (
-                <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">
-                    <div className="text-sm text-gray-500">
-                        {pagination.showTotal
-                            ? pagination.showTotal(pagination.total)
-                            : `Tổng ${pagination.total} bản ghi`}
-                    </div>
-                    <div className="flex items-center gap-1">
-                        <button
-                            onClick={() => pagination.onChange(pagination.current - 1)}
-                            disabled={pagination.current <= 1}
-                            className="h-9 px-3 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            Trước
-                        </button>
-                        {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                            let pageNum: number;
-                            if (totalPages <= 5) {
-                                pageNum = i + 1;
-                            } else if (pagination.current <= 3) {
-                                pageNum = i + 1;
-                            } else if (pagination.current >= totalPages - 2) {
-                                pageNum = totalPages - 4 + i;
-                            } else {
-                                pageNum = pagination.current - 2 + i;
-                            }
-                            return (
-                                <button
-                                    key={pageNum}
-                                    onClick={() => pagination.onChange(pageNum)}
-                                    className={`h-9 min-w-9 px-3 text-sm rounded-lg border ${pagination.current === pageNum
-                                        ? 'bg-brand-500 text-white border-brand-500'
-                                        : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                                        }`}
-                                >
-                                    {pageNum}
-                                </button>
-                            );
-                        })}
-                        <button
-                            onClick={() => pagination.onChange(pagination.current + 1)}
-                            disabled={pagination.current >= totalPages}
-                            className="h-9 px-3 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            Sau
-                        </button>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

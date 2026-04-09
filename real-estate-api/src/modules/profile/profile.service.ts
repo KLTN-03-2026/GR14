@@ -8,6 +8,7 @@ export class ProfileService {
     constructor(private prisma: PrismaService) { }
 
     async getProfile(userId: number) {
+        const now = new Date();
         const user = await this.prisma.user.findUnique({
             where: { id: userId },
             select: {
@@ -25,7 +26,54 @@ export class ProfileService {
             },
         });
         if (!user) throw new NotFoundException('User not found');
-        return user;
+
+        const activeAccountVip = await this.prisma.vipSubscription.findFirst({
+            where: {
+                userId,
+                postId: null,
+                status: 1,
+                endDate: { gte: now },
+            },
+            include: {
+                package: {
+                    select: { name: true, priorityLevel: true, durationDays: true },
+                },
+            },
+            orderBy: [
+                { package: { priorityLevel: 'desc' } },
+                { endDate: 'desc' },
+            ],
+        });
+
+        let resolvedPackage = activeAccountVip?.package || null;
+
+        // Fallback cho dữ liệu cũ: user đã VIP nhưng subscription active bị lệch trạng thái
+        if (!resolvedPackage && user.isVip && user.vipExpiry && new Date(user.vipExpiry) > now) {
+            const latestAccountVip = await this.prisma.vipSubscription.findFirst({
+                where: {
+                    userId,
+                    postId: null,
+                },
+                include: {
+                    package: {
+                        select: { name: true, priorityLevel: true, durationDays: true },
+                    },
+                },
+                orderBy: [
+                    { endDate: 'desc' },
+                    { createdAt: 'desc' },
+                ],
+            });
+
+            resolvedPackage = latestAccountVip?.package || null;
+        }
+
+        return {
+            ...user,
+            vipPackageName: resolvedPackage?.name || null,
+            vipPriorityLevel: resolvedPackage?.priorityLevel ?? null,
+            vipDurationDays: resolvedPackage?.durationDays ?? null,
+        };
     }
 
     async updateProfile(userId: number, dto: UpdateProfileDto) {

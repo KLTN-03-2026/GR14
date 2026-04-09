@@ -69,6 +69,7 @@ async function main() {
     // Create VIP packages
     const vipPackages = [
         {
+            // Cùng nhãn VIP 1 với gói 7 ngày; priority 0 < 1 để tin 7 ngày xếp trên tin 10k khi sort theo priority
             name: 'Đăng tin 1 lần (10k)',
             description: 'Đăng tin 1 bài viết được ưu tiên hiển thị - 10.000đ/lần',
             durationDays: 1,
@@ -81,6 +82,7 @@ async function main() {
             }),
         },
         {
+            // VIP 1 (cùng tầng với 10k; ưu tiên sort cao hơn gói 10k)
             name: 'VIP 7 ngày',
             description: 'Gói VIP 7 ngày - Tin đăng được ưu tiên hiển thị',
             durationDays: 7,
@@ -93,6 +95,7 @@ async function main() {
             }),
         },
         {
+            // VIP 2
             name: 'VIP 15 ngày',
             description: 'Gói VIP 15 ngày - Tin đăng được ưu tiên cao',
             durationDays: 15,
@@ -106,6 +109,7 @@ async function main() {
             }),
         },
         {
+            // VIP 3 — ưu tiên trang chủ cao nhất
             name: 'VIP 30 ngày',
             description: 'Gói VIP 30 ngày - Ưu tiên cao nhất',
             durationDays: 30,

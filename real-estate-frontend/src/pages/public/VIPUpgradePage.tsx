@@ -9,6 +9,14 @@ import {
 } from '@ant-design/icons';
 import { paymentApi } from '@/api';
 import { useAuthStore } from '@/stores/authStore';
+import { parseVipPackageBenefitLines } from '@/utils/vipPackageFeatures';
+
+/** priorityLevel DB: 0=10k, 1=7d → hiển thị VIP 1; 2=15d→VIP2; 3=30d→VIP3 */
+function getDisplayVipTier(priorityLevel: number): 1 | 2 | 3 {
+  if (priorityLevel >= 3) return 3;
+  if (priorityLevel === 2) return 2;
+  return 1;
+}
 
 interface VipPackage {
   id: number;
@@ -33,29 +41,33 @@ interface PaymentResult {
   endDate: string;
 }
 
+/** Lợi ích theo gói — khớp mô tả VIP1 (10k & 7d) / VIP2 (15d) / VIP3 (30d) */
 const FALLBACK_FEATURES: Record<number, string[]> = {
+  1: [
+    'Tin đăng được hiển thị sau khi được duyệt',
+    'Xuất hiện trong danh sách tìm kiếm',
+    'Có thể tiếp cận người xem tự nhiên',
+  ],
   7: [
-    'Đăng tin không giới hạn trong 7 ngày',
-    'Tin hiển thị ưu tiên trên trang chủ',
-    'Huy hiệu VIP trên hồ sơ',
-    'Tiếp cận nhiều khách hàng hơn',
+    'Tin đăng được làm nổi bật (mức cơ bản) sau khi được duyệt',
+    'Ưu tiên hiển thị hơn tin thường',
+    'Huy hiệu “VIP 1” hiển thị trong trang quản lý tin cá nhân',
   ],
   15: [
-    'Đăng tin không giới hạn trong 15 ngày',
-    'Tin hiển thị ưu tiên cao trên trang chủ',
-    'Huy hiệu VIP nổi bật trên hồ sơ',
-    'Tiếp cận khách hàng gấp 2 lần',
-    'Hỗ trợ khách hàng ưu tiên',
-    'Thống kê lượt xem bài đăng',
+   'Tin đăng được làm nổi bật (highlight) sau khi được duyệt',
+    'Ưu tiên hiển thị cao trong danh sách tin',
+    'Có cơ hội xuất hiện trên trang chủ',
+    'Xem thống kê lượt xem bài đăng',
+    'Huy hiệu “VIP 2” hiển thị trong trang quản lý tin cá nhân',
   ],
   30: [
-    'Đăng tin không giới hạn trong 30 ngày',
-    'Tin hiển thị TOP trang chủ',
-    'Huy hiệu VIP Premium nổi bật',
-    'Tiếp cận khách hàng gấp 3 lần',
-    'Hỗ trợ khách hàng 24/7',
-    'Thống kê chi tiết lượt xem & tương tác',
-    'Tin tự động làm mới mỗi 3 ngày',
+    'Tin đăng được làm nổi bật (highlight) sau khi được duyệt',
+    'Ưu tiên hiển thị cao nhất trong danh sách tin',
+    'Xuất hiện tại vị trí nổi bật trên trang chủ',
+    'Tự động làm mới tin mỗi ngày, giúp tin luôn ở trên cùng',
+    'Xem thống kê chi tiết (lượt xem, mức độ quan tâm)',
+    'Hiển thị “Tin gấp” giúp bài đăng nổi bật hơn',
+    'Huy hiệu “VIP 3” hiển thị trong trang quản lý tin cá nhân',
   ],
 };
 
@@ -66,7 +78,9 @@ const DEFAULT_FEATURES = [
   'Tiếp cận nhiều khách hàng hơn',
 ];
 
+/** Màu theo priorityLevel DB; 0 & 1 cùng tông VIP 1 */
 const TIER_STYLE: Record<number, { accent: string; bg: string }> = {
+  0: { accent: '#2563eb', bg: '#eff6ff' },
   1: { accent: '#2563eb', bg: '#eff6ff' },
   2: { accent: '#7c3aed', bg: '#f5f3ff' },
   3: { accent: '#d97706', bg: '#fffbeb' },
@@ -102,18 +116,30 @@ const VIPUpgradePage = () => {
   };
 
   const getFeatures = (pkg: VipPackage): string[] => {
+    // Ưu tiên nội dung mô tả do frontend định nghĩa theo từng gói (theo yêu cầu nghiệp vụ/UI)
+    const fallbackFeatures = FALLBACK_FEATURES[pkg.durationDays];
+    if (fallbackFeatures?.length) {
+      return fallbackFeatures;
+    }
+
     if (pkg.features) {
       if (Array.isArray(pkg.features) && pkg.features.length > 0) return pkg.features;
       if (typeof pkg.features === 'string') {
         try {
-          const parsed = JSON.parse(pkg.features);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          const parsed: unknown = JSON.parse(pkg.features);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed.map((x) => String(x));
+          }
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            const lines = parseVipPackageBenefitLines(parsed as Record<string, unknown>);
+            if (lines.length > 0) return lines;
+          }
         } catch {
           if (pkg.features.trim()) return [pkg.features];
         }
       }
     }
-    return FALLBACK_FEATURES[pkg.durationDays] || DEFAULT_FEATURES;
+    return DEFAULT_FEATURES;
   };
 
   const handleCheckout = (packageId: number) => {
@@ -152,17 +178,9 @@ const VIPUpgradePage = () => {
 
       if (!paymentUrl) throw new Error('Không nhận được URL thanh toán từ hệ thống');
 
-      sessionStorage.setItem(
-        'lastPaymentData',
-        JSON.stringify({
-          paymentId: paymentData?.paymentId,
-          packageName: checkoutData.vipPackage.name,
-          amount: checkoutData.vipPackage.price,
-          endDate: new Date(
-            Date.now() + checkoutData.vipPackage.durationDays * 24 * 60 * 60 * 1000
-          ).toISOString(),
-        })
-      );
+      if (paymentData?.paymentId != null) {
+        sessionStorage.setItem('lastPaymentId', String(paymentData.paymentId));
+      }
 
       window.location.href = paymentUrl;
     } catch (error: any) {
@@ -219,12 +237,14 @@ const VIPUpgradePage = () => {
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
           gap: 20,
-          alignItems: 'start',
+          alignItems: 'stretch',
         }}>
           {packages.map((pkg) => {
-            const tier = TIER_STYLE[pkg.priorityLevel] || TIER_STYLE[1];
+            const tier = TIER_STYLE[pkg.priorityLevel] ?? TIER_STYLE[1];
             const isPopular = pkg.priorityLevel === 3;
             const features = getFeatures(pkg);
+            const displayTier =
+             pkg.durationDays <= 1 ? 0 : getDisplayVipTier(pkg.priorityLevel);
 
             return (
               <div
@@ -240,6 +260,9 @@ const VIPUpgradePage = () => {
                     : '0 1px 6px rgba(0,0,0,0.04)',
                   display: 'flex',
                   flexDirection: 'column',
+                  height: '100%',
+                  minHeight: 0,
+                  boxSizing: 'border-box',
                 }}
               >
                 {/* Badge phổ biến */}
@@ -264,6 +287,16 @@ const VIPUpgradePage = () => {
                   <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', margin: '0 0 5px' }}>
                     {pkg.name}
                   </h2>
+                  <p
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: displayTier === 0 ? '#6b7280' : tier.accent, // VIP 0 màu xám
+                      margin: '0 0 6px',
+                    }}
+                  >
+                    {displayTier === 0 ? 'VIP 0 (gói theo tin)' : `Hạng VIP ${displayTier}`}
+                  </p>
                   <p style={{ fontSize: 13, color: '#9ca3af', margin: 0, lineHeight: 1.5 }}>
                     {pkg.description || `Gói VIP ${pkg.durationDays} ngày`}
                   </p>
@@ -278,17 +311,25 @@ const VIPUpgradePage = () => {
                     <span style={{ fontSize: 34, fontWeight: 800, color: tier.accent, lineHeight: 1 }}>
                       {(pkg.price / 1000).toFixed(0)}K
                     </span>
-                    <span style={{ fontSize: 13, color: '#6b7280' }}>
-                      / {pkg.durationDays} ngày
+                    <span
+                      style={{
+                        fontSize: 15,        // tăng từ 13 → 15
+                        fontWeight: 600,     // thêm độ đậm
+                        color: '#4b5563',    // đậm hơn chút
+                      }}
+                    >
+                      {pkg.durationDays <= 1 ? '/ lần đăng tin' : `/ ${pkg.durationDays} ngày`}
                     </span>
                   </div>
-                  <p style={{ fontSize: 12, color: '#9ca3af', margin: '4px 0 0' }}>
-                    Tương đương ≈ {Math.round(pkg.price / pkg.durationDays / 1000)}K mỗi ngày
-                  </p>
+                  {pkg.durationDays > 1 && (
+                    <p style={{ fontSize: 12, color: '#9ca3af', margin: '4px 0 0' }}>
+                      Tương đương ≈ {Math.round(pkg.price / pkg.durationDays / 1000)}K mỗi ngày
+                    </p>
+                  )}
                 </div>
 
                 {/* Features */}
-                <div style={{ flex: 1, marginBottom: 20 }}>
+                <div style={{ flex: 1, marginBottom: 20, minHeight: 0 }}>
                   <p style={{
                     fontSize: 11, fontWeight: 700, color: '#9ca3af',
                     textTransform: 'uppercase', letterSpacing: 0.8,
@@ -314,7 +355,10 @@ const VIPUpgradePage = () => {
                 <button
                   onClick={() => handleCheckout(pkg.id)}
                   style={{
-                    width: '100%', height: 44,
+                    width: '100%',
+                    height: 44,
+                    marginTop: 'auto',
+                    flexShrink: 0,
                     background: isPopular ? tier.accent : 'transparent',
                     color: isPopular ? '#fff' : tier.accent,
                     border: `1.5px solid ${tier.accent}`,
@@ -361,7 +405,11 @@ const VIPUpgradePage = () => {
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
             <span style={{ fontSize: 13, color: '#6b7280' }}>Thời hạn</span>
-            <span style={{ fontSize: 13, fontWeight: 600 }}>{checkoutData?.vipPackage.durationDays} ngày</span>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>
+              {checkoutData?.vipPackage.durationDays != null && checkoutData.vipPackage.durationDays <= 1
+                ? 'Theo tin (1 ngày hiệu lực)'
+                : `${checkoutData?.vipPackage.durationDays} ngày`}
+            </span>
           </div>
           <div style={{ height: 1, background: '#e5e7eb', margin: '10px 0' }} />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

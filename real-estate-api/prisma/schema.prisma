@@ -310,6 +310,7 @@ model Post {
   status      Int       @default(1) // 1: pending, 2: approved, 3: rejected
   isVip       Boolean   @default(false) @map("is_vip")
   vipExpiry   DateTime? @map("vip_expiry")
+  vipPriorityLevel Int  @default(0) @map("vip_priority_level") // 0..3 (VIP0..VIP3) để sort
   userId      Int       @map("user_id")
   postedAt    DateTime  @default(now()) @map("posted_at")
   approvedAt  DateTime? @map("approved_at")

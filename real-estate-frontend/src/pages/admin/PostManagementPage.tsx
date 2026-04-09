@@ -18,14 +18,6 @@ type ApiError = {
     };
 };
 
-type VipTooltipState = {
-    visible: boolean;
-    x: number;
-    y: number;
-    packageName: string;
-    statusText: string;
-};
-
 const PostManagementPage: React.FC = () => {
     const [allPosts, setAllPosts] = useState<Post[]>([]);
     const [loading, setLoading] = useState(false);
@@ -40,22 +32,37 @@ const PostManagementPage: React.FC = () => {
     const [deletePost, setDeletePost] = useState<Post | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [submitting, setSubmitting] = useState(false);
-    const [vipTooltip, setVipTooltip] = useState<VipTooltipState>({
-        visible: false,
-        x: 0,
-        y: 0,
-        packageName: '',
-        statusText: '',
-    });
-
     const loadPosts = useCallback(async () => {
         setLoading(true);
         try {
             const res = await postApi.getAll();
-            setAllPosts(res.data?.data || res.data || []);
-        } catch (err) {
+            const payload = (res as any)?.data;
+            const maybePosts = payload?.data ?? payload;
+            const posts = Array.isArray(maybePosts)
+                ? maybePosts
+                : Array.isArray(maybePosts?.data)
+                    ? maybePosts.data
+                    : [];
+
+            if (!Array.isArray(posts)) {
+                console.warn('Unexpected posts payload:', payload);
+            }
+
+            setAllPosts(posts);
+        } catch (err: any) {
+            const status = err?.response?.status;
+            const apiMessage = err?.response?.data?.message;
+            const url = err?.config?.baseURL && err?.config?.url ? `${err.config.baseURL}${err.config.url}` : undefined;
+
             console.error('Load posts error:', err);
-            toast.error('Lỗi tải dữ liệu');
+            toast.error(
+                status
+                    ? `Lỗi tải dữ liệu (HTTP ${status})${url ? `: ${url}` : ''}`
+                    : 'Lỗi tải dữ liệu'
+            );
+            if (apiMessage) {
+                toast.error(Array.isArray(apiMessage) ? apiMessage[0] : apiMessage);
+            }
         } finally {
             setLoading(false);
         }
@@ -67,31 +74,25 @@ const PostManagementPage: React.FC = () => {
 
     const isVipPost = (post: Post) => Boolean(post.isVip || post.vipPackageName || post.vipExpiry);
 
-    const getVipStatusText = (post: Post) => {
-        if (!post.vipExpiry) return 'Chưa có thông tin hết hạn';
-        const expiry = new Date(post.vipExpiry);
-        if (Number.isNaN(expiry.getTime())) return 'Ngày hết hạn không hợp lệ';
-        const isActive = expiry.getTime() >= Date.now();
-        return `${isActive ? 'Còn hạn đến' : 'Đã hết hạn ngày'} ${formatDateTime(post.vipExpiry)}`;
+    const getVipTierLabel = (post: Post): string => {
+        if (!isVipPost(post)) return '—';
+
+        const level = post.vipPriorityLevel;
+        if (level === 0) return 'VIP 0';
+        if (level === 1) return 'VIP 1';
+        if (level === 2) return 'VIP 2';
+        if (level === 3) return 'VIP 3';
+
+        const name = String(post.vipPackageName || '').toLowerCase();
+        if (!name) return 'VIP';
+        if (name.includes('30')) return 'VIP 3';
+        if (name.includes('15')) return 'VIP 2';
+        if (name.includes('7')) return 'VIP 1';
+        if (name.includes('10k') || name.includes('1 lần') || name.includes('1 lan')) return 'VIP 0';
+        return 'VIP';
     };
 
-    const openVipTooltip = (event: React.MouseEvent, post: Post) => {
-        setVipTooltip({
-            visible: true,
-            x: event.clientX + 12,
-            y: event.clientY + 12,
-            packageName: post.vipPackageName || 'Gói VIP',
-            statusText: getVipStatusText(post),
-        });
-    };
-
-    const moveVipTooltip = (event: React.MouseEvent) => {
-        setVipTooltip((prev) => ({ ...prev, x: event.clientX + 12, y: event.clientY + 12 }));
-    };
-
-    const closeVipTooltip = () => {
-        setVipTooltip((prev) => ({ ...prev, visible: false }));
-    };
+    // Tooltip VIP đã được bỏ ở cột "Tiêu đề" (đã có cột "Gói VIP" riêng).
 
     const filteredByTabAndSearch = useMemo(() => {
         let result = [...allPosts];
@@ -190,19 +191,7 @@ const PostManagementPage: React.FC = () => {
             title: 'Tiêu đề',
             width: 220,
             render: (_, record) => (
-                <div className="flex items-center gap-2">
-                    <span className="font-medium">{record.title}</span>
-                    {isVipPost(record) && (
-                        <span
-                            className="cursor-pointer rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-700"
-                            onMouseEnter={(e) => openVipTooltip(e, record)}
-                            onMouseMove={moveVipTooltip}
-                            onMouseLeave={closeVipTooltip}
-                        >
-                            VIP
-                        </span>
-                    )}
-                </div>
+                <span className="font-medium">{record.title}</span>
             ),
         },
         {
@@ -210,16 +199,51 @@ const PostManagementPage: React.FC = () => {
             key: 'description',
             width: 550,
             render: (_, r) =>
-                !r.description ? '—' : (
-                    <div
-                        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(r.description) }}
-                        style={{ lineHeight: '1.6', fontSize: '13.5px', whiteSpace: 'normal', wordBreak: 'break-word' }}
-                    />
-                ),
+                !r.description ? '—' : (() => {
+                    const raw = String(r.description || '');
+                    const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(raw);
+                    const escapeHtml = (s: string) =>
+                        s
+                            .replace(/&/g, '&amp;')
+                            .replace(/</g, '&lt;')
+                            .replace(/>/g, '&gt;')
+                            .replace(/"/g, '&quot;')
+                            .replace(/'/g, '&#39;');
+
+                    const html = looksLikeHtml
+                        ? raw
+                        : `<div>${escapeHtml(raw).replace(/\r?\n/g, '<br />')}</div>`;
+
+                    return (
+                        <div
+                            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }}
+                            style={{ lineHeight: '1.6', fontSize: '13.5px', whiteSpace: 'normal', wordBreak: 'break-word' }}
+                        />
+                    );
+                })(),
         },
         { title: 'Địa chỉ', dataIndex: 'address', width: 280 },
         { title: 'Giá', key: 'price', width: 160, render: (_, r) => formatCurrency(r.price) },
         { title: 'Ngày đăng', key: 'postedAt', width: 150, render: (_, r) => formatDateTime(r.postedAt) },
+        {
+            title: 'Gói VIP',
+            key: 'vipTier',
+            width: 110,
+            render: (_, record) => {
+                const label = getVipTierLabel(record);
+                if (label === '—') return '—';
+                const color =
+                    label === 'VIP 3' ? 'bg-amber-100 text-amber-800 border-amber-200'
+                        : label === 'VIP 2' ? 'bg-purple-100 text-purple-800 border-purple-200'
+                            : label === 'VIP 1' ? 'bg-blue-100 text-blue-800 border-blue-200'
+                                : 'bg-gray-100 text-gray-700 border-gray-200';
+                return (
+                    <span className={`inline-flex items-center justify-center rounded-full border px-2 py-1 text-xs font-bold whitespace-nowrap ${color}`}>
+                        {label}
+                    </span>
+                );
+            },
+        },
         {
             title: 'Trạng thái',
             key: 'status',
@@ -241,7 +265,7 @@ const PostManagementPage: React.FC = () => {
             title: 'Hành động',
             width: 180,
             render: (_, record) => (
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="grid grid-cols-2 gap-2">
                     {record.status === 1 && (
                         <>
                             <Button
@@ -249,6 +273,7 @@ const PostManagementPage: React.FC = () => {
                                 variant="primary"
                                 onClick={() => handleStatusChange(record.id, 2)}
                                 ariaLabel="Duyệt"
+                                className="h-9 w-full"
                             >
                                 Duyệt
                             </Button>
@@ -257,6 +282,7 @@ const PostManagementPage: React.FC = () => {
                                 variant="danger"
                                 onClick={() => handleStatusChange(record.id, 3)}
                                 ariaLabel="Từ chối"
+                                className="h-9 w-full"
                             >
                                 Từ chối
                             </Button>
@@ -267,6 +293,7 @@ const PostManagementPage: React.FC = () => {
                         variant="outline"
                         onClick={() => openModal(record)}
                         ariaLabel="Sửa"
+                        className="h-9 w-full"
                     >
                         Sửa
                     </Button>
@@ -275,6 +302,7 @@ const PostManagementPage: React.FC = () => {
                         variant="danger"
                         onClick={() => setDeletePost(record)}
                         ariaLabel="Xóa"
+                        className="h-9 w-full"
                     >
                         Xóa
                     </Button>
@@ -352,16 +380,6 @@ const PostManagementPage: React.FC = () => {
                 initialIndex={previewIndex}
                 onClose={() => setPreviewOpen(false)}
             />
-
-            {vipTooltip.visible && (
-                <div
-                    className="pointer-events-none fixed z-[9999] w-64 rounded-lg border border-amber-200 bg-white p-3 text-xs text-gray-700 shadow-lg"
-                    style={{ left: vipTooltip.x, top: vipTooltip.y }}
-                >
-                    <div className="mb-1 font-semibold text-gray-900">{vipTooltip.packageName}</div>
-                    <div>{vipTooltip.statusText}</div>
-                </div>
-            )}
 
             {/* Modal xóa */}
             <Modal

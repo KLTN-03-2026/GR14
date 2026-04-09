@@ -66,13 +66,19 @@ async createPayment(dto: CreatePaymentDto, userId: number, ipAddr: string) {
         const orderInfo = `Thanh toan goi VIP cho ${finalPostId ? 'bai dang ' + finalPostId : 'tai khoan'}`;
 
         if (dto.paymentMethod === 'vnpay') {
-            console.log('NGROK:', process.env.NGROK_URL);
+            // VNPay redirect trình duyệt về URL này. URL *.ngrok-free.app sẽ bị trang "Visit Site" (free tier).
+            // Ưu tiên VNPAY_RETURN_URL (vd: http://localhost:5000/api/payment/vnpay/callback) khi test local.
+            const vnpReturnUrl =
+                process.env.VNPAY_RETURN_URL ||
+                (process.env.NGROK_URL
+                    ? `${process.env.NGROK_URL.replace(/\/$/, '')}/api/payment/vnpay/callback`
+                    : undefined);
             paymentUrl = this.vnpayService.createPaymentUrl(
                 orderId,
                 Number(vipPackage.price),
                 orderInfo,
                 ipAddr,
-                `${process.env.NGROK_URL}/api/payment/vnpay/callback`
+                vnpReturnUrl,
             );
         } else if (dto.paymentMethod === 'momo') {
             const momoResponse = await this.momoService.createPaymentUrl(
@@ -152,12 +158,14 @@ async createPayment(dto: CreatePaymentDto, userId: number, ipAddr: string) {
             if (subscription.postId) {
                 await tx.post.update({
                     where: { id: subscription.postId },
-                    data: { 
+                    // TS server đôi khi cache Prisma Client types; ép kiểu để tránh báo sai.
+                    data: ({
                         isVip: true, 
                         vipExpiry: endDate, 
+                        vipPriorityLevel: subscription.package?.priorityLevel ?? 0,
                         status: 1, 
                         postedAt: now 
-                    },
+                    } as any),
                 });
             } else {
                 await tx.user.update({
