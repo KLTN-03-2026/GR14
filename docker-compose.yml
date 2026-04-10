@@ -94,7 +94,9 @@ services:
       MOMO_ENDPOINT: ${MOMO_ENDPOINT:-https://test-payment.momo.vn/v2/gateway/api/create}
       MOMO_RETURN_URL: ${MOMO_RETURN_URL}
       MOMO_NOTIFY_URL: ${MOMO_NOTIFY_URL}
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672?heartbeat=30}
+      RABBITMQ_RECONNECT_SECONDS: ${RABBITMQ_RECONNECT_SECONDS:-5}
+      RABBITMQ_CONNECTION_TIMEOUT_MS: ${RABBITMQ_CONNECTION_TIMEOUT_MS:-30000}
       REDIS_URL: redis://redis:6379
       OLLAMA_URL: ${OLLAMA_URL:-http://real-estate-ollama:11434}
       OLLAMA_TIMEOUT_MS: ${OLLAMA_TIMEOUT_MS:-9000}

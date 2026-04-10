@@ -24,26 +24,40 @@ async function bootstrap() {
   // Compression for responses
   app.use(compression());
 
+  const rmqUrl = configService.get('RABBITMQ_URL') || 'amqp://guest:guest@localhost:5672?heartbeat=30';
+  const rmqReconnectSeconds = Number(configService.get('RABBITMQ_RECONNECT_SECONDS') || 5);
+  const rmqConnectionTimeoutMs = Number(configService.get('RABBITMQ_CONNECTION_TIMEOUT_MS') || 30000);
+
   // Kết nối đến RabbitMQ
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
     options: {
-      urls: [configService.get('RABBITMQ_URL') || 'amqp://guest:guest@localhost:5672'],
+      urls: [rmqUrl],
       queue: 'mail_queue',
       queueOptions: {
         durable: true,
       },
+      socketOptions: {
+        heartbeat: 30,
+        connectionTimeout: rmqConnectionTimeoutMs,
+      },
+      reconnectTimeInSeconds: rmqReconnectSeconds,
     },
   });
 
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
     options: {
-      urls: [configService.get('RABBITMQ_URL') || 'amqp://guest:guest@localhost:5672'],
+      urls: [rmqUrl],
       queue: 'appointment_auto_assign_queue',
       queueOptions: {
         durable: true,
       },
+      socketOptions: {
+        heartbeat: 30,
+        connectionTimeout: rmqConnectionTimeoutMs,
+      },
+      reconnectTimeInSeconds: rmqReconnectSeconds,
     },
   });
 
