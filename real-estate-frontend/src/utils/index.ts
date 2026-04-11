@@ -10,4 +10,3 @@ export {
     sortProvinceOptions,
 } from './province';
 export { getLocalizedPropertyCategoryName } from './property-category';
-export { isHouseCategoryCode, isLandCategoryCode } from './property-category';

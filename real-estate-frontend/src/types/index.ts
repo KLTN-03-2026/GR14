@@ -82,6 +82,7 @@ export interface PropertyCategory {
     id: number;
     code: string;
     name: string;
+    categoryType: 'HOUSE' | 'LAND';
 }
 
 export interface House {

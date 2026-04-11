@@ -29,6 +29,7 @@ const HouseFormPage: React.FC = () => {
     const [errors, setErrors] = useState<Record<string, string>>({});
     const fileInputRef = useRef<HTMLInputElement>(null);
     const isEdit = !!id;
+    const houseCategories = categories.filter((c) => c.categoryType === 'HOUSE');
 
     const loadFormData = useCallback(async () => {
         try {
@@ -218,7 +219,7 @@ const HouseFormPage: React.FC = () => {
                                 onChange={(e) => handleChange('categoryId', e.target.value || undefined)}
                             >
                                 <option value="">Chọn danh mục</option>
-                                {categories.map((c) => (
+                                {houseCategories.map((c) => (
                                     <option key={c.id} value={c.id}>
                                         {c.name}
                                     </option>

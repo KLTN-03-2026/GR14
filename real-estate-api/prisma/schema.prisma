@@ -128,12 +128,18 @@ model Employee {
   @@map("employees")
 }
 
+enum PropertyCategoryType {
+  HOUSE
+  LAND
+}
+
 // ==================== PROPERTY CATEGORY ====================
 
 model PropertyCategory {
   id   Int    @id @default(autoincrement())
   code String @unique @map("category_code") @db.VarChar(10)
   name String @db.VarChar(255)
+  categoryType PropertyCategoryType @map("category_type")
 
   houses House[]
   lands  Land[]

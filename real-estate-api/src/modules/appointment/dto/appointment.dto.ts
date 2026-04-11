@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsInt, IsString, IsEmail, ValidateIf, IsIn } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsInt, IsString, IsEmail, ValidateIf, IsIn, IsDateString } from 'class-validator';
 
 export class CreateAppointmentDto {
     @IsOptional()
@@ -11,7 +11,7 @@ export class CreateAppointmentDto {
 
     @IsNotEmpty()
     @IsString()
-    appointmentDate: string;
+    appointmentDate!: string;
 
     @IsOptional()
     @IsInt()
@@ -52,7 +52,7 @@ export class AdminCreateAppointmentDto {
 
     @IsNotEmpty()
     @IsString()
-    appointmentDate: string;
+    appointmentDate!: string;
 
     @IsOptional()
     @IsInt()
@@ -80,7 +80,7 @@ export class UpdateAppointmentDto {
 export class ApproveAppointmentDto {
     @IsNotEmpty()
     @IsInt()
-    employeeId: number;
+    employeeId!: number;
 }
 
 export class CancelAppointmentDto {
@@ -92,14 +92,14 @@ export class CancelAppointmentDto {
 export class AssignEmployeeDto {
     @IsNotEmpty()
     @IsInt()
-    employeeId: number;
+    employeeId!: number;
 }
 
 export class UpdateActualStatusDto {
     @IsNotEmpty()
     @IsInt()
     @IsIn([0, 1, 2, 3]) // 0: chưa gặp, 1: đã gặp, 2: khách không đến, 3: không thể thực hiện
-    actualStatus: number;
+    actualStatus!: number;
 
     @IsOptional()
     @IsString()
@@ -108,18 +108,18 @@ export class UpdateActualStatusDto {
 
 export class MarkFirstContactDto {
     @IsOptional()
-    @IsString()
+    @IsDateString()
     firstContactAt?: string;
 }
 
 export class AppointmentCalendarQueryDto {
     @IsNotEmpty()
     @IsString()
-    start: string;
+    start!: string;
 
     @IsNotEmpty()
     @IsString()
-    end: string;
+    end!: string;
 
     @IsOptional()
     @IsString()
@@ -129,7 +129,7 @@ export class AppointmentCalendarQueryDto {
 export class MoveCalendarAppointmentDto {
     @IsNotEmpty()
     @IsString()
-    appointmentDate: string;
+    appointmentDate!: string;
 
     @IsOptional()
     @IsInt()

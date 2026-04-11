@@ -5,7 +5,7 @@ import { landApi, propertyCategoryApi } from '@/api';
 import { PropertyCard, Loading, PropertyListingFilters } from '@/components/common';
 import { DEFAULT_PAGE_SIZE } from '@/constants';
 import { useVietnamAddress } from '@/hooks/UseAddressVN';
-import { buildProvinceCanonicalLookup, getLocalizedPropertyCategoryName, isLandCategoryCode, normalizeProvinceName, sortProvinceOptions } from '@/utils';
+import { buildProvinceCanonicalLookup, getLocalizedPropertyCategoryName, normalizeProvinceName, sortProvinceOptions } from '@/utils';
 import type { Land, PropertyCategory } from '@/types';
 
 
@@ -60,7 +60,7 @@ const LandListPage: React.FC = () => {
     const { provinces } = useVietnamAddress();
     const provinceOptions = sortProvinceOptions(provinces);
     const landCategoryOptions = categories
-        .filter((category) => isLandCategoryCode(category.code))
+        .filter((category) => category.categoryType === 'LAND')
         .map((category) => ({
             label: getLocalizedPropertyCategoryName(category.code, category.name),
             value: category.id,

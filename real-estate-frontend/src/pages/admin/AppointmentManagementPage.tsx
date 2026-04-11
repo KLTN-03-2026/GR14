@@ -12,6 +12,8 @@ import {
     APPOINTMENT_ACTUAL_STATUS_LABELS,
 } from '@/constants';
 import { Button, Modal, Badge, DataTable } from '@/components/ui';
+import DetailDrawer from '@/components/ui/DetailDrawer';
+import AppointmentDetailPanel from '@/components/common/AppointmentDetailPanel';
 import type { Column } from '@/components/ui';
 
 type ApiError = {
@@ -77,6 +79,7 @@ const AppointmentManagementPage: React.FC = () => {
     const [deleting, setDeleting] = useState(false);
     const [slotSuggestionOpen, setSlotSuggestionOpen] = useState(false);
     const [slotSuggestions, setSlotSuggestions] = useState<Array<{ at: string; availableEmployees: number }>>([]);
+    const [detailItem, setDetailItem] = useState<Appointment | null>(null);
 
     const loadAppointments = useCallback(async () => {
         setLoading(true);
@@ -345,7 +348,7 @@ const AppointmentManagementPage: React.FC = () => {
                 const actualUpdated = record.actualStatus !== undefined && record.actualStatus !== null;
 
                 return (
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
                         {record.status === 0 && (
                             <>
                                 <Button size="sm" variant="primary" iconOnly ariaLabel="Duyệt" onClick={() => openApproveModal(record)} startIcon={(
@@ -472,6 +475,7 @@ const AppointmentManagementPage: React.FC = () => {
                 dataSource={appointments}
                 rowKey="id"
                 loading={loading}
+                onRow={(record) => ({ onClick: () => setDetailItem(record) })}
                 pagination={{
                     current: page,
                     total,
@@ -597,6 +601,14 @@ const AppointmentManagementPage: React.FC = () => {
                     </select>
                 </div>
             </Modal>
+
+            <DetailDrawer
+                isOpen={!!detailItem}
+                onClose={() => setDetailItem(null)}
+                title={detailItem ? `Chi tiết lịch hẹn #${detailItem.id}` : 'Chi tiết lịch hẹn'}
+            >
+                {detailItem && <AppointmentDetailPanel appointment={detailItem} />}
+            </DetailDrawer>
         </div>
     );
 };

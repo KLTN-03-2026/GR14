@@ -24,6 +24,7 @@ const LandFormPage: React.FC = () => {
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [fileList, setFileList] = useState<FileItem[]>([]);
     const isEdit = !!id;
+    const landCategories = categories.filter((c) => c.categoryType === 'LAND');
 
     const [formData, setFormData] = useState<Record<string, unknown>>({
         code: '',
@@ -239,7 +240,7 @@ const LandFormPage: React.FC = () => {
                                 onChange={(e) => setField('categoryId', e.target.value || '')}
                             >
                                 <option value="">Chọn danh mục</option>
-                                {categories.map((c) => (
+                                {landCategories.map((c) => (
                                     <option key={c.id} value={c.id}>{c.name}</option>
                                 ))}
                             </select>

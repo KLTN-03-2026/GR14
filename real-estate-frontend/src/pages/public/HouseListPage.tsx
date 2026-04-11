@@ -5,7 +5,7 @@ import { houseApi, propertyCategoryApi } from '@/api';
 import { PropertyCard, Loading, PropertyListingFilters } from '@/components/common';
 import { DEFAULT_PAGE_SIZE } from '@/constants';
 import { useVietnamAddress } from '@/hooks/UseAddressVN';
-import { buildProvinceCanonicalLookup, getLocalizedPropertyCategoryName, isHouseCategoryCode, normalizeProvinceName, sortProvinceOptions } from '@/utils';
+import { buildProvinceCanonicalLookup, getLocalizedPropertyCategoryName, normalizeProvinceName, sortProvinceOptions } from '@/utils';
 import type { House, PropertyCategory } from '@/types';
 
 interface CustomPaginationProps {
@@ -59,7 +59,7 @@ const HouseListPage: React.FC = () => {
     const { provinces } = useVietnamAddress();
     const provinceOptions = sortProvinceOptions(provinces);
     const houseCategoryOptions = categories
-        .filter((category) => isHouseCategoryCode(category.code))
+        .filter((category) => category.categoryType === 'HOUSE')
         .map((category) => ({
             label: getLocalizedPropertyCategoryName(category.code, category.name),
             value: category.id,

@@ -14,6 +14,12 @@ const toIsoFromLocal = (localDateTime: string) => {
     return date.toISOString();
 };
 
+const toLocalDateTimeInputValue = (date: Date) => {
+    const offsetMinutes = date.getTimezoneOffset();
+    const localDate = new Date(date.getTime() - offsetMinutes * 60_000);
+    return localDate.toISOString().slice(0, 16);
+};
+
 const AppointmentBookingPage: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -21,31 +27,37 @@ const AppointmentBookingPage: React.FC = () => {
     const houseId = Number(searchParams.get('houseId') || 0) || undefined;
     const landId = Number(searchParams.get('landId') || 0) || undefined;
 
+    const hasExactlyOneProperty = Boolean(houseId) !== Boolean(landId);
+    const effectiveHouseId = houseId && !landId ? houseId : undefined;
+    const effectiveLandId = landId && !houseId ? landId : undefined;
+
     const [property, setProperty] = useState<PropertySummary | null>(null);
     const [loadingProperty, setLoadingProperty] = useState(false);
+    const [propertyLoadFailed, setPropertyLoadFailed] = useState(false);
     const [submitting, setSubmitting] = useState(false);
 
     const [appointmentDate, setAppointmentDate] = useState('');
     const [durationMinutes, setDurationMinutes] = useState(60);
 
     const propertyTypeLabel = useMemo(() => {
-        if (houseId) return 'Nhà';
-        if (landId) return 'Đất';
+        if (effectiveHouseId) return 'Nhà';
+        if (effectiveLandId) return 'Đất';
         return 'Bất động sản';
-    }, [houseId, landId]);
+    }, [effectiveHouseId, effectiveLandId]);
 
     useEffect(() => {
-        if (!houseId && !landId) {
-            toast.error('Thiếu thông tin nhà/đất để đặt lịch');
+        if (!hasExactlyOneProperty) {
+            toast.error('Liên kết đặt lịch không hợp lệ, vui lòng chọn đúng một bất động sản');
             navigate('/', { replace: true });
             return;
         }
 
         const loadProperty = async () => {
             setLoadingProperty(true);
+            setPropertyLoadFailed(false);
             try {
-                if (houseId) {
-                    const res = await houseApi.getById(houseId);
+                if (effectiveHouseId) {
+                    const res = await houseApi.getById(effectiveHouseId);
                     const data = res.data?.data || res.data;
                     setProperty({
                         title: data?.title,
@@ -55,8 +67,8 @@ const AppointmentBookingPage: React.FC = () => {
                     return;
                 }
 
-                if (landId) {
-                    const res = await landApi.getById(landId);
+                if (effectiveLandId) {
+                    const res = await landApi.getById(effectiveLandId);
                     const data = res.data?.data || res.data;
                     setProperty({
                         title: data?.title,
@@ -65,6 +77,7 @@ const AppointmentBookingPage: React.FC = () => {
                     });
                 }
             } catch {
+                setPropertyLoadFailed(true);
                 toast.error('Không tải được thông tin bất động sản');
             } finally {
                 setLoadingProperty(false);
@@ -72,13 +85,18 @@ const AppointmentBookingPage: React.FC = () => {
         };
 
         void loadProperty();
-    }, [houseId, landId, navigate]);
+    }, [effectiveHouseId, effectiveLandId, hasExactlyOneProperty, navigate]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
         if (!appointmentDate) {
             toast.error('Vui lòng chọn thời gian hẹn');
+            return;
+        }
+
+        if (!property || loadingProperty || propertyLoadFailed) {
+            toast.error('Thông tin bất động sản chưa sẵn sàng, vui lòng thử lại');
             return;
         }
 
@@ -90,19 +108,19 @@ const AppointmentBookingPage: React.FC = () => {
         setSubmitting(true);
         try {
             await appointmentApi.create({
-                houseId,
-                landId,
+                houseId: effectiveHouseId,
+                landId: effectiveLandId,
                 appointmentDate: toIsoFromLocal(appointmentDate),
                 durationMinutes,
             });
 
             toast.success('Đặt lịch thành công. Hệ thống đang tự động phân công nhân viên.');
-            if (houseId) {
-                navigate(`/houses/${houseId}`);
+            if (effectiveHouseId) {
+                navigate(`/houses/${effectiveHouseId}`);
                 return;
             }
-            if (landId) {
-                navigate(`/lands/${landId}`);
+            if (effectiveLandId) {
+                navigate(`/lands/${effectiveLandId}`);
                 return;
             }
             navigate('/');
@@ -142,6 +160,7 @@ const AppointmentBookingPage: React.FC = () => {
                             <input
                                 type="datetime-local"
                                 value={appointmentDate}
+                                min={toLocalDateTimeInputValue(new Date())}
                                 onChange={(e) => setAppointmentDate(e.target.value)}
                                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                             />
@@ -173,7 +192,7 @@ const AppointmentBookingPage: React.FC = () => {
                         </button>
                         <button
                             type="submit"
-                            disabled={submitting}
+                            disabled={submitting || loadingProperty || propertyLoadFailed || !property}
                             className="rounded-lg bg-[#254b86] px-5 py-2 text-sm font-semibold text-white hover:bg-[#1a3660] disabled:cursor-not-allowed disabled:opacity-60"
                         >
                             {submitting ? 'Đang gửi...' : 'Xác nhận đặt lịch'}

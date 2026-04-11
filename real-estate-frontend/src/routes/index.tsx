@@ -200,7 +200,15 @@ const router = createBrowserRouter([
       </ProtectedRoute>
     ),
     children: [
-      { index: true, element: <EmployeeAppointmentPage /> },
+      { index: true, element: <DashboardPage /> },
+      { path: "dashboard", element: <DashboardPage /> },
+      { path: "houses", element: <HouseManagementPage /> },
+      { path: "houses/create", element: <HouseFormPage /> },
+      { path: "houses/:id/edit", element: <HouseFormPage /> },
+      { path: "lands", element: <LandManagementPage /> },
+      { path: "lands/create", element: <LandFormPage /> },
+      { path: "lands/:id/edit", element: <LandFormPage /> },
+      { path: "posts", element: <PostManagementPage /> },
       { path: "appointments", element: <EmployeeAppointmentPage /> },
       { path: "calendar", element: <EmployeeCalendarPage /> },
       { path: "profile", element: <ProfilePage /> },

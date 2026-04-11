@@ -23,7 +23,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('posts')
 export class PostController {
-    constructor(private readonly postService: PostService) {}
+    constructor(private readonly postService: PostService) { }
 
     @Get('approved')
     findApproved(
@@ -36,14 +36,14 @@ export class PostController {
 
     @Get('pending')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
-    @Roles('ADMIN')
+    @Roles('ADMIN', 'EMPLOYEE')
     findPending(@Query('postType') postType?: PostType) {
         return this.postService.findPending(postType);
     }
 
     @Get('all')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
-    @Roles('ADMIN')
+    @Roles('ADMIN', 'EMPLOYEE')
     findAll(
         @Query('page') page?: string,
         @Query('limit') limit?: string,
@@ -100,14 +100,14 @@ export class PostController {
 
     @Put(':id/approve')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
-    @Roles('ADMIN')
+    @Roles('ADMIN', 'EMPLOYEE')
     approve(@Param('id', ParseIntPipe) id: number) {
         return this.postService.approve(id);
     }
 
     @Put(':id/reject')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
-    @Roles('ADMIN')
+    @Roles('ADMIN', 'EMPLOYEE')
     reject(@Param('id', ParseIntPipe) id: number) {
         return this.postService.reject(id);
     }
@@ -115,6 +115,6 @@ export class PostController {
     @Delete(':id')
     @UseGuards(AuthGuard('jwt'))
     delete(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
-        return this.postService.delete(id, req.user.id);
+        return this.postService.delete(id, req.user.id, req.user.roles);
     }
 }
