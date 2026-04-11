@@ -13,7 +13,7 @@ export class PostService {
         private cloudinaryService: CloudinaryService,
         private mailProducer: MailProducerService,
         private mailService: MailService,
-    ) {}
+    ) { }
 
     private isVipSchemaMismatchError(error: unknown): boolean {
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
@@ -556,11 +556,12 @@ export class PostService {
         });
     }
 
-    async delete(id: number, userId: number) {
+    async delete(id: number, userId: number, actorRoles?: string[]) {
         const post = await this.prisma.post.findUnique({ where: { id } });
         if (!post) throw new NotFoundException('Bài đăng không tồn tại');
 
-        if (post.userId !== userId) {
+        const canDeleteAllPosts = this.isAdminOrEmployee(actorRoles);
+        if (post.userId !== userId && !canDeleteAllPosts) {
             throw new ForbiddenException('Bạn không có quyền xóa bài đăng này');
         }
 

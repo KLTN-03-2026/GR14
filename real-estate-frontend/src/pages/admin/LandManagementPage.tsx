@@ -8,6 +8,8 @@ import { DEFAULT_PAGE_SIZE } from '@/constants';
 import { Button, Badge, DataTable, ImageLightbox } from '@/components/ui';
 import Modal from '@/components/ui/Modal';
 import LoadingOverlay from '@/components/ui/LoadingOverlay';
+import DetailDrawer from '@/components/ui/DetailDrawer';
+import LandDetailPanel from '@/components/common/LandDetailPanel';
 import type { Column } from '@/components/ui';
 
 const LandManagementPage: React.FC = () => {
@@ -29,6 +31,7 @@ const LandManagementPage: React.FC = () => {
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState<Land | null>(null);
     const [deleting, setDeleting] = useState(false);
+    const [detailItem, setDetailItem] = useState<Land | null>(null);
 
     const loadLands = useCallback(async () => {
         setLoading(true);
@@ -107,7 +110,8 @@ const LandManagementPage: React.FC = () => {
                             src={images[0].url}
                             alt=""
                             className="w-[60px] h-[50px] object-cover rounded cursor-zoom-in"
-                            onClick={() => {
+                            onClick={(e) => {
+                                e.stopPropagation();
                                 setPreviewImages(images.map((img) => img.url));
                                 setPreviewIndex(0);
                                 setPreviewOpen(true);
@@ -175,7 +179,7 @@ const LandManagementPage: React.FC = () => {
             key: 'action',
             width: 200,
             render: (_: unknown, record: Land) => (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                     <Button
                         size="sm"
                         variant="outline"
@@ -264,6 +268,7 @@ const LandManagementPage: React.FC = () => {
                         dataSource={lands}
                         rowKey="id"
                         loading={loading}
+                        onRow={(record) => ({ onClick: () => setDetailItem(record) })}
                         pagination={{
                             current: page,
                             total,
@@ -323,6 +328,14 @@ const LandManagementPage: React.FC = () => {
                 title="Đang xóa đất"
                 description="Vui lòng đợi hệ thống xử lý ảnh và dữ liệu..."
             />
+
+            <DetailDrawer
+                isOpen={!!detailItem}
+                onClose={() => setDetailItem(null)}
+                title={detailItem ? `Chi tiết: ${detailItem.title}` : 'Chi tiết đất'}
+            >
+                {detailItem && <LandDetailPanel land={detailItem} />}
+            </DetailDrawer>
         </div>
     );
 };

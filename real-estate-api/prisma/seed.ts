@@ -47,21 +47,21 @@ async function main() {
     });
 
     // Create property categories
-    const categories = [
-        { code: 'HOUSE', name: 'Nhà ở' },
-        { code: 'VILLA', name: 'Biệt thự' },
-        { code: 'APARTMENT', name: 'Chung cư' },
-        { code: 'TOWNHOUSE', name: 'Nhà phố' },
-        { code: 'RESLAND', name: 'Đất ở' },
-        { code: 'COMLAND', name: 'Đất thương mại' },
-        { code: 'AGRLAND', name: 'Đất nông nghiệp' },
-        { code: 'INDLAND', name: 'Đất công nghiệp' },
+    const categories: Array<{ code: string; name: string; categoryType: 'HOUSE' | 'LAND' }> = [
+        { code: 'HOUSE', name: 'Nhà ở', categoryType: 'HOUSE' },
+        { code: 'VILLA', name: 'Biệt thự', categoryType: 'HOUSE' },
+        { code: 'APARTMENT', name: 'Chung cư', categoryType: 'HOUSE' },
+        { code: 'TOWNHOUSE', name: 'Nhà phố', categoryType: 'HOUSE' },
+        { code: 'RESLAND', name: 'Đất ở', categoryType: 'LAND' },
+        { code: 'COMLAND', name: 'Đất thương mại', categoryType: 'LAND' },
+        { code: 'AGRLAND', name: 'Đất nông nghiệp', categoryType: 'LAND' },
+        { code: 'INDLAND', name: 'Đất công nghiệp', categoryType: 'LAND' },
     ];
 
     for (const cat of categories) {
         await prisma.propertyCategory.upsert({
             where: { code: cat.code },
-            update: { name: cat.name },
+            update: { name: cat.name, categoryType: cat.categoryType },
             create: cat,
         });
     }

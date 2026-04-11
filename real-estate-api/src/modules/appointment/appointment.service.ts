@@ -564,8 +564,8 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
         const customer = await this.prisma.customer.findUnique({ where: { userId } });
         if (!customer) throw new BadRequestException('Khách hàng không tồn tại');
 
-        if (!dto.houseId && !dto.landId) {
-            throw new BadRequestException('Vui lòng chọn nhà hoặc đất');
+        if (!!dto.houseId === !!dto.landId) {
+            throw new BadRequestException('Vui lòng chọn đúng một bất động sản (nhà hoặc đất)');
         }
 
         const now = new Date();
@@ -594,8 +594,8 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
 
     // Admin tạo lịch hẹn, có thể dùng khách hiện có hoặc tạo khách mới.
     async adminCreate(dto: AdminCreateAppointmentDto) {
-        if (!dto.houseId && !dto.landId) {
-            throw new BadRequestException('Cần chọn nhà hoặc đất');
+        if (!!dto.houseId === !!dto.landId) {
+            throw new BadRequestException('Vui lòng chọn đúng một bất động sản (nhà hoặc đất)');
         }
 
         let resolvedCustomerId: number;
@@ -1218,6 +1218,18 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
 
         const firstContactAt = dto.firstContactAt ? new Date(dto.firstContactAt) : new Date();
         const now = new Date();
+
+        if (Number.isNaN(firstContactAt.getTime())) {
+            throw new BadRequestException('firstContactAt không hợp lệ');
+        }
+
+        if (firstContactAt.getTime() > now.getTime()) {
+            throw new BadRequestException('Không thể cập nhật liên hệ đầu tiên ở tương lai');
+        }
+
+        if (appointment.assignedAt && firstContactAt.getTime() < appointment.assignedAt.getTime()) {
+            throw new BadRequestException('Thời điểm liên hệ đầu tiên không được sớm hơn thời điểm phân công');
+        }
 
         const updated = await this.prisma.appointment.update({
             where: { id },

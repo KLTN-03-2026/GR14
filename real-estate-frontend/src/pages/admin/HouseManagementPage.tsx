@@ -11,6 +11,8 @@ import { DataTable } from '@/components/ui/Table';
 import ImageLightbox from '@/components/ui/ImageLightbox';
 import Modal from '@/components/ui/Modal';
 import LoadingOverlay from '@/components/ui/LoadingOverlay';
+import DetailDrawer from '@/components/ui/DetailDrawer';
+import HouseDetailPanel from '@/components/common/HouseDetailPanel';
 import type { Column } from '@/components/ui/Table';
 
 const HouseManagementPage: React.FC = () => {
@@ -32,6 +34,7 @@ const HouseManagementPage: React.FC = () => {
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState<House | null>(null);
     const [deleting, setDeleting] = useState(false);
+    const [detailItem, setDetailItem] = useState<House | null>(null);
 
     const loadHouses = useCallback(async () => {
         setLoading(true);
@@ -110,7 +113,8 @@ const HouseManagementPage: React.FC = () => {
                             src={images[0].url}
                             alt=""
                             className="w-[60px] h-[50px] object-cover rounded cursor-zoom-in"
-                            onClick={() => {
+                            onClick={(e) => {
+                                e.stopPropagation();
                                 setPreviewImages(images.map((img) => img.url));
                                 setPreviewIndex(0);
                                 setPreviewOpen(true);
@@ -178,7 +182,7 @@ const HouseManagementPage: React.FC = () => {
             key: 'action',
             width: 200,
             render: (_: unknown, record: House) => (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                     <Button
                         size="sm"
                         variant="outline"
@@ -267,6 +271,7 @@ const HouseManagementPage: React.FC = () => {
                         dataSource={houses}
                         rowKey="id"
                         loading={loading}
+                        onRow={(record) => ({ onClick: () => setDetailItem(record) })}
                         pagination={{
                             current: page,
                             total,
@@ -326,6 +331,14 @@ const HouseManagementPage: React.FC = () => {
                 title="Đang xóa nhà"
                 description="Vui lòng đợi hệ thống xử lý ảnh và dữ liệu..."
             />
+
+            <DetailDrawer
+                isOpen={!!detailItem}
+                onClose={() => setDetailItem(null)}
+                title={detailItem ? `Chi tiết: ${detailItem.title}` : 'Chi tiết nhà'}
+            >
+                {detailItem && <HouseDetailPanel house={detailItem} />}
+            </DetailDrawer>
         </div>
     );
 };

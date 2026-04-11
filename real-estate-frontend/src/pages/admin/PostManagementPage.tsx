@@ -9,6 +9,8 @@ import { DEFAULT_PAGE_SIZE, POST_STATUS_LABELS } from '@/constants';
 import { Button, Badge, Modal, DataTable, ImageLightbox, LoadingOverlay } from '@/components/ui';
 import type { Column } from '@/components/ui';
 import PostForm from '@/components/common/PostForm';
+import DetailDrawer from '@/components/ui/DetailDrawer';
+import PostDetailPanel from '@/components/common/PostDetailPanel';
 
 type ApiError = {
     response?: {
@@ -34,6 +36,7 @@ const PostManagementPage: React.FC = () => {
     const [submitting, setSubmitting] = useState(false);
     const [formRenderKey, setFormRenderKey] = useState('admin-post-form-create');
     const formScrollRef = useRef<HTMLDivElement>(null);
+    const [detailItem, setDetailItem] = useState<Post | null>(null);
     const loadPosts = useCallback(async () => {
         setLoading(true);
         try {
@@ -188,7 +191,8 @@ const PostManagementPage: React.FC = () => {
                         src={record.images[0].url}
                         alt="thumb"
                         className="h-[50px] w-[60px] cursor-pointer rounded object-cover"
-                        onClick={() => {
+                        onClick={(e) => {
+                            e.stopPropagation();
                             setPreviewImages(record.images?.map((img) => img.url) || []);
                             setPreviewIndex(0);
                             setPreviewOpen(true);
@@ -274,7 +278,7 @@ const PostManagementPage: React.FC = () => {
             title: 'Hành động',
             width: 180,
             render: (_, record) => (
-                <div className="grid grid-cols-2 gap-2">
+                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                     {record.status === 1 && (
                         <>
                             <Button
@@ -282,7 +286,7 @@ const PostManagementPage: React.FC = () => {
                                 variant="primary"
                                 onClick={() => handleStatusChange(record.id, 2)}
                                 ariaLabel="Duyệt"
-                                className="h-9 w-full"
+                                className="h-9"
                             >
                                 Duyệt
                             </Button>
@@ -291,7 +295,7 @@ const PostManagementPage: React.FC = () => {
                                 variant="danger"
                                 onClick={() => handleStatusChange(record.id, 3)}
                                 ariaLabel="Từ chối"
-                                className="h-9 w-full"
+                                className="h-9"
                             >
                                 Từ chối
                             </Button>
@@ -300,20 +304,28 @@ const PostManagementPage: React.FC = () => {
                     <Button
                         size="sm"
                         variant="outline"
+                        iconOnly
                         onClick={() => openModal(record)}
                         ariaLabel="Sửa"
-                        className="h-9 w-full"
+                        startIcon={(
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                        )}
                     >
-                        Sửa
                     </Button>
                     <Button
                         size="sm"
                         variant="danger"
+                        iconOnly
                         onClick={() => setDeletePost(record)}
                         ariaLabel="Xóa"
-                        className="h-9 w-full"
+                        startIcon={(
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                        )}
                     >
-                        Xóa
                     </Button>
                 </div>
             ),
@@ -373,6 +385,7 @@ const PostManagementPage: React.FC = () => {
                 columns={columns}
                 dataSource={pagedPosts}
                 loading={loading}
+                onRow={(record) => ({ onClick: () => setDetailItem(record) })}
                 pagination={{
                     current: page,
                     total: filteredByTabAndSearch.length,
@@ -465,6 +478,14 @@ const PostManagementPage: React.FC = () => {
                 title="Đang xử lý bài đăng"
                 description="Hệ thống đang tải ảnh và lưu dữ liệu, vui lòng đợi..."
             />
+
+            <DetailDrawer
+                isOpen={!!detailItem}
+                onClose={() => setDetailItem(null)}
+                title={detailItem ? `Chi tiết bài: ${detailItem.title}` : 'Chi tiết bài đăng'}
+            >
+                {detailItem && <PostDetailPanel post={detailItem} />}
+            </DetailDrawer>
         </div>
     );
 };
