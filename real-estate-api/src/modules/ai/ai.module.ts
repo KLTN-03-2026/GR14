@@ -5,8 +5,8 @@ import { AiChatCompareService } from './ai-chat-compare.service';
 import { DescriptionGeneratorService } from './services';
 
 @Module({
-    controllers: [AiController],
-    providers: [AiService, AiChatCompareService, DescriptionGeneratorService],
-    exports: [AiService],
+  controllers: [AiController],
+  providers: [AiService, AiChatCompareService, DescriptionGeneratorService],
+  exports: [AiService],
 })
-export class AiModule { }
+export class AiModule {}

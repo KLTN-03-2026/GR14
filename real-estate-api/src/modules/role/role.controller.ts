@@ -1,6 +1,13 @@
 import {
-    Controller, Get, Post, Put, Delete,
-    Param, Body, UseGuards, ParseIntPipe,
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Param,
+  Body,
+  UseGuards,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RoleService } from './role.service';
@@ -12,30 +19,30 @@ import { Roles } from '../auth/decorators/roles.decorator';
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('ADMIN')
 export class RoleController {
-    constructor(private readonly roleService: RoleService) { }
+  constructor(private readonly roleService: RoleService) {}
 
-    @Get()
-    findAll() {
-        return this.roleService.findAll();
-    }
+  @Get()
+  findAll() {
+    return this.roleService.findAll();
+  }
 
-    @Get(':id')
-    findById(@Param('id', ParseIntPipe) id: number) {
-        return this.roleService.findById(id);
-    }
+  @Get(':id')
+  findById(@Param('id', ParseIntPipe) id: number) {
+    return this.roleService.findById(id);
+  }
 
-    @Post()
-    create(@Body() dto: CreateRoleDto) {
-        return this.roleService.create(dto);
-    }
+  @Post()
+  create(@Body() dto: CreateRoleDto) {
+    return this.roleService.create(dto);
+  }
 
-    @Put(':id')
-    update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateRoleDto) {
-        return this.roleService.update(id, dto);
-    }
+  @Put(':id')
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateRoleDto) {
+    return this.roleService.update(id, dto);
+  }
 
-    @Delete(':id')
-    delete(@Param('id', ParseIntPipe) id: number) {
-        return this.roleService.delete(id);
-    }
+  @Delete(':id')
+  delete(@Param('id', ParseIntPipe) id: number) {
+    return this.roleService.delete(id);
+  }
 }

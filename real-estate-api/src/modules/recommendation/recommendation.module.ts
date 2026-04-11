@@ -4,9 +4,9 @@ import { RecommendationController } from './recommendation.controller';
 import { RedisModule } from '../../common/redis/redis.module';
 
 @Module({
-    imports: [RedisModule],
-    controllers: [RecommendationController],
-    providers: [RecommendationService],
-    exports: [RecommendationService],
+  imports: [RedisModule],
+  controllers: [RecommendationController],
+  providers: [RecommendationService],
+  exports: [RecommendationService],
 })
 export class RecommendationModule {}

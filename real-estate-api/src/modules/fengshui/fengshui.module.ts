@@ -4,8 +4,8 @@ import { FengshuiService } from './fengshui.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 
 @Module({
-    imports: [PrismaModule],
-    controllers: [FengshuiController],
-    providers: [FengshuiService],
+  imports: [PrismaModule],
+  controllers: [FengshuiController],
+  providers: [FengshuiService],
 })
 export class FengshuiModule {}

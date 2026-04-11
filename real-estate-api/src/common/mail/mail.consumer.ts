@@ -3,9 +3,9 @@ import { EventPattern, Payload } from '@nestjs/microservices';
 import { MailService } from './mail.service';
 
 interface SendMailPayload {
-    to: string;
-    subject: string;
-    html: string;
+  to: string;
+  subject: string;
+  html: string;
 }
 
 /**
@@ -18,20 +18,22 @@ interface SendMailPayload {
  */
 @Controller()
 export class MailConsumerController {
-    private readonly logger = new Logger(MailConsumerController.name);
+  private readonly logger = new Logger(MailConsumerController.name);
 
-    constructor(private readonly mailService: MailService) { }
+  constructor(private readonly mailService: MailService) {}
 
-    @EventPattern('mail.send')
-    async handleSendMail(@Payload() data: SendMailPayload): Promise<void> {
-        this.logger.log(`[RabbitMQ] Nhận job gửi mail → ${data.to} | Tiêu đề: "${data.subject}"`);
-        try {
-            await this.mailService.sendEmail(data.to, data.subject, data.html);
-            this.logger.log(`[RabbitMQ] Gửi mail thành công → ${data.to}`);
-        } catch (err) {
-            this.logger.error(`[RabbitMQ] Gửi mail thất bại → ${data.to}`, err);
-            // Nếu throw ở đây, RabbitMQ sẽ nack và có thể retry (tuỳ config)
-            throw err;
-        }
+  @EventPattern('mail.send')
+  async handleSendMail(@Payload() data: SendMailPayload): Promise<void> {
+    this.logger.log(
+      `[RabbitMQ] Nhận job gửi mail → ${data.to} | Tiêu đề: "${data.subject}"`,
+    );
+    try {
+      await this.mailService.sendEmail(data.to, data.subject, data.html);
+      this.logger.log(`[RabbitMQ] Gửi mail thành công → ${data.to}`);
+    } catch (err) {
+      this.logger.error(`[RabbitMQ] Gửi mail thất bại → ${data.to}`, err);
+      // Nếu throw ở đây, RabbitMQ sẽ nack và có thể retry (tuỳ config)
+      throw err;
     }
+  }
 }

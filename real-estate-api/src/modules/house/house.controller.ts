@@ -1,7 +1,16 @@
 import {
-    Controller, Get, Post, Put, Delete,
-    Param, Body, Query, UseGuards, ParseIntPipe,
-    UploadedFiles, UseInterceptors,
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Param,
+  Body,
+  Query,
+  UseGuards,
+  ParseIntPipe,
+  UploadedFiles,
+  UseInterceptors,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { FilesInterceptor } from '@nestjs/platform-express';
@@ -12,57 +21,62 @@ import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('houses')
 export class HouseController {
-    constructor(private readonly houseService: HouseService) { }
+  constructor(private readonly houseService: HouseService) {}
 
-    @Get()
-    findAll(
-        @Query('page') page = 1,
-        @Query('limit') limit = 10,
-        @Query('search') search?: string,
-        @Query('status') status?: string,
-    ) {
-        const parsedStatus = status ? Number(status) : undefined;
-        if (search) return this.houseService.search(search, +page, +limit, parsedStatus);
-        return this.houseService.findAll(+page, +limit, parsedStatus);
-    }
+  @Get()
+  findAll(
+    @Query('page') page = 1,
+    @Query('limit') limit = 10,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+  ) {
+    const parsedStatus = status ? Number(status) : undefined;
+    if (search)
+      return this.houseService.search(search, +page, +limit, parsedStatus);
+    return this.houseService.findAll(+page, +limit, parsedStatus);
+  }
 
-    @Get('search')
-    search(@Query('q') query: string, @Query('page') page = 1, @Query('limit') limit = 10) {
-        return this.houseService.search(query, +page, +limit);
-    }
+  @Get('search')
+  search(
+    @Query('q') query: string,
+    @Query('page') page = 1,
+    @Query('limit') limit = 10,
+  ) {
+    return this.houseService.search(query, +page, +limit);
+  }
 
-    @Get(':id')
-    findById(@Param('id', ParseIntPipe) id: number) {
-        return this.houseService.findById(id);
-    }
+  @Get(':id')
+  findById(@Param('id', ParseIntPipe) id: number) {
+    return this.houseService.findById(id);
+  }
 
-    @Post()
-    @UseGuards(AuthGuard('jwt'), RolesGuard)
-    @Roles('ADMIN', 'EMPLOYEE')
-    @UseInterceptors(FilesInterceptor('images', 10))
-    create(
-        @Body() dto: CreateHouseDto,
-        @UploadedFiles() files: Express.Multer.File[],
-    ) {
-        return this.houseService.create(dto, files);
-    }
+  @Post()
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'EMPLOYEE')
+  @UseInterceptors(FilesInterceptor('images', 10))
+  create(
+    @Body() dto: CreateHouseDto,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    return this.houseService.create(dto, files);
+  }
 
-    @Put(':id')
-    @UseGuards(AuthGuard('jwt'), RolesGuard)
-    @Roles('ADMIN', 'EMPLOYEE')
-    @UseInterceptors(FilesInterceptor('images', 10))
-    update(
-        @Param('id', ParseIntPipe) id: number,
-        @Body() dto: UpdateHouseDto,
-        @UploadedFiles() files: Express.Multer.File[],
-    ) {
-        return this.houseService.update(id, dto, files);
-    }
+  @Put(':id')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'EMPLOYEE')
+  @UseInterceptors(FilesInterceptor('images', 10))
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateHouseDto,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    return this.houseService.update(id, dto, files);
+  }
 
-    @Delete(':id')
-    @UseGuards(AuthGuard('jwt'), RolesGuard)
-    @Roles('ADMIN', 'EMPLOYEE')
-    delete(@Param('id', ParseIntPipe) id: number) {
-        return this.houseService.delete(id);
-    }
+  @Delete(':id')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'EMPLOYEE')
+  delete(@Param('id', ParseIntPipe) id: number) {
+    return this.houseService.delete(id);
+  }
 }

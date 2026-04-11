@@ -19,28 +19,30 @@ import { MailConsumerController } from './mail.consumer';
  *    → MailService.sendEmail()  (SMTP thật)
  */
 @Module({
-    imports: [
-        ClientsModule.registerAsync([
-            {
-                name: 'MAIL_SERVICE',
-                imports: [ConfigModule],
-                inject: [ConfigService],
-                useFactory: (configService: ConfigService) => ({
-                    transport: Transport.RMQ,
-                    options: {
-                        urls: [configService.get<string>('RABBITMQ_URL') || 'amqp://guest:guest@localhost:5672'],
-                        queue: 'mail_queue',
-                        queueOptions: {
-                            durable: true, // queue tồn tại sau khi RabbitMQ restart
-                        },
-                    },
-                }),
+  imports: [
+    ClientsModule.registerAsync([
+      {
+        name: 'MAIL_SERVICE',
+        imports: [ConfigModule],
+        inject: [ConfigService],
+        useFactory: (configService: ConfigService) => ({
+          transport: Transport.RMQ,
+          options: {
+            urls: [
+              configService.get<string>('RABBITMQ_URL') ||
+                'amqp://guest:guest@localhost:5672',
+            ],
+            queue: 'mail_queue',
+            queueOptions: {
+              durable: true, // queue tồn tại sau khi RabbitMQ restart
             },
-        ]),
-    ],
-    controllers: [MailConsumerController],
-    providers: [MailService, MailProducerService],
-    exports: [MailService, MailProducerService],
+          },
+        }),
+      },
+    ]),
+  ],
+  controllers: [MailConsumerController],
+  providers: [MailService, MailProducerService],
+  exports: [MailService, MailProducerService],
 })
-export class MailModule { }
-
+export class MailModule {}
