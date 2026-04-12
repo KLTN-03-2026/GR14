@@ -20,7 +20,12 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
 
   // Security headers
-  app.use(helmet());
+  app.use(
+    helmet({
+      crossOriginOpenerPolicy: false,
+      crossOriginResourcePolicy: false,
+    }),
+  );
 
   // Compression for responses
   app.use(compression());
@@ -72,12 +77,14 @@ async function bootstrap() {
   const frontendUrl =
     configService.get('FRONTEND_URL') || 'http://localhost:3000';
   app.enableCors({
-    origin:
-      process.env.NODE_ENV === 'production'
-        ? [frontendUrl]
-        : ['http://localhost:3000', 'http://localhost:3001'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    origin: [
+      frontendUrl,
+      'http://localhost:3000',
+      'http://localhost:3001',
+      /^http:\/\/209\.97\.165\.69(:\d+)?$/, // Cho phép IP VPS với bất kỳ port nào
+    ],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
     credentials: true,
   });
 
