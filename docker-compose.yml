@@ -151,6 +151,13 @@ services:
     depends_on:
       - backend
 
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - "8080:8080"
+    networks:
+      - default
 
 volumes:
   mysql_data:
