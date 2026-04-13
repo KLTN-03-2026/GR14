@@ -18,7 +18,7 @@ export class PaymentService {
     private momoService: MoMoService,
     private mailService: MailService,
     private mailProducer: MailProducerService,
-  ) {}
+  ) { }
 
   async createPayment(dto: CreatePaymentDto, userId: number, ipAddr: string) {
     const vipPackage = await this.prisma.vipPackage.findUnique({
@@ -75,19 +75,11 @@ export class PaymentService {
       const orderInfo = `Thanh toan goi VIP cho ${finalPostId ? 'bai dang ' + finalPostId : 'tai khoan'}`;
 
       if (dto.paymentMethod === 'vnpay') {
-        // VNPay redirect trình duyệt về URL này. URL *.ngrok-free.app sẽ bị trang "Visit Site" (free tier).
-        // Ưu tiên VNPAY_RETURN_URL (vd: http://localhost:5000/api/payment/vnpay/callback) khi test local.
-        const vnpReturnUrl =
-          process.env.VNPAY_RETURN_URL ||
-          (process.env.NGROK_URL
-            ? `${process.env.NGROK_URL.replace(/\/$/, '')}/api/payment/vnpay/callback`
-            : undefined);
         paymentUrl = this.vnpayService.createPaymentUrl(
           orderId,
           Number(vipPackage.price),
           orderInfo,
           ipAddr,
-          vnpReturnUrl,
         );
       } else if (dto.paymentMethod === 'momo') {
         const momoResponse = await this.momoService.createPaymentUrl(
@@ -354,19 +346,19 @@ export class PaymentService {
 
     const html = isSuccess
       ? this.mailService.getPaymentSuccessEmailHtml(
-          payment.user.fullName || 'Quý khách',
-          amount,
-          packageName,
-          postTitle,
-          method,
-        )
+        payment.user.fullName || 'Quý khách',
+        amount,
+        packageName,
+        postTitle,
+        method,
+      )
       : this.mailService.getPaymentFailureEmailHtml(
-          payment.user.fullName || 'Quý khách',
-          amount,
-          packageName,
-          postTitle,
-          method,
-        );
+        payment.user.fullName || 'Quý khách',
+        amount,
+        packageName,
+        postTitle,
+        method,
+      );
 
     this.mailProducer.sendMail(
       payment.user.email,
