@@ -35,4 +35,6 @@ export const postApi = {
 
     delete: (id: number) =>
         apiClient.delete(`/posts/${id}`),
+    upgradeToVip: (id: number) =>
+        apiClient.put(`/posts/${id}/upgrade-vip`),
 };

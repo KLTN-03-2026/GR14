@@ -662,4 +662,16 @@ export class PostService {
 
     return { message: 'Xóa bài đăng thành công' };
   }
+  async initiatePostVipUpgrade(postId: number, userId: number) {
+    const post = await this.prisma.post.findFirst({
+        where: { id: postId, userId },
+    });
+    if (!post) throw new NotFoundException('Bài đăng không tồn tại hoặc bạn không có quyền');
+    if (post.isVip) throw new BadRequestException('Bài đăng đã là VIP');
+
+    return {
+        message: 'Vui lòng chọn gói VIP cho bài đăng',
+        data: { postId, postTitle: post.title },
+    };
+}
 }

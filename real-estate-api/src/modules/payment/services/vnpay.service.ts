@@ -11,16 +11,10 @@ export class VNPayService {
   private vnp_ReturnUrl: string;
 
   constructor(private configService: ConfigService) {
-    this.vnp_TmnCode = this.configService.get('VNPAY_TMN_CODE') || '9CS3IU3N';
-    this.vnp_HashSecret =
-      this.configService.get('VNPAY_HASH_SECRET') ||
-      '3WDE5U7C8XPS6ICTGRM4KEEIABLY42ED';
-    this.vnp_Url =
-      this.configService.get('VNPAY_URL') ||
-      'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html';
-    this.vnp_ReturnUrl =
-      this.configService.get('VNPAY_RETURN_URL') ||
-      'http://localhost:5000/api/payment/vnpay/callback';
+    this.vnp_TmnCode = this.requireEnv('VNPAY_TMN_CODE');
+    this.vnp_HashSecret = this.requireEnv('VNPAY_HASH_SECRET');
+    this.vnp_Url = this.requireEnv('VNPAY_URL');
+    this.vnp_ReturnUrl = this.requireEnv('VNPAY_RETURN_URL');
   }
 
   createPaymentUrl(
@@ -127,5 +121,14 @@ export class VNPayService {
       .createHmac('sha512', secret)
       .update(Buffer.from(data, 'utf-8'))
       .digest('hex');
+  }
+
+  private requireEnv(key: string): string {
+    const value = this.configService.get<string>(key);
+    if (!value) {
+      throw new Error(`Missing required environment variable: ${key}`);
+    }
+
+    return value;
   }
 }

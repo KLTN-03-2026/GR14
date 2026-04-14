@@ -190,93 +190,31 @@ const PostFormPage = () => {
             return user?.isVip || false;
         }
     };
+const handleSubmit = async (submitData: FormData) => {
+    try {
+        setSubmitting(true);
+        const confirmMessage = isEditMode
+            ? 'Bạn có chắc muốn cập nhật bài viết này?'
+            : 'Bạn có chắc muốn đăng bài viết này? Thông tin sẽ chờ Admin duyệt.';
 
-    const handleSubmit = async (submitData: FormData) => {
-        try {
-            setSubmitting(true);
+        if (!window.confirm(confirmMessage)) return;
 
-            const postTypeValue = submitData.get('postType');
-            const isPropertySubmission =
-                typeof postTypeValue === 'string' &&
-                isPropertyPostType(postTypeValue as PostType);
-
-            if (!isEditMode && isPropertySubmission) {
-                const isVip = await checkVipStatus();
-                if (!isVip) {
-                    const draftPayload = serializeDraftFromFormData(submitData);
-                    sessionStorage.setItem(POST_DRAFT_KEY, JSON.stringify(draftPayload));
-
-                    Modal.confirm({
-                        title: 'Yêu cầu tài khoản VIP',
-                        icon: <CrownOutlined style={{ color: '#ff7a45' }} />,
-                        width: 480,
-                        content: (
-                            <div style={{ marginTop: 16 }}>
-                                <p style={{ color: '#666', marginBottom: 16 }}>
-                                    Bạn cần nâng cấp tài khoản VIP để đăng bài viết bất động sản.
-                                </p>
-                                <div
-                                    style={{
-                                        backgroundColor: '#fff7e6',
-                                        border: '1px solid #ffd591',
-                                        borderRadius: 8,
-                                        padding: 16,
-                                    }}
-                                >
-                                    <p style={{ margin: '0 0 8px 0', fontWeight: 500 }}>Lợi ích VIP:</p>
-                                    <p style={{ margin: '4px 0', color: '#666', fontSize: 13 }}>
-                                        - Đăng tin không giới hạn trong thời gian VIP
-                                    </p>
-                                    <p style={{ margin: '4px 0', color: '#666', fontSize: 13 }}>
-                                        - Tin được ưu tiên hiển thị
-                                    </p>
-                                    <p style={{ margin: '4px 0', color: '#666', fontSize: 13 }}>
-                                        - Xếp hạng cao hơn, tiếp cận nhiều khách hơn
-                                    </p>
-                                </div>
-                            </div>
-                        ),
-                        okText: 'Nâng cấp VIP ngay',
-                        cancelText: 'Để sau',
-                        okButtonProps: { style: { backgroundColor: '#ff7a45', borderColor: '#ff7a45' } },
-                        onOk: () => {
-                            navigate('/vip-upgrade?fromPost=1');
-                        },
-                    });
-
-                    return;
-                }
-            }
-
-            const confirmMessage = isEditMode
-                ? 'Bạn có chắc muốn cập nhật bài viết này?'
-                : 'Bạn có chắc muốn đăng bài viết này? Thông tin sẽ chờ Admin duyệt.';
-
-            if (!window.confirm(confirmMessage)) {
-                return;
-            }
-
-            if (editingId) {
-                await postApi.update(editingId, submitData);
-                message.success('Cập nhật bài viết thành công');
-            } else {
-                await postApi.create(submitData);
-                message.success('Đăng bài thành công! Thông tin đang chờ Admin duyệt.');
-            }
-
-            if (user?.roles?.includes('ADMIN')) {
-                navigate('/admin/posts');
-            } else {
-                navigate('/my-posts');
-            }
-        } catch (error: any) {
-            console.error('Lỗi submit:', error);
-            const errorMessage = error?.response?.data?.message || 'Không thể kết nối đến server. Vui lòng thử lại.';
-            message.error(Array.isArray(errorMessage) ? errorMessage[0] : String(errorMessage));
-        } finally {
-            setSubmitting(false);
+        if (editingId) {
+            await postApi.update(editingId, submitData);
+            message.success('Cập nhật bài viết thành công');
+        } else {
+            await postApi.create(submitData);
+            message.success('Đăng bài thành công! Thông tin đang chờ Admin duyệt.');
         }
-    };
+
+        navigate(user?.roles?.includes('ADMIN') ? '/admin/posts' : '/my-posts');
+    } catch (error: any) {
+        const msg = error?.response?.data?.message || 'Không thể kết nối đến server.';
+        message.error(Array.isArray(msg) ? msg[0] : String(msg));
+    } finally {
+        setSubmitting(false);
+    }
+};
 
     return (
         <div className="mx-auto mb-20 mt-10 max-w-5xl rounded-2xl border border-gray-100 bg-white p-6 shadow-xl">

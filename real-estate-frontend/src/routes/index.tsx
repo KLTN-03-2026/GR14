@@ -130,6 +130,14 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
+      {
+        path: "vip-packages",
+        element: (
+          <ProtectedRoute>
+            <VIPUpgradePage />      
+          </ProtectedRoute>
+        ),
+      },
     ],
   },
 

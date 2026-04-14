@@ -10,7 +10,7 @@ import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class CustomerService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   private throwFriendlyUniqueError(error: unknown): never {
     if (
@@ -187,9 +187,6 @@ export class CustomerService {
   }
 
   async update(id: number, dto: UpdateCustomerDto) {
-    console.log(`\n=== UPDATE CUSTOMER ${id} ===`);
-    console.log('DTO received:', dto);
-
     const customer = await this.prisma.customer.findUnique({ where: { id } });
     if (!customer) throw new NotFoundException('Customer not found');
 
@@ -224,20 +221,16 @@ export class CustomerService {
     if (dto.address !== undefined) data.address = dto.address;
     if (dto.isVip !== undefined) data.isVip = dto.isVip;
 
-    console.log('Data to update:', data);
-
     if (dto.password !== undefined) {
       data.password = await bcrypt.hash(dto.password, 10);
     }
 
     try {
-      const updateResult = await this.prisma.user.update({
+      await this.prisma.user.update({
         where: { id: customer.userId },
         data,
       });
-      console.log('Update result:', updateResult);
     } catch (error) {
-      console.error('Update error:', error);
       this.throwFriendlyUniqueError(error);
     }
 
@@ -246,9 +239,6 @@ export class CustomerService {
       where: { id },
       include: { user: true },
     });
-
-    console.log('Updated customer returned:', updatedCustomer);
-    console.log(`=== END UPDATE CUSTOMER ${id} ===\n`);
 
     return { message: 'Updated', data: updatedCustomer };
   }
@@ -271,4 +261,93 @@ export class CustomerService {
 
     return { message: 'Disabled account customer' };
   }
+  // customer.service.ts (hoặc user.service.ts)
+async toggleVip(userId: number, isVip: boolean) {
+  const user = await this.prisma.user.findUnique({ 
+    where: { id: userId } 
+  });
+  if (!user) throw new NotFoundException('User not found');
+
+  const now = new Date();
+
+  await this.prisma.$transaction(async (tx) => {
+    if (isVip) {
+      const endDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+      await tx.user.update({
+        where: { id: userId },
+        data: { isVip: true, vipExpiry: endDate },
+      });
+
+      await tx.post.updateMany({
+        where: { userId },
+        data: {
+          isVip: true,
+          vipExpiry: endDate,
+          vipPriorityLevel: 1,
+        },
+      });
+
+      // ✅ Tạo subscription để lưu lịch sử, tìm gói mặc định trước
+      const defaultPackage = await tx.vipPackage.findFirst({
+        where: { status: 1 },
+        orderBy: { price: 'asc' }, // lấy gói rẻ nhất làm mặc định
+      });
+
+      if (defaultPackage) {
+        await tx.vipSubscription.create({
+          data: {
+            userId,
+            packageId: defaultPackage.id,
+            status: 1,           // active
+            startDate: now,
+            endDate: endDate,
+            // postId: null → đây là VIP tài khoản, không phải VIP bài lẻ
+          },
+        });
+      }
+
+    } else {
+      await tx.user.update({
+        where: { id: userId },
+        data: { isVip: false, vipExpiry: null },
+      });
+
+      await tx.post.updateMany({
+        where: { userId },
+        data: {
+          isVip: false,
+          vipExpiry: null,
+          vipPriorityLevel: 0,
+        },
+      });
+
+      // ✅ Cancel tất cả subscription đang active
+      await tx.vipSubscription.updateMany({
+        where: { userId, status: 1 },
+        data: { status: 3 }, // 3 = cancelled
+      });
+
+      // ✅ Đồng thời hạ VIP các bài lẻ có subscription riêng
+      await tx.post.updateMany({
+        where: { 
+          userId,
+          isVip: true,
+        },
+        data: {
+          isVip: false,
+          vipExpiry: null,
+          vipPriorityLevel: 0,
+        },
+      });
+    }
+  });
+
+  return {
+    message: isVip
+      ? 'Nâng VIP thành công'
+      : 'Hạ VIP thành công',
+    data: { userId, isVip },
+  };
+}
 }

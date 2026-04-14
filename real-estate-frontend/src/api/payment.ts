@@ -32,4 +32,7 @@ export const paymentApi = {
 
     verifyVNPayReturn: (queryString: string) => 
         apiClient.get(`/payment/vnpay-return${queryString}`),
+    // api/payment.ts
+    getPostVipPackages: () =>
+        apiClient.get('/vip-packages', { params: { type: 'post', limit: 100 } }),
 };

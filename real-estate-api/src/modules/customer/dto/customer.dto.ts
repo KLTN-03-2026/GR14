@@ -9,11 +9,11 @@ import { PartialType } from '@nestjs/mapped-types';
 export class CreateCustomerDto {
   @IsNotEmpty()
   @IsString()
-  username: string;
+  username!: string;
 
   @IsNotEmpty()
   @IsString()
-  password: string;
+  password!: string;
 
   @IsOptional()
   @IsString()
@@ -21,11 +21,11 @@ export class CreateCustomerDto {
 
   @IsNotEmpty()
   @IsString()
-  phone: string;
+  phone!: string;
 
   @IsNotEmpty()
   @IsEmail()
-  email: string;
+  email!: string;
 
   @IsOptional()
   @IsString()
@@ -36,4 +36,5 @@ export class UpdateCustomerDto extends PartialType(CreateCustomerDto) {
   @IsOptional()
   @IsBoolean()
   isVip?: boolean;
+  
 }
