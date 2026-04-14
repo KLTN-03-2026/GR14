@@ -11,6 +11,7 @@ import {
   Ip,
   Res,
   DefaultValuePipe,
+  Put
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { PaymentService } from './payment.service';
@@ -70,5 +71,10 @@ export class PaymentController {
   @Post(':id/simulate-success')
   async simulateSuccess(@Param('id', ParseIntPipe) id: number, @Request() req) {
     return this.paymentService.simulatePaymentSuccess(id, req.user.id);
+  }
+  @Put(':id/upgrade-vip')
+  @UseGuards(JwtAuthGuard)
+  upgradeToVip(@Param('id') id: string, @Request() req: any) {
+     return this.paymentService.initiatePostVipUpgrade(Number(id), req.user.id);
   }
 }

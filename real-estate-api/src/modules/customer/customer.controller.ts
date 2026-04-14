@@ -9,12 +9,14 @@ import {
   Query,
   UseGuards,
   ParseIntPipe,
+  Patch,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { CustomerService } from './customer.service';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('customers')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -53,4 +55,14 @@ export class CustomerController {
   delete(@Param('id', ParseIntPipe) id: number) {
     return this.customerService.delete(id);
   }
+  // customer.controller.ts
+@Patch(':id/vip')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('ADMIN', 'EMPLOYEE')
+async toggleVip(
+  @Param('id') id: string,
+  @Body() body: { isVip: boolean },
+) {
+  return this.customerService.toggleVip(Number(id), body.isVip);
+}
 }

@@ -31,7 +31,6 @@ export class PaymentService {
 
     let finalPostId: number | undefined = undefined;
 
-    // Sửa lỗi so sánh paymentType ở đây
     if (dto.paymentType === PaymentType.POST_VIP) {
       if (!dto.postId) {
         throw new BadRequestException(
@@ -122,66 +121,84 @@ export class PaymentService {
       };
     });
   }
-  private async activateSubscription(paymentId: number, subscription: any) {
-    const now = new Date();
-    const duration = subscription.package?.durationDays || 0;
 
-    await this.prisma.$transaction(async (tx) => {
-      let startDate = new Date();
+private async activateSubscription(paymentId: number, subscription: any) {
+  const now = new Date();
+  const duration = subscription.package?.durationDays || 0;
 
-      // Phân biệt VIP bài viết hay VIP tài khoản
-      if (subscription.postId) {
-        const post = await tx.post.findUnique({
-          where: { id: subscription.postId },
-        });
-        if (post?.isVip && post.vipExpiry && post.vipExpiry > now) {
-          startDate = new Date(post.vipExpiry);
-        }
-      } else {
-        const user = await tx.user.findUnique({
-          where: { id: subscription.userId },
-        });
-        if (user?.isVip && user.vipExpiry && user.vipExpiry > now) {
-          startDate = new Date(user.vipExpiry);
-        }
-      }
+  await this.prisma.$transaction(async (tx) => {
+    let startDate = new Date();
 
-      const endDate = new Date(
-        startDate.getTime() + duration * 24 * 60 * 60 * 1000,
-      );
-
-      // Cập nhật Payment & Subscription
-      await tx.payment.update({
-        where: { id: paymentId },
-        data: { status: 1, paidAt: now },
+    if (subscription.postId) {
+      // ── VIP cho 1 bài viết ──
+      const post = await tx.post.findUnique({
+        where: { id: subscription.postId },
       });
-
-      await tx.vipSubscription.update({
-        where: { id: subscription.id },
-        data: { status: 1, startDate: now, endDate: endDate },
-      });
-
-      // Cập nhật quyền lợi VIP
-      if (subscription.postId) {
-        await tx.post.update({
-          where: { id: subscription.postId },
-          // TS server đôi khi cache Prisma Client types; ép kiểu để tránh báo sai.
-          data: {
-            isVip: true,
-            vipExpiry: endDate,
-            vipPriorityLevel: subscription.package?.priorityLevel ?? 0,
-            status: 1,
-            postedAt: now,
-          } as any,
-        });
-      } else {
-        await tx.user.update({
-          where: { id: subscription.userId },
-          data: { isVip: true, vipExpiry: endDate },
-        });
+      if (post?.isVip && post.vipExpiry && post.vipExpiry > now) {
+        startDate = new Date(post.vipExpiry);
       }
+    } else {
+      // ── VIP cho tài khoản ──
+      const user = await tx.user.findUnique({
+        where: { id: subscription.userId },
+      });
+      if (user?.isVip && user.vipExpiry && user.vipExpiry > now) {
+        startDate = new Date(user.vipExpiry);
+      }
+    }
+
+    const endDate = new Date(
+      startDate.getTime() + duration * 24 * 60 * 60 * 1000,
+    );
+
+    // Cập nhật Payment & Subscription
+    await tx.payment.update({
+      where: { id: paymentId },
+      data: { status: 1, paidAt: now },
     });
-  }
+
+    await tx.vipSubscription.update({
+      where: { id: subscription.id },
+      data: { status: 1, startDate: now, endDate: endDate },
+    });
+
+    // ==================== CẬP NHẬT QUYỀN VIP ====================
+    if (subscription.postId) {
+      // Nâng cấp duy nhất 1 bài viết
+      await tx.post.update({
+        where: { id: subscription.postId },
+        data: {
+          isVip: true,
+          vipExpiry: endDate,
+          vipPriorityLevel: subscription.package?.priorityLevel ?? 0,
+          status: 1,
+          postedAt: now,
+        },
+      });
+    } else {
+      // Nâng cấp TÀI KHOẢN VIP → cập nhật user + TẤT CẢ bài viết
+      await tx.user.update({
+        where: { id: subscription.userId },
+        data: { 
+          isVip: true, 
+          vipExpiry: endDate 
+        },
+      });
+
+      // Đây là phần quan trọng nhất: Cập nhật tất cả bài viết của user thành VIP
+      await tx.post.updateMany({
+        where: { 
+          userId: subscription.userId 
+        },
+        data: {
+          isVip: true,
+          vipExpiry: endDate,
+          vipPriorityLevel: subscription.package?.priorityLevel ?? 0,
+        },
+      });
+    }
+  });
+}
 
   async handleVNPayCallback(vnp_Params: any) {
     const verification = this.vnpayService.verifyReturnUrl(vnp_Params);
@@ -401,6 +418,19 @@ export class PaymentService {
     return {
       data: payments,
       meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
+  async initiatePostVipUpgrade(postId: number, userId: number) {
+    const post = await this.prisma.post.findFirst({
+      where: { id: postId, userId },
+    });
+    if (!post) throw new NotFoundException('Bài đăng không tồn tại hoặc bạn không có quyền');
+    if (post.isVip) throw new BadRequestException('Bài đăng đã là VIP');
+
+    return {
+      message: 'Vui lòng chọn gói VIP cho bài đăng',
+      data: { postId, postTitle: post.title },
     };
   }
 }

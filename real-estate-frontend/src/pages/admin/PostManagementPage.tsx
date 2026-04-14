@@ -278,57 +278,76 @@ const PostManagementPage: React.FC = () => {
             title: 'Hành động',
             width: 180,
             render: (_, record) => (
-                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                    {record.status === 1 && (
-                        <>
-                            <Button
-                                size="sm"
-                                variant="primary"
-                                onClick={() => handleStatusChange(record.id, 2)}
-                                ariaLabel="Duyệt"
-                                className="h-9"
-                            >
-                                Duyệt
-                            </Button>
-                            <Button
-                                size="sm"
-                                variant="danger"
-                                onClick={() => handleStatusChange(record.id, 3)}
-                                ariaLabel="Từ chối"
-                                className="h-9"
-                            >
-                                Từ chối
-                            </Button>
-                        </>
-                    )}
-                    <Button
-                        size="sm"
-                        variant="outline"
-                        iconOnly
-                        onClick={() => openModal(record)}
-                        ariaLabel="Sửa"
-                        startIcon={(
-                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                        )}
-                    >
-                    </Button>
-                    <Button
-                        size="sm"
-                        variant="danger"
-                        iconOnly
-                        onClick={() => setDeletePost(record)}
-                        ariaLabel="Xóa"
-                        startIcon={(
-                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                        )}
-                    >
-                    </Button>
-                </div>
-            ),
+  <div
+    className="grid grid-cols-2 gap-2 w-[80px]"
+    onClick={(e) => e.stopPropagation()}
+  >
+
+    {/* ✅ Duyệt */}
+    {record.status === 1 && (
+      <Button
+        size="sm"
+        variant="outline"
+        iconOnly
+        ariaLabel="Duyệt"
+        onClick={() => handleStatusChange(record.id, 2)}
+        className="border-green-500 text-green-600 hover:bg-green-50"
+        startIcon={(
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        )}
+      />
+    )}
+
+    {/* ❌ Từ chối */}
+    {record.status === 1 && (
+      <Button
+        size="sm"
+        variant="outline"
+        iconOnly
+        ariaLabel="Từ chối"
+        onClick={() => handleStatusChange(record.id, 3)}
+        className="border-red-500 text-red-600 hover:bg-red-50"
+        startIcon={(
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        )}
+      />
+    )}
+
+    {/* ✏️ Sửa */}
+    <Button
+      size="sm"
+      variant="outline"
+      iconOnly
+      ariaLabel="Sửa"
+      onClick={() => openModal(record)}
+      startIcon={(
+        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+        </svg>
+      )}
+    />
+
+    {/* 🗑️ Xóa */}
+    <Button
+      size="sm"
+      variant="outline"
+      iconOnly
+      ariaLabel="Xóa"
+      onClick={() => setDeletePost(record)}
+      className="border-red-500 text-red-600 hover:bg-red-50"
+      startIcon={(
+        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+        </svg>
+      )}
+    />
+
+  </div>
+)
         },
     ];
 
