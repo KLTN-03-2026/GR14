@@ -69,25 +69,27 @@ const fadeIn = (visible: boolean) =>
 
 const AboutMe = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
-  const hero = useScrollReveal(0.1);
+
+  // Bóc tách biến để tránh lỗi "Cannot access refs during render"
+  const { ref: heroRef, visible: heroVisible } = useScrollReveal(0.1);
 
   // --- Giá Trị Cốt Lõi ---
-  const coreTitle = useScrollReveal(0.1);
-  const core1 = useScrollReveal(0.15);
-  const core2 = useScrollReveal(0.15);
-  const core3 = useScrollReveal(0.15);
+  const { ref: coreTitleRef, visible: coreTitleVisible } = useScrollReveal(0.1);
+  const { ref: core1Ref, visible: core1Visible } = useScrollReveal(0.15);
+  const { ref: core2Ref, visible: core2Visible } = useScrollReveal(0.15);
+  const { ref: core3Ref, visible: core3Visible } = useScrollReveal(0.15);
 
   // --- Câu Chuyện ---
-  const storyImg = useScrollReveal(0.15);
-  const storyText = useScrollReveal(0.15);
+  const { ref: storyImgRef, visible: storyImgVisible } = useScrollReveal(0.15);
+  const { ref: storyTextRef, visible: storyTextVisible } = useScrollReveal(0.15);
 
   // --- Sứ Mệnh ---
-  const missionText = useScrollReveal(0.15);
-  const missionImg = useScrollReveal(0.15);
+  const { ref: missionTextRef, visible: missionTextVisible } = useScrollReveal(0.15);
+  const { ref: missionImgRef, visible: missionImgVisible } = useScrollReveal(0.15);
 
   // --- Liên Hệ ---
-  const contactImg = useScrollReveal(0.15);
-  const contactForm = useScrollReveal(0.15);
+  const { ref: contactImgRef, visible: contactImgVisible } = useScrollReveal(0.15);
+  const { ref: contactFormRef, visible: contactFormVisible } = useScrollReveal(0.15);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -102,8 +104,8 @@ const AboutMe = () => {
       {/* ── Hero ── */}
       <div className="bg-gray-50 py-20 px-6">
         <div
-          ref={hero.ref}
-          className={`max-w-7xl mx-auto text-center ${fromBottom(hero.visible)}`}
+          ref={heroRef}
+          className={`max-w-7xl mx-auto text-center ${fromBottom(heroVisible)}`}
         >
           <h1 className="text-5xl font-bold text-gray-900 mb-8">
             Về Chúng Tôi
@@ -123,7 +125,7 @@ const AboutMe = () => {
 
       {/* ── Giá Trị Cốt Lõi ── */}
       <div className="max-w-7xl mx-auto py-24 px-6">
-        <div ref={coreTitle.ref} className={fadeIn(coreTitle.visible)}>
+        <div ref={coreTitleRef} className={fadeIn(coreTitleVisible)}>
           <h2 className="text-4xl font-bold text-center text-gray-900 mb-16">
             Giá Trị Cốt Lõi
           </h2>
@@ -133,9 +135,9 @@ const AboutMe = () => {
 
           {/* Card 1 */}
           <div
-            ref={core1.ref}
+            ref={core1Ref}
             style={{ transitionDelay: "0ms" }}
-            className={`flex flex-col items-center ${fromBottom(core1.visible)}`}
+            className={`flex flex-col items-center ${fromBottom(core1Visible)}`}
           >
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-8 w-24 h-24 flex items-center justify-center">
               <img src={iconMinhBach} alt="Minh Bạch" className="w-12 h-12" />
@@ -148,9 +150,9 @@ const AboutMe = () => {
 
           {/* Card 2 */}
           <div
-            ref={core2.ref}
+            ref={core2Ref}
             style={{ transitionDelay: "150ms" }}
-            className={`flex flex-col items-center ${fromBottom(core2.visible)}`}
+            className={`flex flex-col items-center ${fromBottom(core2Visible)}`}
           >
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-8 w-24 h-24 flex items-center justify-center">
               <img src={iconTienPhong} alt="Tiên Phong" className="w-12 h-12" />
@@ -163,9 +165,9 @@ const AboutMe = () => {
 
           {/* Card 3 */}
           <div
-            ref={core3.ref}
+            ref={core3Ref}
             style={{ transitionDelay: "300ms" }}
-            className={`flex flex-col items-center ${fromBottom(core3.visible)}`}
+            className={`flex flex-col items-center ${fromBottom(core3Visible)}`}
           >
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-8 w-24 h-24 flex items-center justify-center">
               <img src={iconTanTam} alt="Tận Tâm" className="w-12 h-12" />
@@ -185,8 +187,8 @@ const AboutMe = () => {
 
           {/* Ảnh — fade bình thường */}
           <div
-            ref={storyImg.ref}
-            className={`rounded-3xl overflow-hidden shadow-md h-[400px] ${fadeIn(storyImg.visible)}`}
+            ref={storyImgRef}
+            className={`rounded-3xl overflow-hidden shadow-md h-[400px] ${fadeIn(storyImgVisible)}`}
           >
             <img
               src={anhCauChuyen}
@@ -197,8 +199,8 @@ const AboutMe = () => {
 
           {/* Nội dung — trượt từ phải vào */}
           <div
-            ref={storyText.ref}
-            className={fromRight(storyText.visible)}
+            ref={storyTextRef}
+            className={fromRight(storyTextVisible)}
           >
             <h2 className="text-4xl font-bold text-gray-900 mb-8">
               Câu Chuyện Của Chúng Tôi
@@ -222,8 +224,8 @@ const AboutMe = () => {
 
           {/* Nội dung — trượt từ trái vào */}
           <div
-            ref={missionText.ref}
-            className={fromLeft(missionText.visible)}
+            ref={missionTextRef}
+            className={fromLeft(missionTextVisible)}
           >
             <h2 className="text-4xl font-bold text-gray-900 mb-8">
               Sứ Mệnh
@@ -240,8 +242,8 @@ const AboutMe = () => {
 
           {/* Ảnh — fade bình thường */}
           <div
-            ref={missionImg.ref}
-            className={`rounded-3xl overflow-hidden shadow-md h-[400px] ${fadeIn(missionImg.visible)}`}
+            ref={missionImgRef}
+            className={`rounded-3xl overflow-hidden shadow-md h-[400px] ${fadeIn(missionImgVisible)}`}
           >
             <img
               src={anhSuMenh}
@@ -259,8 +261,8 @@ const AboutMe = () => {
 
           {/* Ảnh — trượt từ trái vào */}
           <div
-            ref={contactImg.ref}
-            className={`rounded-3xl overflow-hidden shadow-md flex h-full ${fromLeft(contactImg.visible)}`}
+            ref={contactImgRef}
+            className={`rounded-3xl overflow-hidden shadow-md flex h-full ${fromLeft(contactImgVisible)}`}
           >
             <img
               src={anhLienHe}
@@ -271,8 +273,8 @@ const AboutMe = () => {
 
           {/* Form — trượt từ phải vào, cùng lúc với ảnh */}
           <div
-            ref={contactForm.ref}
-            className={`bg-white p-12 rounded-3xl shadow-lg border border-gray-100 flex flex-col justify-center ${fromRight(contactForm.visible)}`}
+            ref={contactFormRef}
+            className={`bg-white p-12 rounded-3xl shadow-lg border border-gray-100 flex flex-col justify-center ${fromRight(contactFormVisible)}`}
           >
             <div className="text-center mb-10">
               <h2 className="text-4xl font-bold text-gray-900 mb-3">Liên Hệ</h2>
