@@ -221,7 +221,7 @@ const FengshuiPage: React.FC = () => {
 
             <div className="max-w-[1250px] mx-auto px-4 sm:px-6 lg:px-0 mt-10">
 
-                {/* ── FORM ──────────────────────────────────────────── */}
+                {/* ── FORM ─── */}
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-10">
                     <div className="px-6 pt-5 pb-4 border-b border-gray-100 flex items-center gap-3">
                         <div className="w-8 h-8 rounded-lg bg-[#0f2744] flex items-center justify-center text-sky-300">
@@ -387,7 +387,7 @@ const FengshuiPage: React.FC = () => {
                             {!result.isVip && <VipBanner navigate={navigate} />}
                         </div>
 
-                        {/* ── VIP DATA ─────────────────────────────── */}
+                        {/* ── VIP DATA ── */}
                         {result.isVip && result.vipData && (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">

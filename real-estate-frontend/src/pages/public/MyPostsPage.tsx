@@ -3,7 +3,7 @@ import { Table, Tag, Button, message, Spin, Empty, Popconfirm } from 'antd';
 import { EditOutlined, DeleteOutlined, PlusOutlined, EyeOutlined } from '@ant-design/icons';
 import { postApi } from '@/api';
 import { Link, useNavigate } from 'react-router-dom';
-import { POST_TYPE_LABELS, POST_STATUS_LABELS } from '@/types/post';
+import { POST_TYPE_LABELS } from '@/types/post';
 
 const MyPostsPage: React.FC = () => {
     const navigate = useNavigate();

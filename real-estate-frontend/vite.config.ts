@@ -55,7 +55,8 @@ export default defineConfig({
       "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
     },
     watch: {
-      usePolling: true,
+      usePolling: false,
+      ignored: ['**/node_modules/**', '**/dist/**', '**/git/**'],
     },
     proxy: {
       '/api': {

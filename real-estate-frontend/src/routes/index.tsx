@@ -85,7 +85,7 @@ const router = createBrowserRouter([
             { path: 'lands', element: <LandListPage /> },
             { path: 'lands/:id', element: <LandDetailPage /> },
             { path: 'posts', element: <NewsPage /> },
-            { path: '/posts/:id', element: <NewsDetailPage /> },
+            { path: 'posts/:id', element: <NewsDetailPage /> },
             { path: 'about', element: <AboutMe /> },
             { path: 'fengshui', element: <FengshuiPage /> },
             {

@@ -16,7 +16,7 @@ const getImages = (house: House): string[] => {
     ).filter(Boolean);
 };
 
-/* ── Lightbox Modal ──────────────────────────────────────────────────── */
+/* ── Lightbox Modal ── */
 interface LightboxProps {
     images: string[];
     startIndex: number;
@@ -148,7 +148,6 @@ interface GalleryProps {
 
 const Gallery: React.FC<GalleryProps> = ({ images, title }) => {
     const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-
     const openLightbox = (index: number) => setLightboxIndex(index);
     const closeLightbox = () => setLightboxIndex(null);
 
