@@ -3,8 +3,8 @@ import { PropertyCategoryService } from './property-category.service';
 import { PropertyCategoryController } from './property-category.controller';
 
 @Module({
-    controllers: [PropertyCategoryController],
-    providers: [PropertyCategoryService],
-    exports: [PropertyCategoryService],
+  controllers: [PropertyCategoryController],
+  providers: [PropertyCategoryService],
+  exports: [PropertyCategoryService],
 })
-export class PropertyCategoryModule { }
+export class PropertyCategoryModule {}

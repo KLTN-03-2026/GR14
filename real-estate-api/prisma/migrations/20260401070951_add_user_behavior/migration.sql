@@ -1,0 +1,3 @@
+-- Duplicate migration retained as no-op.
+-- The table `user_behaviors` is already created in migration:
+-- 20260331050000_add_user_behaviors_table

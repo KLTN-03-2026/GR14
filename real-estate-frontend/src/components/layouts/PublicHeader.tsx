@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Dropdown, type MenuProps } from 'antd';
+import { Dropdown, message, type MenuProps } from 'antd';
 import { useAuthStore } from '@/stores/authStore';
 import group from "../../assets/logo.png";
 
@@ -9,7 +9,7 @@ const navigationItems = [
   { label: "Nhà Ở", href: "/houses" },
   { label: "Đất Đai", href: "/lands" },
   { label: "Bài Viết", href: "/posts" },
-  { label: "Đăng Bài Viết", href: "/news" },
+  { label: "Đăng Bài Viết", href: "/posts/new" },
   { label: "Về Chúng Tôi", href: "/about" },
   { label: "Phong Thủy", href: "/fengshui" },
 ];
@@ -21,6 +21,13 @@ const PublicHeader: React.FC = () => {
 
   const handleLogout = () => {
     logout();
+    navigate('/login');
+  };
+
+  const handleCreatePostClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (isAuthenticated) return;
+    event.preventDefault();
+    message.warning('Vui lòng đăng nhập để đăng bài viết');
     navigate('/login');
   };
 
@@ -79,7 +86,7 @@ const PublicHeader: React.FC = () => {
   return (
     <header className="flex h-20 items-center justify-center gap-2.5 p-2.5 w-full bg-[#f5f5f54c] sticky top-0 z-[100] shadow-sm backdrop-blur-md">
       <nav className="flex w-full max-w-[1290px] items-center justify-between" aria-label="Main navigation">
-        
+
         {/* PHẦN TRÁI: Logo */}
         <div className="flex-1 flex justify-start items-center">
           <Link to="/" className="flex items-center gap-2" aria-label="Black'S City Home">
@@ -96,6 +103,7 @@ const PublicHeader: React.FC = () => {
             <li key={index}>
               <Link
                 to={item.href}
+                onClick={item.href === '/posts/new' ? handleCreatePostClick : undefined}
                 // Thêm whitespace-nowrap vào dòng className bên dưới:
                 className="whitespace-nowrap font-a font-[number:var(--a-font-weight)] text-variable-collection-general-900 text-[length:var(--a-font-size)] hover:text-blue-600 transition-colors"
               >

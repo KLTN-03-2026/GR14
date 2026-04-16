@@ -34,6 +34,10 @@ const AppointmentBookingPage: React.FC = () => {
     const houseId = Number(searchParams.get('houseId') || 0) || undefined;
     const landId = Number(searchParams.get('landId') || 0) || undefined;
 
+    const hasExactlyOneProperty = Boolean(houseId) !== Boolean(landId);
+    const effectiveHouseId = houseId && !landId ? houseId : undefined;
+    const effectiveLandId = landId && !houseId ? landId : undefined;
+
     const [property, setProperty] = useState<PropertySummary | null>(null);
     const [loadingProperty, setLoadingProperty] = useState(false);
     const [submitting, setSubmitting] = useState(false);
@@ -44,14 +48,14 @@ const AppointmentBookingPage: React.FC = () => {
     const [notes, setNotes] = useState('');
 
     const propertyTypeLabel = useMemo(() => {
-        if (houseId) return 'Nhà';
-        if (landId) return 'Đất';
+        if (effectiveHouseId) return 'Nhà';
+        if (effectiveLandId) return 'Đất';
         return 'Bất động sản';
-    }, [houseId, landId]);
+    }, [effectiveHouseId, effectiveLandId]);
 
     useEffect(() => {
-        if (!houseId && !landId) {
-            toast.error('Thiếu thông tin nhà/đất để đặt lịch');
+        if (!hasExactlyOneProperty) {
+            toast.error('Liên kết đặt lịch không hợp lệ, vui lòng chọn đúng một bất động sản');
             navigate('/', { replace: true });
             return;
         }
@@ -59,8 +63,8 @@ const AppointmentBookingPage: React.FC = () => {
         const loadProperty = async () => {
             setLoadingProperty(true);
             try {
-                if (houseId) {
-                    const res = await houseApi.getById(houseId);
+                if (effectiveHouseId) {
+                    const res = await houseApi.getById(effectiveHouseId);
                     const data = res.data?.data || res.data;
                     setProperty({
                         title: data?.title,
@@ -94,7 +98,7 @@ const AppointmentBookingPage: React.FC = () => {
         };
 
         void loadProperty();
-    }, [houseId, landId, navigate]);
+    }, [effectiveHouseId, effectiveLandId, hasExactlyOneProperty, navigate]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

@@ -1,9 +1,83 @@
 import React, { useState, useEffect } from 'react';
 import { CKEditor } from '@ckeditor/ckeditor5-react';
 import ClassicEditor from '@ckeditor/ckeditor5-build-classic/build/ckeditor';
+import { StarFilled } from '@ant-design/icons';
+import { message } from 'antd';
 import PostTypeSelector from './PostTypeSelector';
+import AiDescriptionGeneratorModal from './AiDescriptionGeneratorModal';
+import { aiApi } from '@/api/ai';
 import { PostType, POST_TYPE_GROUPS } from '@/types/post';
 import type { CreatePostDto } from '@/types/post';
+import { useVietnamAddress } from '@/hooks/UseAddressVN';
+
+// ─── Price formatting helpers ─────────────────────────────────────────────────
+
+/** Format a number to Vietnamese dot-separated string: 1000000000 → "1.000.000.000" */
+const formatVND = (val: number | undefined): string => {
+    if (val === undefined || val === null || isNaN(val) || val === 0) return '';
+    return val.toLocaleString('vi-VN');
+};
+
+// ─── PriceInput ───────────────────────────────────────────────────────────────
+
+interface PriceInputProps {
+    value: number | undefined;
+    onChange: (val: number) => void;
+    placeholder?: string;
+    className?: string;
+    hasError?: boolean;
+}
+
+const PriceInput: React.FC<PriceInputProps> = ({
+    value,
+    onChange,
+    placeholder = '0',
+    className = '',
+    hasError = false,
+}) => {
+    const [displayValue, setDisplayValue] = useState<string>(formatVND(value));
+
+    // Sync when external value changes (e.g. initialData load)
+    useEffect(() => {
+        setDisplayValue(formatVND(value));
+    }, [value]);
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const raw = e.target.value.replace(/[^0-9]/g, '');
+        const num = raw ? Number(raw) : 0;
+        // Format with dots for display
+        const formatted = raw ? Number(raw).toLocaleString('vi-VN') : '';
+        setDisplayValue(formatted);
+        onChange(num);
+    };
+
+    const handleBlur = () => {
+        setDisplayValue(formatVND(value));
+    };
+
+    const baseClass = `w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
+        hasError
+            ? 'border-red-500 focus:border-red-500 focus:ring-red-500'
+            : 'border-gray-300 focus:border-brand-500 focus:ring-brand-500'
+    }`;
+
+    return (
+        <div className="relative">
+            <input
+                type="text"
+                inputMode="numeric"
+                value={displayValue}
+                onChange={handleChange}
+                onBlur={handleBlur}
+                placeholder={placeholder}
+                className={`${baseClass} pr-14 ${className}`}
+            />
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 select-none text-xs font-medium text-gray-400">
+                VNĐ
+            </span>
+        </div>
+    );
+};
 
 type UploadImage = {
     uid: string;
@@ -19,6 +93,7 @@ interface PostFormProps {
     onCancel: () => void;
     submitLabel?: string;
     isLoading?: boolean;
+    postTypeSelectorMode?: 'select' | 'cards';
 }
 
 const PostForm: React.FC<PostFormProps> = ({
@@ -27,11 +102,16 @@ const PostForm: React.FC<PostFormProps> = ({
     onCancel,
     submitLabel = 'Lưu',
     isLoading = false,
+    postTypeSelectorMode = 'select',
 }) => {
     const [postType, setPostType] = useState<PostType | ''>(initialData?.postType || '');
     const [formData, setFormData] = useState<Partial<CreatePostDto>>(initialData || {});
     const [fileList, setFileList] = useState<UploadImage[]>([]);
     const [errors, setErrors] = useState<Record<string, string>>({});
+
+    const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+    const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+    const { provinces, wards, loadWards, resetAddress } = useVietnamAddress();
 
     const propertyTypeSet = new Set<PostType>(POST_TYPE_GROUPS.PROPERTY as readonly PostType[]);
     const needTypeSet = new Set<PostType>(POST_TYPE_GROUPS.NEED as readonly PostType[]);
@@ -50,6 +130,20 @@ const PostForm: React.FC<PostFormProps> = ({
             );
         }
     }, [initialData]);
+
+    useEffect(() => {
+        if (formData.city) {
+            loadWards(formData.city);
+        } else {
+            resetAddress();
+        }
+    }, [formData.city, loadWards, resetAddress]);
+
+    const handleCityChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        handleFieldChange('city', e.target.value);
+        handleFieldChange('district', '');
+        handleFieldChange('ward', '');
+    };
 
     // Reset form when post type changes
     useEffect(() => {
@@ -144,9 +238,9 @@ const PostForm: React.FC<PostFormProps> = ({
 
         const submitData = new FormData();
 
-        // Add all form fields
+        // Add all form fields (exclude 'images' — only send new file objects below)
         Object.entries(formData).forEach(([key, value]) => {
-            if (key !== 'postType' && value !== undefined && value !== null && value !== '') {
+            if (key !== 'postType' && key !== 'images' && value !== undefined && value !== null && value !== '') {
                 submitData.append(key, String(value));
             }
         });
@@ -164,6 +258,72 @@ const PostForm: React.FC<PostFormProps> = ({
             });
 
         await onSubmit(submitData);
+    };
+
+    const handleGenerateAiDescription = async (tone: 'polite' | 'friendly') => {
+        if (!postType) {
+            message.warning('Vui lòng chọn loại bài đăng trước khi tạo mô tả');
+            setIsAiModalOpen(false);
+            return;
+        }
+        if (!formData.title) {
+            message.warning('Vui lòng nhập tiêu đề để AI hiểu bạn muốn bán/cho thuê gì');
+            setIsAiModalOpen(false);
+            return;
+        }
+
+        try {
+            setIsGeneratingAi(true);
+
+            const payload = {
+                tone,
+                postType,
+                title: formData.title,
+                city: formData.city,
+                district: formData.district,
+                ward: formData.ward,
+                address: formData.address,
+                price: formData.price,
+                area: formData.area,
+                bedrooms: formData.bedrooms,
+                bathrooms: formData.bathrooms,
+                floors: formData.floors,
+                frontWidth: formData.frontWidth,
+                landLength: formData.landLength,
+                landType: formData.landType,
+                direction: formData.direction,
+                legalStatus: formData.legalStatus,
+                minPrice: formData.minPrice,
+                maxPrice: formData.maxPrice,
+                minArea: formData.minArea,
+                maxArea: formData.maxArea,
+                startDate: formData.startDate,
+                endDate: formData.endDate,
+                discountCode: formData.discountCode,
+                contactPhone: formData.contactPhone,
+                contactLink: formData.contactLink,
+            };
+
+            const data = await aiApi.generateDescription(payload);
+            const fullText = data.description || '';
+
+            // Convert text newlines to HTML breaks for CKEditor, and handle Markdown bold loosely
+            let formattedText = fullText.replace(/(?:\r\n|\r|\n)/g, '<br/>');
+            // Basic markdown bold to HTML bold since CKEditor prefers HTML
+            formattedText = formattedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+            handleFieldChange('description', formattedText);
+
+            message.success('Tạo mô tả thành công!');
+            setIsAiModalOpen(false); // Close modal when finished
+        } catch (error: any) {
+            const backendMsg = error.response?.data?.message || 'Có lỗi xảy ra khi tạo mô tả, vui lòng thử lại sau.';
+            message.error(backendMsg);
+            console.error('AI Desc Generator error:', error);
+            setIsAiModalOpen(false);
+        } finally {
+            setIsGeneratingAi(false);
+        }
     };
 
     const isPropertyType = postType !== '' && propertyTypeSet.has(postType);
@@ -190,6 +350,7 @@ const PostForm: React.FC<PostFormProps> = ({
                 value={postType}
                 onChange={(value) => setPostType(value)}
                 disabled={!!initialData?.postType}
+                mode={postTypeSelectorMode}
             />
             {errors.postType && <p className="text-xs text-red-500">{errors.postType}</p>}
 
@@ -216,13 +377,16 @@ const PostForm: React.FC<PostFormProps> = ({
                             <label className="mb-1 block text-sm font-medium text-gray-700">
                                 Thành phố <span className="text-red-500">*</span>
                             </label>
-                            <input
-                                type="text"
+                            <select
                                 value={formData.city || ''}
-                                onChange={(e) => handleFieldChange('city', e.target.value)}
+                                onChange={handleCityChange}
                                 className={inputClass('city')}
-                                placeholder="TP. Hồ Chí Minh"
-                            />
+                            >
+                                <option value="" disabled>-- Chọn Tỉnh/Thành phố --</option>
+                                {provinces.map((p) => (
+                                    <option key={p.province_code} value={p.name}>{p.name}</option>
+                                ))}
+                            </select>
                             {renderFieldError('city')}
                         </div>
                         <div>
@@ -234,7 +398,7 @@ const PostForm: React.FC<PostFormProps> = ({
                                 value={formData.district || ''}
                                 onChange={(e) => handleFieldChange('district', e.target.value)}
                                 className={inputClass('district')}
-                                placeholder="Quận 1"
+                                placeholder="Nhập quận/huyện (không bắt buộc)"
                             />
                             {renderFieldError('district')}
                         </div>
@@ -242,13 +406,17 @@ const PostForm: React.FC<PostFormProps> = ({
                             <label className="mb-1 block text-sm font-medium text-gray-700">
                                 Phường/Xã {isPropertyType && <span className="text-red-500">*</span>}
                             </label>
-                            <input
-                                type="text"
+                            <select
                                 value={formData.ward || ''}
                                 onChange={(e) => handleFieldChange('ward', e.target.value)}
-                                className={inputClass('ward')}
-                                placeholder="Phường Bến Nghé"
-                            />
+                                disabled={!formData.city}
+                                className={inputClass('ward') + ' disabled:bg-gray-100'}
+                            >
+                                <option value="" disabled>-- Chọn Phường/Xã --</option>
+                                {wards.map((w) => (
+                                    <option key={w.ward_code} value={w.ward_name}>{w.ward_name}</option>
+                                ))}
+                            </select>
                             {renderFieldError('ward')}
                         </div>
                     </div>
@@ -324,15 +492,13 @@ const PostForm: React.FC<PostFormProps> = ({
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
                         <label className="mb-1 block text-sm font-medium text-gray-700">
-                            Giá (VNĐ) <span className="text-red-500">*</span>
+                            Giá <span className="text-red-500">*</span>
                         </label>
-                        <input
-                            type="number"
-                            value={formData.price || ''}
-                            onChange={(e) => handleFieldChange('price', parseFloat(e.target.value) || 0)}
-                            className={inputClass('price')}
-                            placeholder="1000000000"
-                            min="0"
+                        <PriceInput
+                            value={formData.price}
+                            onChange={(val) => handleFieldChange('price', val)}
+                            placeholder="1.000.000.000"
+                            hasError={!!errors.price}
                         />
                         {renderFieldError('price')}
                     </div>
@@ -475,29 +641,25 @@ const PostForm: React.FC<PostFormProps> = ({
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
                         <label className="mb-1 block text-sm font-medium text-gray-700">
-                            Giá tối thiểu (VNĐ) <span className="text-red-500">*</span>
+                            Giá tối thiểu <span className="text-red-500">*</span>
                         </label>
-                        <input
-                            type="number"
-                            value={formData.minPrice || ''}
-                            onChange={(e) => handleFieldChange('minPrice', parseFloat(e.target.value) || 0)}
-                            className={inputClass('minPrice')}
-                            placeholder="500000000"
-                            min="0"
+                        <PriceInput
+                            value={formData.minPrice}
+                            onChange={(val) => handleFieldChange('minPrice', val)}
+                            placeholder="500.000.000"
+                            hasError={!!errors.minPrice}
                         />
                         {renderFieldError('minPrice')}
                     </div>
                     <div>
                         <label className="mb-1 block text-sm font-medium text-gray-700">
-                            Giá tối đa (VNĐ) <span className="text-red-500">*</span>
+                            Giá tối đa <span className="text-red-500">*</span>
                         </label>
-                        <input
-                            type="number"
-                            value={formData.maxPrice || ''}
-                            onChange={(e) => handleFieldChange('maxPrice', parseFloat(e.target.value) || 0)}
-                            className={inputClass('maxPrice')}
-                            placeholder="2000000000"
-                            min="0"
+                        <PriceInput
+                            value={formData.maxPrice}
+                            onChange={(val) => handleFieldChange('maxPrice', val)}
+                            placeholder="2.000.000.000"
+                            hasError={!!errors.maxPrice}
                         />
                         {renderFieldError('maxPrice')}
                     </div>
@@ -578,10 +740,20 @@ const PostForm: React.FC<PostFormProps> = ({
 
             {/* Description - CKEditor */}
             <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                    Mô tả <span className="text-red-500">*</span>
-                </label>
-                <div className={errors.description ? 'rounded-lg border border-red-500' : ''}>
+                <div className="mb-2 flex items-center justify-between">
+                    <label className="block text-sm font-medium text-gray-700">
+                        Mô tả <span className="text-red-500">*</span>
+                    </label>
+                    <button
+                        type="button"
+                        onClick={() => setIsAiModalOpen(true)}
+                        className="group flex items-center gap-1.5 rounded-full bg-gradient-to-r from-brand-500 to-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-md shadow-brand-500/30 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-brand-500/40"
+                    >
+                        <StarFilled className="text-yellow-300 group-hover:animate-pulse" />
+                        Tạo tự động bằng AI
+                    </button>
+                </div>
+                <div className={`post-description-editor ${errors.description ? 'rounded-lg border border-red-500' : ''}`}>
                     <CKEditor
                         editor={ClassicEditor as any}
                         data={formData.description || ''}
@@ -595,6 +767,11 @@ const PostForm: React.FC<PostFormProps> = ({
                         }}
                     />
                 </div>
+                <style>{`
+                    .post-description-editor .ck-editor__editable[role="textbox"] {
+                        min-height: 280px !important;
+                    }
+                `}</style>
                 {renderFieldError('description')}
             </div>
 
@@ -651,6 +828,13 @@ const PostForm: React.FC<PostFormProps> = ({
                     {isLoading ? 'Đang xử lý...' : submitLabel}
                 </button>
             </div>
+
+            <AiDescriptionGeneratorModal
+                isOpen={isAiModalOpen}
+                onClose={() => setIsAiModalOpen(false)}
+                onGenerate={handleGenerateAiDescription}
+                isGenerating={isGeneratingAi}
+            />
         </form>
     );
 };

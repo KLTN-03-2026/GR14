@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
-import { houseApi } from '@/api';
+import { houseApi, propertyCategoryApi } from '@/api';
 import { formatCurrency, formatArea } from '@/utils';
-import type { House } from '@/types';
+import type { House, PropertyCategory } from '@/types';
+import { useAuthStore } from '@/stores/authStore';
 import { DEFAULT_PAGE_SIZE } from '@/constants';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
@@ -11,6 +12,8 @@ import { DataTable } from '@/components/ui/Table';
 import ImageLightbox from '@/components/ui/ImageLightbox';
 import Modal from '@/components/ui/Modal';
 import LoadingOverlay from '@/components/ui/LoadingOverlay';
+import DetailDrawer from '@/components/ui/DetailDrawer';
+import HouseDetailPanel from '@/components/common/HouseDetailPanel';
 import type { Column } from '@/components/ui/Table';
 
 const HouseManagementPage: React.FC = () => {
@@ -18,12 +21,16 @@ const HouseManagementPage: React.FC = () => {
     const SOLD_STATUS = 0;
 
     const navigate = useNavigate();
+    const { hasRole } = useAuthStore();
+    const isEmployee = hasRole('EMPLOYEE');
     const [houses, setHouses] = useState<House[]>([]);
     const [loading, setLoading] = useState(false);
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(1);
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState<number>(ACTIVE_STATUS);
+    const [categoryFilter, setCategoryFilter] = useState<string>('');
+    const [categories, setCategories] = useState<PropertyCategory[]>([]);
     const [activeCount, setActiveCount] = useState(0);
     const [soldCount, setSoldCount] = useState(0);
     const [previewOpen, setPreviewOpen] = useState(false);
@@ -32,6 +39,18 @@ const HouseManagementPage: React.FC = () => {
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState<House | null>(null);
     const [deleting, setDeleting] = useState(false);
+    const [detailItem, setDetailItem] = useState<House | null>(null);
+
+    const houseCategories = categories.filter((c) => c.categoryType === 'HOUSE');
+
+    const loadCategories = useCallback(async () => {
+        try {
+            const res = await propertyCategoryApi.getAll();
+            setCategories(res.data.data || res.data);
+        } catch {
+            toast.error('Lỗi tải danh mục');
+        }
+    }, []);
 
     const loadHouses = useCallback(async () => {
         setLoading(true);
@@ -42,17 +61,21 @@ const HouseManagementPage: React.FC = () => {
                 status: statusFilter,
             };
             if (search) listParams.search = search;
+            if (categoryFilter) listParams.categoryId = Number(categoryFilter);
 
             const countParams = (status: number): Record<string, unknown> => {
                 const params: Record<string, unknown> = { page: 1, limit: 1, status };
                 if (search) params.search = search;
+                if (categoryFilter) params.categoryId = Number(categoryFilter);
                 return params;
             };
 
+            const fetchMethod = isEmployee ? houseApi.getMyHouses : houseApi.getAll;
+
             const [listRes, activeRes, soldRes] = await Promise.all([
-                houseApi.getAll(listParams),
-                houseApi.getAll(countParams(ACTIVE_STATUS)),
-                houseApi.getAll(countParams(SOLD_STATUS)),
+                fetchMethod(listParams),
+                fetchMethod(countParams(ACTIVE_STATUS)),
+                fetchMethod(countParams(SOLD_STATUS)),
             ]);
 
             const data = listRes.data;
@@ -73,7 +96,11 @@ const HouseManagementPage: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [page, search, statusFilter]);
+    }, [page, search, statusFilter, categoryFilter]);
+
+    useEffect(() => {
+        loadCategories();
+    }, [loadCategories]);
 
     useEffect(() => {
         loadHouses();
@@ -110,7 +137,8 @@ const HouseManagementPage: React.FC = () => {
                             src={images[0].url}
                             alt=""
                             className="w-[60px] h-[50px] object-cover rounded cursor-zoom-in"
-                            onClick={() => {
+                            onClick={(e) => {
+                                e.stopPropagation();
                                 setPreviewImages(images.map((img) => img.url));
                                 setPreviewIndex(0);
                                 setPreviewOpen(true);
@@ -178,7 +206,7 @@ const HouseManagementPage: React.FC = () => {
             key: 'action',
             width: 200,
             render: (_: unknown, record: House) => (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                     <Button
                         size="sm"
                         variant="outline"
@@ -249,14 +277,31 @@ const HouseManagementPage: React.FC = () => {
                         Đã bán ({soldCount})
                     </button>
                 </div>
-                <div className="w-full min-w-0 sm:max-w-[400px]">
-                    <input
-                        type="text"
-                        placeholder="Tìm kiếm..."
-                        className="admin-control admin-filter-input w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                        value={search}
-                        onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                    />
+                <div className="flex flex-col sm:flex-row gap-3 w-full min-w-0">
+                    <div className="w-full sm:max-w-[220px]">
+                        <select
+                            className="admin-control admin-filter-input h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-[13px] text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                            value={categoryFilter}
+                            onChange={(e) => {
+                                setCategoryFilter(e.target.value);
+                                setPage(1);
+                            }}
+                        >
+                            <option value="">Tất cả danh mục</option>
+                            {houseCategories.map((category) => (
+                                <option key={category.id} value={String(category.id)}>{category.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="w-full sm:max-w-[400px]">
+                        <input
+                            type="text"
+                            placeholder="Tìm kiếm..."
+                            className="admin-control admin-filter-input w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                            value={search}
+                            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                        />
+                    </div>
                 </div>
             </div>
 
@@ -267,6 +312,7 @@ const HouseManagementPage: React.FC = () => {
                         dataSource={houses}
                         rowKey="id"
                         loading={loading}
+                        onRow={(record) => ({ onClick: () => setDetailItem(record) })}
                         pagination={{
                             current: page,
                             total,
@@ -326,6 +372,14 @@ const HouseManagementPage: React.FC = () => {
                 title="Đang xóa nhà"
                 description="Vui lòng đợi hệ thống xử lý ảnh và dữ liệu..."
             />
+
+            <DetailDrawer
+                isOpen={!!detailItem}
+                onClose={() => setDetailItem(null)}
+                title={detailItem ? `Chi tiết: ${detailItem.title}` : 'Chi tiết nhà'}
+            >
+                {detailItem && <HouseDetailPanel house={detailItem} />}
+            </DetailDrawer>
         </div>
     );
 };

@@ -201,7 +201,7 @@ const VipPackageFormPage: React.FC = () => {
             } else {
                 setFeatureConfig(parsedFeature);
             }
-        } catch (error) {
+        } catch {
             toast.error('Không tìm thấy gói VIP');
             navigate('/admin/vip-packages');
         }

@@ -1,0 +1,69 @@
+name: CD — Deploy to VPS (SSH)
+
+# Chỉ chạy khi CI pass và code được push trực tiếp vào main
+on:
+  workflow_run:
+    workflows: ["CI — Lint & Build"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    name: 🚀 Deploy to VPS via SSH
+    runs-on: ubuntu-latest
+
+    # Chỉ deploy nếu CI thành công
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Deploy lên VPS qua SSH
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          ENV_ROOT: ${{ secrets.ENV_ROOT }}
+          ENV_API: ${{ secrets.ENV_API }}
+          ENV_FRONTEND: ${{ secrets.ENV_FRONTEND }}
+          ENV_AI: ${{ secrets.ENV_AI }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          command_timeout: 30m
+          envs: ENV_ROOT,ENV_API,ENV_FRONTEND,ENV_AI
+          script: |
+            set -e  # Dừng ngay nếu có lệnh lỗi
+
+            echo ">>> 🐳 Kiểm tra cài đặt Docker..."
+            if ! [ -x "$(command -v docker)" ]; then
+              echo ">>> Docker chưa được cài đặt. Tiến hành cài đặt tự động..."
+              curl -fsSL https://get.docker.com -o get-docker.sh
+              sh get-docker.sh
+              rm get-docker.sh
+            fi
+
+            echo ">>> 📁 Kiểm tra thư mục dự án..."
+            if [ ! -d "${{ secrets.VPS_PROJECT_PATH }}" ]; then
+              echo ">>> Thư mục chưa tồn tại, đang tiến hành git clone lần đầu..."
+              # Clone mã nguồn dùng GITHUB_TOKEN để tránh lỗi repo private
+              git clone https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git ${{ secrets.VPS_PROJECT_PATH }}
+            fi
+
+            cd ${{ secrets.VPS_PROJECT_PATH }}
+
+            echo ">>> 🔄 Pull code mới nhất từ main..."
+            git pull origin main
+
+            echo ">>> 🔑 Tiêm (Inject) cấu hình hệ thống từ Github Secrets xuống VPS..."
+            echo "$ENV_ROOT" > .env
+            echo "$ENV_API" > real-estate-api/.env
+            echo "$ENV_FRONTEND" > real-estate-frontend/.env
+            echo "$ENV_AI" > real-estate-AI/.env
+
+            echo ">>> 🐳 Rebuild và restart các containers..."
+            docker compose down
+            docker compose up -d --build --remove-orphans
+
+            echo ">>> 🧹 Dọn dẹp image cũ không còn dùng..."
+            docker image prune -f
+
+            echo ">>> ✅ Deploy thành công!"

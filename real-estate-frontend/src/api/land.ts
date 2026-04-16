@@ -3,6 +3,8 @@ import apiClient from './client';
 export const landApi = {
     getAll: (params?: Record<string, unknown>) =>
         apiClient.get('/lands', { params }),
+    getMyLands: (params?: Record<string, unknown>) =>
+        apiClient.get('/lands/me/assigned', { params }),
 
     getById: (id: number) =>
         apiClient.get(`/lands/${id}`),

@@ -2,7 +2,9 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { message } from 'antd';
 import { HeartOutlined, HeartFilled, CalendarOutlined } from '@ant-design/icons';
-import { landApi, favoriteApi, recommendationApi } from '@/api';
+import { landApi, recommendationApi } from '@/api';
+import { PROPERTY_STATUS, PROPERTY_STATUS_LABELS } from '@/constants';
+import { useFavorites } from '@/context/FavoritesContext';
 import { Loading } from '@/components/common';
 import { formatCurrency, formatArea, getFullAddress, formatDateTime } from '@/utils';
 import { useAuthStore } from '@/stores/authStore';
@@ -14,6 +16,13 @@ const getImages = (land: Land): string[] => {
     return land.images.map((img: any) =>
         typeof img === 'string' ? img : img.url ?? ''
     ).filter(Boolean);
+};
+
+const getPropertyStatusTagClass = (status: number): string => {
+    if (status === PROPERTY_STATUS.SOLD) {
+        return 'bg-red-50 text-red-700 border-red-200';
+    }
+    return 'bg-emerald-50 text-emerald-700 border-emerald-200';
 };
 
 /* ── Lightbox Modal ──────────────────────────────────────────────────── */
@@ -342,9 +351,9 @@ const LandDetailPage: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const { isAuthenticated } = useAuthStore();
+    const { isFavoritedLand, addLandFavorite, removeFavoritedLand } = useFavorites();
     const [land, setLand] = useState<Land | null>(null);
     const [loading, setLoading] = useState(true);
-    const [isFavorited, setIsFavorited] = useState(false);
 
     // Quay lại đúng trang + filter:
     // List page truyền: navigate(`/lands/${id}?from=${encodeURIComponent(location.pathname + location.search)}`)
@@ -362,12 +371,6 @@ const LandDetailPage: React.FC = () => {
     useEffect(() => {
         if (id) loadLand(Number(id));
     }, [id]);
-
-    // Track view behavior for AI recommendations
-    useEffect(() => {
-        if (!land || !isAuthenticated) return;
-        recommendationApi.trackBehavior({ action: 'view', landId: land.id }).catch(() => { });
-    }, [land, isAuthenticated]);
 
     const loadLand = async (landId: number) => {
         try {
@@ -388,13 +391,15 @@ const LandDetailPage: React.FC = () => {
             return;
         }
         try {
-            if (isFavorited) {
-                await favoriteApi.removeLand(land!.id);
+            const isFav = isFavoritedLand(land!.id);
+            if (isFav) {
+                await removeFavoritedLand(land!.id);
+                message.success('Đã bỏ yêu thích');
             } else {
-                await favoriteApi.addLand(land!.id);
+                await addLandFavorite(land!.id);
+                message.success('Đã thêm vào yêu thích');
+                recommendationApi.trackBehavior({ action: 'save', landId: land!.id }).catch(() => { });
             }
-            setIsFavorited(!isFavorited);
-            message.success(isFavorited ? 'Đã bỏ yêu thích' : 'Đã thêm vào yêu thích');
         } catch {
             message.error('Có lỗi xảy ra');
         }
@@ -405,6 +410,8 @@ const LandDetailPage: React.FC = () => {
 
     const images = getImages(land);
     const fullAddress = getFullAddress(land);
+    const landStatusLabel = PROPERTY_STATUS_LABELS[land.status] || 'Không xác định';
+    const landStatusTagClass = getPropertyStatusTagClass(land.status);
 
     return (
         <div className="w-full bg-white pb-20">
@@ -489,16 +496,24 @@ const LandDetailPage: React.FC = () => {
                                         <td className="px-4 py-3 text-[#1a1a1a]">{land.direction || 'Chưa cập nhật'}</td>
                                     </tr>
                                     <tr className="border-b border-gray-100">
-                                        <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Loại đất</td>
-                                        <td className="px-4 py-3 text-[#1a1a1a]">{land.landType || 'Chưa cập nhật'}</td>
-                                        <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Pháp lý</td>
-                                        <td className="px-4 py-3 text-[#1a1a1a]">{land.legalStatus || 'Chưa cập nhật'}</td>
-                                    </tr>
-                                    <tr>
+                                        <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Trạng thái</td>
+                                        <td className="px-4 py-3 text-[#1a1a1a]">
+                                            <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[12px] font-semibold ${landStatusTagClass}`}>
+                                                {landStatusLabel}
+                                            </span>
+                                        </td>
                                         <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Danh mục</td>
                                         <td className="px-4 py-3 text-[#1a1a1a]">{land.category?.name || 'Chưa cập nhật'}</td>
+                                    </tr>
+                                    <tr className="border-b border-gray-100">
+                                        <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Pháp lý</td>
+                                        <td className="px-4 py-3 text-[#1a1a1a]">{land.legalStatus || 'Chưa cập nhật'}</td>
                                         <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Ngày đăng</td>
                                         <td className="px-4 py-3 text-[#1a1a1a]">{formatDateTime(land.createdAt)}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Cập nhật</td>
+                                        <td className="px-4 py-3 text-[#1a1a1a]" colSpan={3}>{formatDateTime(land.updatedAt)}</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -541,16 +556,22 @@ const LandDetailPage: React.FC = () => {
                                 {formatCurrency(land.price)}
                             </p>
 
+                            <div className="mb-5 flex justify-center">
+                                <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold ${landStatusTagClass}`}>
+                                    Trạng thái: {landStatusLabel}
+                                </span>
+                            </div>
+
                             {/* Nút Yêu thích */}
                             <button
                                 onClick={handleFavorite}
-                                className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border text-[14px] font-semibold mb-3 transition-all duration-200 ${isFavorited
-                                        ? 'bg-red-500 border-red-500 text-white hover:bg-red-600'
-                                        : 'bg-white border-gray-300 text-gray-700 hover:border-[#254b86] hover:text-[#254b86]'
+                                className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border text-[14px] font-semibold mb-3 transition-all duration-200 ${isFavoritedLand(land.id)
+                                    ? 'bg-red-500 border-red-500 text-white hover:bg-red-600'
+                                    : 'bg-white border-gray-300 text-gray-700 hover:border-[#254b86] hover:text-[#254b86]'
                                     }`}
                             >
-                                {isFavorited ? <HeartFilled className="text-[15px]" /> : <HeartOutlined className="text-[15px]" />}
-                                {isFavorited ? 'Đã yêu thích' : 'Yêu thích'}
+                                {isFavoritedLand(land.id) ? <HeartFilled className="text-[15px]" /> : <HeartOutlined className="text-[15px]" />}
+                                {isFavoritedLand(land.id) ? 'Đã yêu thích' : 'Yêu thích'}
                             </button>
 
                             {/* Nút Đặt lịch hẹn — dùng landId (logic riêng của Land) */}

@@ -146,7 +146,7 @@ export interface CreatePostDto {
 }
 
 // Update Post DTO
-export interface UpdatePostDto extends Partial<CreatePostDto> { }
+export type UpdatePostDto = Partial<CreatePostDto>;
 
 // Post Status Constants
 export const PostStatus = {

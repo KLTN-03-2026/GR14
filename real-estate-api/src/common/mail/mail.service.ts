@@ -28,10 +28,17 @@ export class MailService {
   }
 
   private formatCurrency(amount: number): string {
-    return amount.toLocaleString('vi-VN', { style: 'currency', currency: 'VND' });
+    return amount.toLocaleString('vi-VN', {
+      style: 'currency',
+      currency: 'VND',
+    });
   }
 
-  getApprovalEmailHtml(fullName: string, appointmentDate: string, propertyTitle?: string): string {
+  getApprovalEmailHtml(
+    fullName: string,
+    appointmentDate: string,
+    propertyTitle?: string,
+  ): string {
     return `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;border:1px solid #e8e8e8;border-radius:8px;">
         <h2 style="color:#52c41a;">✅ Lịch hẹn đã được duyệt</h2>
@@ -45,7 +52,11 @@ export class MailService {
     `;
   }
 
-  getConfirmationEmailHtml(fullName: string, appointmentDate: string, propertyTitle?: string): string {
+  getConfirmationEmailHtml(
+    fullName: string,
+    appointmentDate: string,
+    propertyTitle?: string,
+  ): string {
     return `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;border:1px solid #e8e8e8;border-radius:8px;">
         <h2 style="color:#1677ff;">📅 Lịch hẹn đã được tạo</h2>
@@ -59,7 +70,12 @@ export class MailService {
     `;
   }
 
-  getCancellationEmailHtml(fullName: string, appointmentDate: string, propertyTitle?: string, cancelReason?: string): string {
+  getCancellationEmailHtml(
+    fullName: string,
+    appointmentDate: string,
+    propertyTitle?: string,
+    cancelReason?: string,
+  ): string {
     return `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;border:1px solid #e8e8e8;border-radius:8px;">
         <h2 style="color:#ff4d4f;">❌ Lịch hẹn đã bị từ chối</h2>
@@ -74,7 +90,13 @@ export class MailService {
     `;
   }
 
-  getPaymentSuccessEmailHtml(fullName: string, amount: number, packageName: string, postTitle?: string, method?: string): string {
+  getPaymentSuccessEmailHtml(
+    fullName: string,
+    amount: number,
+    packageName: string,
+    postTitle?: string,
+    method?: string,
+  ): string {
     return `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;border:1px solid #e8e8e8;border-radius:8px;">
         <h2 style="color:#52c41a;">✅ Thanh toán thành công</h2>
@@ -88,7 +110,13 @@ export class MailService {
     `;
   }
 
-  getPaymentFailureEmailHtml(fullName: string, amount: number, packageName: string, postTitle?: string, method?: string): string {
+  getPaymentFailureEmailHtml(
+    fullName: string,
+    amount: number,
+    packageName: string,
+    postTitle?: string,
+    method?: string,
+  ): string {
     return `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;border:1px solid #e8e8e8;border-radius:8px;">
         <h2 style="color:#ff4d4f;">❌ Thanh toán thất bại</h2>

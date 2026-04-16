@@ -6,9 +6,9 @@ import { RedisModule } from '../../common/redis/redis.module';
 import { AiModule } from '../ai/ai.module';
 
 @Module({
-    imports: [CloudinaryModule, RedisModule, AiModule],
-    controllers: [LandController],
-    providers: [LandService],
-    exports: [LandService],
+  imports: [CloudinaryModule, RedisModule, AiModule],
+  controllers: [LandController],
+  providers: [LandService],
+  exports: [LandService],
 })
-export class LandModule { }
+export class LandModule {}

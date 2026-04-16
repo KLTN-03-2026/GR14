@@ -8,9 +8,9 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { MailModule } from '../../common/mail/mail.module';
 
 @Module({
-    imports: [PrismaModule, ConfigModule, MailModule],
-    controllers: [PaymentController],
-    providers: [PaymentService, VNPayService, MoMoService],
-    exports: [PaymentService],
+  imports: [PrismaModule, ConfigModule, MailModule],
+  controllers: [PaymentController],
+  providers: [PaymentService, VNPayService, MoMoService],
+  exports: [PaymentService],
 })
-export class PaymentModule { }
+export class PaymentModule {}

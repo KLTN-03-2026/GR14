@@ -3,10 +3,15 @@ import { toast } from 'react-hot-toast';
 import { paymentApi } from '@/api';
 import { formatCurrency, formatDateTime } from '@/utils';
 import type { Payment } from '@/types';
-import { Button, Badge, DataTable } from '@/components/ui';
+import { Badge, DataTable } from '@/components/ui';
 import type { Column } from '@/components/ui';
 
 type PaymentRow = Payment & {
+    user?: {
+        id: number;
+        fullName: string;
+        email: string;
+    };
     subscription?: {
         post?: {
             id: number;
@@ -14,14 +19,6 @@ type PaymentRow = Payment & {
         };
         package?: {
             name: string;
-        };
-    };
-};
-
-type ApiError = {
-    response?: {
-        data?: {
-            message?: string;
         };
     };
 };
@@ -42,7 +39,8 @@ const PaymentHistoryPage: React.FC = () => {
     const loadPayments = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await paymentApi.getMyPayments({ page, limit: 10 });
+            // Dùng getAllPayments (admin) để xem toàn bộ hệ thống, không phải chỉ của admin
+            const res = await paymentApi.getAllPayments({ page, limit: 10 });
             setPayments(res.data.data || []);
             setTotal(res.data.meta?.total || 0);
         } catch {
@@ -56,17 +54,6 @@ const PaymentHistoryPage: React.FC = () => {
         loadPayments();
     }, [loadPayments]);
 
-    const handleSimulate = async (paymentId: number) => {
-        try {
-            await paymentApi.simulateSuccess(paymentId);
-            toast.success('Thanh toán mô phỏng thành công!');
-            loadPayments();
-        } catch (err: unknown) {
-            const error = err as ApiError;
-            toast.error(error.response?.data?.message || 'Lỗi mô phỏng thanh toán');
-        }
-    };
-
     const columns: Column<PaymentRow>[] = [
         {
             title: 'ID',
@@ -74,12 +61,20 @@ const PaymentHistoryPage: React.FC = () => {
             width: 60,
         },
         {
+            title: 'Khách hàng',
+            key: 'user',
+            render: (_, record: PaymentRow) =>
+                record.user
+                    ? `${record.user.fullName} (${record.user.email})`
+                    : '—',
+        },
+        {
             title: 'Tin đăng',
             key: 'post',
             render: (_, record: PaymentRow) =>
                 record.subscription?.post
                     ? `#${record.subscription.post.id} - ${record.subscription.post.title}`
-                    : '-',
+                    : '—',
         },
         {
             title: 'Gói VIP',
@@ -88,7 +83,7 @@ const PaymentHistoryPage: React.FC = () => {
                 record.subscription?.package ? (
                     <Badge color="warning">{record.subscription.package.name}</Badge>
                 ) : (
-                    '-'
+                    '—'
                 ),
         },
         {
@@ -101,7 +96,7 @@ const PaymentHistoryPage: React.FC = () => {
             dataIndex: 'paymentMethod',
             render: (val: string) => (
                 <Badge color={val === 'vnpay' ? 'info' : 'primary'}>
-                    {val === 'vnpay' ? 'VNPay' : 'MoMo'}
+                    {val === 'vnpay' ? 'VNPay' : val === 'momo' ? 'MoMo' : val?.toUpperCase() || '—'}
                 </Badge>
             ),
         },
@@ -116,29 +111,12 @@ const PaymentHistoryPage: React.FC = () => {
         {
             title: 'Ngày thanh toán',
             dataIndex: 'paidAt',
-            render: (val: string) => (val ? formatDateTime(val) : '-'),
+            render: (val: string) => (val ? formatDateTime(val) : '—'),
         },
         {
             title: 'Ngày tạo',
             dataIndex: 'createdAt',
             render: (val: string) => formatDateTime(val),
-        },
-        {
-            title: 'Thao tác',
-            key: 'actions',
-            render: (_, record) => (
-                <>
-                    {record.status === 0 && (
-                        <Button
-                            size="sm"
-                            variant="primary"
-                            onClick={() => handleSimulate(record.id)}
-                        >
-                            Test thanh toán
-                        </Button>
-                    )}
-                </>
-            ),
         },
     ];
 

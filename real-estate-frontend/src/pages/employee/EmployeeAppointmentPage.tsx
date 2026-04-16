@@ -37,6 +37,7 @@ const EmployeeAppointmentPage: React.FC = () => {
     const [actualStatus, setActualStatus] = useState<number | ''>('');
     const [cancelReason, setCancelReason] = useState('');
     const [submitting, setSubmitting] = useState(false);
+    const [markingContactId, setMarkingContactId] = useState<number | null>(null);
 
     const loadAppointments = useCallback(async () => {
         setLoading(true);
@@ -117,6 +118,21 @@ const EmployeeAppointmentPage: React.FC = () => {
         setCancelReason('');
     };
 
+    const handleMarkFirstContact = async (record: Appointment) => {
+        if (record.firstContactAt) return;
+        setMarkingContactId(record.id);
+        try {
+            await appointmentApi.markFirstContact(record.id);
+            toast.success('Đã cập nhật liên hệ đầu tiên');
+            await loadAppointments();
+        } catch (error: unknown) {
+            const e = error as { response?: { data?: { message?: string } } };
+            toast.error(e?.response?.data?.message || 'Cập nhật liên hệ đầu tiên thất bại');
+        } finally {
+            setMarkingContactId(null);
+        }
+    };
+
     const isActualStatusUpdated = (record: Appointment) =>
         record.actualStatus !== undefined && record.actualStatus !== null;
 
@@ -184,23 +200,66 @@ const EmployeeAppointmentPage: React.FC = () => {
             },
         },
         {
+            title: 'Liên hệ đầu tiên',
+            key: 'firstContactAt',
+            width: 210,
+            render: (_, record) => (
+                record.firstContactAt
+                    ? <span className="text-sm text-gray-700">{formatDateTime(record.firstContactAt)}</span>
+                    : <span className="text-sm text-gray-400">Chưa cập nhật</span>
+            ),
+        },
+        {
             title: 'Thao tác',
             key: 'actions',
-            width: 160,
-            render: (_, record) => (
-                <Button
-                    size="sm"
-                    variant="primary"
-                    startIcon={(
-                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                    )}
-                    onClick={() => openUpdateModal(record)}
-                >
-                    Cập nhật
-                </Button>
-            ),
+            width: 300,
+            render: (_, record) => {
+                return (
+                    <div className="flex flex-wrap items-center gap-2">
+                        {record.firstContactAt ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-200">
+                                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                </svg>
+                                Đã liên hệ
+                            </span>
+                        ) : (
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleMarkFirstContact(record)}
+                                loading={markingContactId === record.id}
+                            >
+                                Đã liên hệ
+                            </Button>
+                        )}
+
+                        {isActualStatusUpdated(record) ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 ring-1 ring-green-200">
+                                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                </svg>
+                                Đã cập nhật
+                            </span>
+                        ) : record.status !== APPOINTMENT_STATUS.APPROVED ? (
+                             <span className="text-sm text-gray-400 italic">Chưa được duyệt</span>
+                        ) : (
+                            <Button
+                                size="sm"
+                                variant="primary"
+                                startIcon={(
+                                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                    </svg>
+                                )}
+                                onClick={() => openUpdateModal(record)}
+                            >
+                                Cập nhật
+                            </Button>
+                        )}
+                    </div>
+                );
+            },
         },
     ];
 
@@ -231,11 +290,12 @@ const EmployeeAppointmentPage: React.FC = () => {
                     </select>
                     <Button
                         variant="outline"
-                        startIcon={(
-                            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582M20 20v-5h-.581M5.65 18.35A9 9 0 1018.35 5.65l-.58.58" />
+                        loading={loading}
+                        startIcon={!loading ? (
+                            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
                             </svg>
-                        )}
+                        ) : undefined}
                         onClick={loadAppointments}
                     >
                         Tải lại

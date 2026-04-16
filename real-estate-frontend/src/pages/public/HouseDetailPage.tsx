@@ -1,13 +1,14 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { message } from 'antd';
 import { HeartOutlined, HeartFilled, CalendarOutlined } from '@ant-design/icons';
-import { houseApi, favoriteApi, recommendationApi } from '@/api';
+import { houseApi, recommendationApi } from '@/api';
+import { PROPERTY_STATUS, PROPERTY_STATUS_LABELS } from '@/constants';
+import { useFavorites } from '@/context/FavoritesContext';
 import { Loading } from '@/components/common';
 import { formatCurrency, formatArea, getFullAddress, formatDateTime } from '@/utils';
 import { useAuthStore } from '@/stores/authStore';
+import { toast } from 'react-hot-toast';
 import type { House } from '@/types';
-
 
 const getImages = (house: House): string[] => {
     if (!house.images || house.images.length === 0) return [];
@@ -16,7 +17,14 @@ const getImages = (house: House): string[] => {
     ).filter(Boolean);
 };
 
-/* ── Lightbox Modal ── */
+const getPropertyStatusTagClass = (status: number): string => {
+    if (status === PROPERTY_STATUS.SOLD) {
+        return 'bg-red-50 text-red-700 border-red-200';
+    }
+    return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+};
+
+/* ── Lightbox Modal ──────────────────────────────────────────────────── */
 interface LightboxProps {
     images: string[];
     startIndex: number;
@@ -346,20 +354,18 @@ const HouseDetailPage: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const { isAuthenticated } = useAuthStore();
+    const { isFavoritedHouse, addHouseFavorite, removeFavoritedHouse } = useFavorites();
     const [house, setHouse] = useState<House | null>(null);
     const [loading, setLoading] = useState(true);
-    const [isFavorited, setIsFavorited] = useState(false);
 
-    // Quay lại đúng trang + filter:
-    // List page truyền: navigate(`/houses/${id}?from=${encodeURIComponent(location.pathname + location.search)}`)
-    // Ví dụ: ?from=%2Fhouses%3Fpage%3D5%26category%3D1%26minPrice%3D500
+    // Quay lại đúng trang + filter (list có thể truyền ?from=...)
     const searchParams = new URLSearchParams(location.search);
     const fromUrl = searchParams.get('from');
     const handleBack = () => {
         if (fromUrl) {
-            navigate(decodeURIComponent(fromUrl));   // khôi phục toàn bộ URL gốc kể cả filter
+            navigate(decodeURIComponent(fromUrl));
         } else {
-            navigate(-1);                            // fallback: browser history
+            navigate(-1);
         }
     };
 
@@ -367,18 +373,12 @@ const HouseDetailPage: React.FC = () => {
         if (id) loadHouse(Number(id));
     }, [id]);
 
-    // Track view behavior for AI recommendations
-    useEffect(() => {
-        if (!house || !isAuthenticated) return;
-        recommendationApi.trackBehavior({ action: 'view', houseId: house.id }).catch(() => { });
-    }, [house, isAuthenticated]);
-
     const loadHouse = async (houseId: number) => {
         try {
             const res = await houseApi.getById(houseId);
             setHouse(res.data.data || res.data);
         } catch {
-            message.error('Không tìm thấy bất động sản');
+            toast.error('Không tìm thấy bất động sản');
             navigate('/houses');
         } finally {
             setLoading(false);
@@ -387,20 +387,22 @@ const HouseDetailPage: React.FC = () => {
 
     const handleFavorite = async () => {
         if (!isAuthenticated) {
-            message.warning('Vui lòng đăng nhập để yêu thích');
+            toast.error('Vui lòng đăng nhập để yêu thích');   // ← Chỉ sửa dòng này
             navigate('/login');
             return;
         }
         try {
-            if (isFavorited) {
-                await favoriteApi.removeHouse(house!.id);
+            const isFav = isFavoritedHouse(house!.id);
+            if (isFav) {
+                await removeFavoritedHouse(house!.id);
+                toast.success('Đã bỏ yêu thích');
             } else {
-                await favoriteApi.addHouse(house!.id);
+                await addHouseFavorite(house!.id);
+                toast.success('Đã thêm vào yêu thích');
+                recommendationApi.trackBehavior({ action: 'save', houseId: house!.id }).catch(() => { });
             }
-            setIsFavorited(!isFavorited);
-            message.success(isFavorited ? 'Đã bỏ yêu thích' : 'Đã thêm vào yêu thích');
         } catch {
-            message.error('Có lỗi xảy ra');
+            toast.error('Có lỗi xảy ra');
         }
     };
 
@@ -409,6 +411,8 @@ const HouseDetailPage: React.FC = () => {
 
     const images = getImages(house);
     const fullAddress = getFullAddress(house);
+    const houseStatusLabel = PROPERTY_STATUS_LABELS[house.status] || 'Không xác định';
+    const houseStatusTagClass = getPropertyStatusTagClass(house.status);
 
     return (
         <div className="w-full bg-white pb-20">
@@ -467,8 +471,8 @@ const HouseDetailPage: React.FC = () => {
                 {/* ── Gallery ───────────────────────────────────────────── */}
                 <Gallery images={images} title={house.title} />
 
+                {/* Thông tin chi tiết + Sidebar + Bản đồ */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10 items-start">
-
                     <div className="lg:col-span-2">
                         <h2 className="text-[18px] font-bold text-[#1a1a1a] mb-4">Thông Tin Chi Tiết</h2>
                         <div className="border border-gray-200 rounded-xl overflow-hidden">
@@ -495,12 +499,22 @@ const HouseDetailPage: React.FC = () => {
                                     <tr className="border-b border-gray-100">
                                         <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Hướng</td>
                                         <td className="px-4 py-3 text-[#1a1a1a]">{house.direction || 'Chưa cập nhật'}</td>
+                                        <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Trạng thái</td>
+                                        <td className="px-4 py-3 text-[#1a1a1a]">
+                                            <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[12px] font-semibold ${houseStatusTagClass}`}>
+                                                {houseStatusLabel}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    <tr className="border-b border-gray-100">
                                         <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Danh mục</td>
                                         <td className="px-4 py-3 text-[#1a1a1a]">{house.category?.name || 'Chưa cập nhật'}</td>
+                                        <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Ngày đăng</td>
+                                        <td className="px-4 py-3 text-[#1a1a1a]">{formatDateTime(house.createdAt)}</td>
                                     </tr>
                                     <tr>
-                                        <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Ngày đăng</td>
-                                        <td className="px-4 py-3 text-[#1a1a1a]" colSpan={3}>{formatDateTime(house.createdAt)}</td>
+                                        <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Cập nhật</td>
+                                        <td className="px-4 py-3 text-[#1a1a1a]" colSpan={3}>{formatDateTime(house.updatedAt)}</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -520,8 +534,6 @@ const HouseDetailPage: React.FC = () => {
                     <div className="lg:col-span-1">
                         <div className="text-[18px] font-bold mb-4 invisible select-none">Thông Tin Chi Tiết</div>
                         <div className="border border-gray-200 rounded-xl p-5 shadow-sm sticky top-6">
-
-                            {/* Tên + địa chỉ */}
                             <div className="flex items-start gap-2 mb-4 pb-4 border-b border-gray-100">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="#f5a623" stroke="#f5a623" strokeWidth="1" className="shrink-0 mt-0.5">
                                     <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
@@ -538,31 +550,43 @@ const HouseDetailPage: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* Giá */}
                             <p className="text-[22px] font-bold text-[#254b86] mb-5 text-center">
                                 {formatCurrency(house.price)}
                             </p>
 
+                            <div className="mb-5 flex justify-center">
+                                <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold ${houseStatusTagClass}`}>
+                                    Trạng thái: {houseStatusLabel}
+                                </span>
+                            </div>
+
                             {/* Nút Yêu thích */}
                             <button
                                 onClick={handleFavorite}
-                                className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border text-[14px] font-semibold mb-3 transition-all duration-200 ${isFavorited
-                                        ? 'bg-red-500 border-red-500 text-white hover:bg-red-600'
-                                        : 'bg-white border-gray-300 text-gray-700 hover:border-[#254b86] hover:text-[#254b86]'
+                                className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border text-[14px] font-semibold mb-3 transition-all duration-200 ${isFavoritedHouse(house.id)
+                                    ? 'bg-red-500 border-red-500 text-white hover:bg-red-600'
+                                    : 'bg-white border-gray-300 text-gray-700 hover:border-[#254b86] hover:text-[#254b86]'
                                     }`}
                             >
-                                {isFavorited ? <HeartFilled className="text-[15px]" /> : <HeartOutlined className="text-[15px]" />}
-                                {isFavorited ? 'Đã yêu thích' : 'Yêu thích'}
+                                {isFavoritedHouse(house.id) ? <HeartFilled className="text-[15px]" /> : <HeartOutlined className="text-[15px]" />}
+                                {isFavoritedHouse(house.id) ? 'Đã yêu thích' : 'Yêu thích'}
                             </button>
 
-                            {/* Nút Đặt lịch hẹn */}
-                            <button
-                                onClick={() => navigate(`/appointment?houseId=${house.id}`)}
-                                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-[#254b86] text-white text-[14px] font-semibold hover:bg-[#1a3660] transition-colors duration-200"
-                            >
-                                <CalendarOutlined className="text-[15px]" />
-                                Đặt Lịch Hẹn
-                            </button>
+                            {/* Nút Đặt lịch hẹn — ẩn nếu nhà đã bán */}
+                            {house.status === PROPERTY_STATUS.SOLD ? (
+                                <div className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-gray-100 text-gray-400 text-[14px] font-semibold border border-gray-200 cursor-not-allowed select-none">
+                                    <CalendarOutlined className="text-[15px]" />
+                                    Nhà đã được bán
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={() => navigate(`/appointment?houseId=${house.id}`)}
+                                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-[#254b86] text-white text-[14px] font-semibold hover:bg-[#1a3660] transition-colors duration-200"
+                                >
+                                    <CalendarOutlined className="text-[15px]" />
+                                    Đặt Lịch Hẹn
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>

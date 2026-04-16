@@ -60,8 +60,8 @@ const AppointmentFormPage: React.FC = () => {
             const [cusRes, empRes, houseRes, landRes] = await Promise.all([
                 customerApi.getAll({ limit: 200 }),
                 employeeApi.getAll({ limit: 200 }),
-                houseApi.getAll({ limit: 200 }),
-                landApi.getAll({ limit: 200 }),
+                houseApi.getAll({ limit: 1000 }),
+                landApi.getAll({ limit: 1000 }),
             ]);
             setCustomers(cusRes.data.data || cusRes.data);
             setEmployees(empRes.data.data || empRes.data);
@@ -138,6 +138,10 @@ const AppointmentFormPage: React.FC = () => {
             toast.error('Vui lòng chọn đất');
             return;
         }
+        if (isEdit && values.status === 1 && !values.employeeId) {
+            toast.error('Kỳ hạn Được Duyệt yêu cầu phải có Nhân viên phụ trách');
+            return;
+        }
 
         setLoading(true);
         try {
@@ -152,7 +156,11 @@ const AppointmentFormPage: React.FC = () => {
                 payload.customerId = values.customerId;
                 payload.status = values.status;
                 await appointmentApi.update(Number(id), payload);
-                toast.success('Cập nhật lịch hẹn thành công');
+                if (dayjs(values.appointmentDate).isBefore(dayjs().startOf('minute'))) {
+                    toast.success('Báo cáo cập nhật (Lịch hẹn thuộc về QUÁ KHỨ)', { icon: '⚠️' });
+                } else {
+                    toast.success('Cập nhật lịch hẹn thành công');
+                }
             } else {
                 if (customerMode === 'existing') {
                     payload.customerId = values.customerId;

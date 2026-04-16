@@ -35,6 +35,9 @@ export const customerApi = {
 
     delete: (id: number) =>
         apiClient.delete(`/customers/${id}`),
+    
+     toggleVip: (id: number, isVip: boolean) =>
+    apiClient.patch(`/customers/${id}/vip`, { isVip })
 };
 
 export const employeeApi = {

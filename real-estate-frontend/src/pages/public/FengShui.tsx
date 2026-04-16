@@ -32,78 +32,78 @@ interface FengshuiResult {
 
 
 const MENH_COLOR: Record<string, { bg: string; text: string; border: string; dot: string; gradient: string; accent: string }> = {
-    'Kim':  { bg: 'bg-yellow-50',  text: 'text-yellow-700',  border: 'border-yellow-300', dot: 'bg-yellow-500',  gradient: 'from-yellow-600 to-amber-400',   accent: '#b45309' },
-    'Mộc':  { bg: 'bg-green-50',   text: 'text-green-700',   border: 'border-green-300',  dot: 'bg-green-600',   gradient: 'from-green-700 to-emerald-500',   accent: '#15803d' },
-    'Thủy': { bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-300',   dot: 'bg-blue-600',    gradient: 'from-blue-700 to-sky-500',        accent: '#1d4ed8' },
-    'Hỏa':  { bg: 'bg-red-50',     text: 'text-red-700',     border: 'border-red-300',    dot: 'bg-red-600',     gradient: 'from-red-700 to-orange-500',      accent: '#dc2626' },
-    'Thổ':  { bg: 'bg-orange-50',  text: 'text-orange-700',  border: 'border-orange-300', dot: 'bg-orange-600',  gradient: 'from-orange-600 to-amber-500',    accent: '#c2410c' },
+    'Kim': { bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-300', dot: 'bg-yellow-500', gradient: 'from-yellow-600 to-amber-400', accent: '#b45309' },
+    'Mộc': { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-300', dot: 'bg-green-600', gradient: 'from-green-700 to-emerald-500', accent: '#15803d' },
+    'Thủy': { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-300', dot: 'bg-blue-600', gradient: 'from-blue-700 to-sky-500', accent: '#1d4ed8' },
+    'Hỏa': { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-300', dot: 'bg-red-600', gradient: 'from-red-700 to-orange-500', accent: '#dc2626' },
+    'Thổ': { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-300', dot: 'bg-orange-600', gradient: 'from-orange-600 to-amber-500', accent: '#c2410c' },
 };
 
 const PROVINCES = [
-    'Hà Nội','TP. Hồ Chí Minh','Đà Nẵng','Hải Phòng','Cần Thơ','Huế',
-    'Bình Dương','Đồng Nai','Khánh Hòa','Quảng Ninh','Nghệ An','Thanh Hóa',
-    'Lâm Đồng','Bắc Ninh','Thái Nguyên',
+    'Hà Nội', 'TP. Hồ Chí Minh', 'Đà Nẵng', 'Hải Phòng', 'Cần Thơ', 'Huế',
+    'Bình Dương', 'Đồng Nai', 'Khánh Hòa', 'Quảng Ninh', 'Nghệ An', 'Thanh Hóa',
+    'Lâm Đồng', 'Bắc Ninh', 'Thái Nguyên',
 ].map(p => ({ label: p, value: p }));
 
 
 const IconYinYang = () => (
     <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-        <circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20A5 5 0 0 1 12 12a5 5 0 0 0 0-10z" fill="currentColor" stroke="none"/>
-        <circle cx="12" cy="7" r="1.5" fill="white"/><circle cx="12" cy="17" r="1.5" fill="currentColor"/>
+        <circle cx="12" cy="12" r="10" /><path d="M12 2a10 10 0 0 1 0 20A5 5 0 0 1 12 12a5 5 0 0 0 0-10z" fill="currentColor" stroke="none" />
+        <circle cx="12" cy="7" r="1.5" fill="white" /><circle cx="12" cy="17" r="1.5" fill="currentColor" />
     </svg>
 );
 const IconStar = () => (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
     </svg>
 );
 const IconCompass = () => (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <circle cx="12" cy="12" r="10"/>
-        <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor" stroke="none"/>
+        <circle cx="12" cy="12" r="10" />
+        <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor" stroke="none" />
     </svg>
 );
 const IconShield = () => (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-        <path d="M9 12l2 2 4-4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+        <path d="M9 12l2 2 4-4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
 );
 const IconWarning = () => (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-        <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+        <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
     </svg>
 );
 const IconCrown = () => (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M2 19l2-9 4.5 5L12 4l3.5 11L20 10l2 9H2z"/>
+        <path d="M2 19l2-9 4.5 5L12 4l3.5 11L20 10l2 9H2z" />
     </svg>
 );
 const IconPalette = () => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <circle cx="13.5" cy="6.5" r="1"/><circle cx="17.5" cy="10.5" r="1"/><circle cx="8.5" cy="7.5" r="1"/><circle cx="6.5" cy="12.5" r="1"/>
-        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10a5 5 0 0 0 5-5v-.5a1 1 0 0 0-1-1H15a1 1 0 0 1-1-1 1 1 0 0 1 1-1h1.5a5 5 0 0 0 5-5C21.5 6.48 17.28 2 12 2z"/>
+        <circle cx="13.5" cy="6.5" r="1" /><circle cx="17.5" cy="10.5" r="1" /><circle cx="8.5" cy="7.5" r="1" /><circle cx="6.5" cy="12.5" r="1" />
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10a5 5 0 0 0 5-5v-.5a1 1 0 0 0-1-1H15a1 1 0 0 1-1-1 1 1 0 0 1 1-1h1.5a5 5 0 0 0 5-5C21.5 6.48 17.28 2 12 2z" />
     </svg>
 );
 const IconLayers = () => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
+        <polygon points="12 2 2 7 12 12 22 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" />
     </svg>
 );
 const IconHome = () => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
     </svg>
 );
 const IconMap = () => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>
+        <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" /><line x1="8" y1="2" x2="8" y2="18" /><line x1="16" y1="6" x2="16" y2="22" />
     </svg>
 );
 const IconSparkle = () => (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M12 3c-.3 1.6-.8 3-1.6 4.4C9.6 8.8 8.2 10 6.5 11c1.7 1 3.1 2.2 3.9 3.6.8 1.4 1.3 2.8 1.6 4.4.3-1.6.8-3 1.6-4.4.8-1.4 2.2-2.6 3.9-3.6-1.7-1-3.1-2.2-3.9-3.6C12.8 6 12.3 4.6 12 3zm-7 7c-.2 1-.5 1.9-1 2.7-.5.8-1.2 1.5-2 2 .8.5 1.5 1.2 2 2s.8 1.7 1 2.7c.2-1 .5-1.9 1-2.7.5-.8 1.2-1.5 2-2-.8-.5-1.5-1.2-2-2-.5-.8-.8-1.7-1-2.7zm14 0c-.2 1-.5 1.9-1 2.7-.5.8-1.2 1.5-2 2 .8.5 1.5 1.2 2 2s.8 1.7 1 2.7c.2-1 .5-1.9 1-2.7.5-.8 1.2-1.5 2-2-.8-.5-1.5-1.2-2-2-.5-.8-.8-1.7-1-2.7z"/>
+        <path d="M12 3c-.3 1.6-.8 3-1.6 4.4C9.6 8.8 8.2 10 6.5 11c1.7 1 3.1 2.2 3.9 3.6.8 1.4 1.3 2.8 1.6 4.4.3-1.6.8-3 1.6-4.4.8-1.4 2.2-2.6 3.9-3.6-1.7-1-3.1-2.2-3.9-3.6C12.8 6 12.3 4.6 12 3zm-7 7c-.2 1-.5 1.9-1 2.7-.5.8-1.2 1.5-2 2 .8.5 1.5 1.2 2 2s.8 1.7 1 2.7c.2-1 .5-1.9 1-2.7.5-.8 1.2-1.5 2-2-.8-.5-1.5-1.2-2-2-.5-.8-.8-1.7-1-2.7zm14 0c-.2 1-.5 1.9-1 2.7-.5.8-1.2 1.5-2 2 .8.5 1.5 1.2 2 2s.8 1.7 1 2.7c.2-1 .5-1.9 1-2.7.5-.8 1.2-1.5 2-2-.8-.5-1.5-1.2-2-2-.5-.8-.8-1.7-1-2.7z" />
     </svg>
 );
 
@@ -142,7 +142,7 @@ const VipBanner = ({ navigate }: { navigate: any }) => (
                 </div>
             </div>
             <button
-                onClick={() => navigate('/vip-packages')}
+                onClick={() => navigate('/vip-upgrade')}
                 className="shrink-0 px-6 py-2.5 bg-white text-amber-700 font-bold rounded-xl text-[14px] hover:bg-amber-50 transition-colors shadow-lg whitespace-nowrap"
             >
                 Mua VIP
@@ -438,7 +438,7 @@ const FengshuiPage: React.FC = () => {
                         )}
 
                         {/* ── BĐS GỢI Ý ───────────────────────────── */}
-                        {(result.batDongSan.nhaO.length > 0 || result.batDongSan.datDai.length > 0) && (
+                        {result.isVip && (
                             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
                                 <div className="flex items-center justify-between mb-6">
                                     <div className="flex items-center gap-3">

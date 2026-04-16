@@ -47,21 +47,21 @@ async function main() {
     });
 
     // Create property categories
-    const categories = [
-        { code: 'HOUSE', name: 'House' },
-        { code: 'VILLA', name: 'Villa' },
-        { code: 'APARTMENT', name: 'Apartment' },
-        { code: 'TOWNHOUSE', name: 'Townhouse' },
-        { code: 'RESLAND', name: 'Residential Land' },
-        { code: 'COMLAND', name: 'Commercial Land' },
-        { code: 'AGRLAND', name: 'Agricultural Land' },
-        { code: 'INDLAND', name: 'Industrial Land' },
+    const categories: Array<{ code: string; name: string; categoryType: 'HOUSE' | 'LAND' }> = [
+        { code: 'HOUSE', name: 'Nhà ở', categoryType: 'HOUSE' },
+        { code: 'VILLA', name: 'Biệt thự', categoryType: 'HOUSE' },
+        { code: 'APARTMENT', name: 'Chung cư', categoryType: 'HOUSE' },
+        { code: 'TOWNHOUSE', name: 'Nhà phố', categoryType: 'HOUSE' },
+        { code: 'RESLAND', name: 'Đất ở', categoryType: 'LAND' },
+        { code: 'COMLAND', name: 'Đất thương mại', categoryType: 'LAND' },
+        { code: 'AGRLAND', name: 'Đất nông nghiệp', categoryType: 'LAND' },
+        { code: 'INDLAND', name: 'Đất công nghiệp', categoryType: 'LAND' },
     ];
 
     for (const cat of categories) {
         await prisma.propertyCategory.upsert({
             where: { code: cat.code },
-            update: {},
+            update: { name: cat.name, categoryType: cat.categoryType },
             create: cat,
         });
     }
@@ -69,6 +69,20 @@ async function main() {
     // Create VIP packages
     const vipPackages = [
         {
+            // Cùng nhãn VIP 1 với gói 7 ngày; priority 0 < 1 để tin 7 ngày xếp trên tin 10k khi sort theo priority
+            name: 'Đăng tin 1 lần (10k)',
+            description: 'Đăng tin 1 bài viết được ưu tiên hiển thị - 10.000đ/lần',
+            durationDays: 1,
+            price: 10000,
+            priorityLevel: 0,
+            features: JSON.stringify({
+                singlePost: true,
+                highlight: true,
+                badge: 'NỔIBẬT',
+            }),
+        },
+        {
+            // VIP 1 (cùng tầng với 10k; ưu tiên sort cao hơn gói 10k)
             name: 'VIP 7 ngày',
             description: 'Gói VIP 7 ngày - Tin đăng được ưu tiên hiển thị',
             durationDays: 7,
@@ -81,6 +95,7 @@ async function main() {
             }),
         },
         {
+            // VIP 2
             name: 'VIP 15 ngày',
             description: 'Gói VIP 15 ngày - Tin đăng được ưu tiên cao',
             durationDays: 15,
@@ -94,6 +109,7 @@ async function main() {
             }),
         },
         {
+            // VIP 3 — ưu tiên trang chủ cao nhất
             name: 'VIP 30 ngày',
             description: 'Gói VIP 30 ngày - Ưu tiên cao nhất',
             durationDays: 30,

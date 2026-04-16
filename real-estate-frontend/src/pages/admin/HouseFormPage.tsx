@@ -7,6 +7,42 @@ import type { PropertyCategory, Employee } from '@/types';
 import Button from '@/components/ui/Button';
 import LoadingOverlay from '@/components/ui/LoadingOverlay';
 
+// ─── Price helpers ──────────────────────────────────────────────────────────────────────
+const fmtVND = (v: number | string | null | undefined): string => {
+    const n = Number(String(v).replace(/[^0-9]/g, ''));
+    return n ? n.toLocaleString('vi-VN') : '';
+};
+
+interface PriceInputProps {
+    value: number | string | null | undefined;
+    onChange: (num: number) => void;
+    placeholder?: string;
+    className?: string;
+}
+const PriceInput: React.FC<PriceInputProps> = ({ value, onChange, placeholder = '1.000.000.000', className = '' }) => {
+    const [display, setDisplay] = useState(fmtVND(value));
+    useEffect(() => { setDisplay(fmtVND(value)); }, [value]);
+    return (
+        <div className="relative">
+            <input
+                type="text"
+                inputMode="numeric"
+                value={display}
+                placeholder={placeholder}
+                className={className}
+                onChange={(e) => {
+                    const raw = e.target.value.replace(/[^0-9]/g, '');
+                    const num = raw ? Number(raw) : 0;
+                    setDisplay(raw ? num.toLocaleString('vi-VN') : '');
+                    onChange(num);
+                }}
+                onBlur={() => setDisplay(fmtVND(value))}
+            />
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-gray-400">VNĐ</span>
+        </div>
+    );
+};
+
 interface FileItem {
     uid: string;
     name: string;
@@ -18,6 +54,36 @@ interface FileItem {
 
 type FormPrimitive = string | number | null | undefined;
 
+const HOUSE_FORM_FIELDS = [
+    'code',
+    'title',
+    'city',
+    'district',
+    'ward',
+    'street',
+    'houseNumber',
+    'description',
+    'price',
+    'area',
+    'direction',
+    'floors',
+    'bedrooms',
+    'bathrooms',
+    'status',
+    'categoryId',
+    'employeeId',
+] as const;
+
+type HouseFormFieldKey = (typeof HOUSE_FORM_FIELDS)[number];
+
+const DECIMAL_HOUSE_FIELDS = new Set<HouseFormFieldKey>(['area']);
+
+const normalizeDecimalString = (value: string): string => {
+    const trimmed = value.trim();
+    if (!trimmed.includes(',')) return trimmed;
+    return trimmed.replace(/\./g, '').replace(',', '.');
+};
+
 const HouseFormPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
@@ -25,10 +91,29 @@ const HouseFormPage: React.FC = () => {
     const [categories, setCategories] = useState<PropertyCategory[]>([]);
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [fileList, setFileList] = useState<FileItem[]>([]);
-    const [formData, setFormData] = useState<Record<string, FormPrimitive>>({});
+    const [formData, setFormData] = useState<Record<string, FormPrimitive>>({
+        code: '',
+        title: '',
+        city: '',
+        district: '',
+        ward: '',
+        street: '',
+        houseNumber: '',
+        description: '',
+        price: undefined,
+        area: undefined,
+        direction: '',
+        floors: undefined,
+        bedrooms: undefined,
+        bathrooms: undefined,
+        status: 1,
+        categoryId: undefined,
+        employeeId: undefined,
+    });
     const [errors, setErrors] = useState<Record<string, string>>({});
     const fileInputRef = useRef<HTMLInputElement>(null);
     const isEdit = !!id;
+    const houseCategories = categories.filter((c) => c.categoryType === 'HOUSE');
 
     const loadFormData = useCallback(async () => {
         try {
@@ -47,7 +132,26 @@ const HouseFormPage: React.FC = () => {
         try {
             const res = await houseApi.getById(houseId);
             const house = res.data.data || res.data;
-            setFormData(house as Record<string, FormPrimitive>);
+            const mapped: Record<HouseFormFieldKey, FormPrimitive> = {
+                code: house.code || '',
+                title: house.title || '',
+                city: house.city || '',
+                district: house.district || '',
+                ward: house.ward || '',
+                street: house.street || '',
+                houseNumber: house.houseNumber || '',
+                description: house.description || '',
+                price: house.price,
+                area: house.area,
+                direction: house.direction || '',
+                floors: house.floors,
+                bedrooms: house.bedrooms,
+                bathrooms: house.bathrooms,
+                status: house.status ?? 1,
+                categoryId: house.categoryId,
+                employeeId: house.employeeId,
+            };
+            setFormData(mapped);
             if (house.images) {
                 setFileList(
                     house.images.map((img: { id: number; url: string }) => ({
@@ -118,9 +222,13 @@ const HouseFormPage: React.FC = () => {
         setLoading(true);
         try {
             const fd = new FormData();
-            Object.entries(values).forEach(([key, value]) => {
-                if (value !== undefined && value !== null) {
-                    fd.append(key, String(value));
+            HOUSE_FORM_FIELDS.forEach((key) => {
+                const value = values[key];
+                if (value !== undefined && value !== null && value !== '') {
+                    const payloadValue = DECIMAL_HOUSE_FIELDS.has(key)
+                        ? normalizeDecimalString(String(value))
+                        : String(value);
+                    fd.append(key, payloadValue);
                 }
             });
 
@@ -218,7 +326,7 @@ const HouseFormPage: React.FC = () => {
                                 onChange={(e) => handleChange('categoryId', e.target.value || undefined)}
                             >
                                 <option value="">Chọn danh mục</option>
-                                {categories.map((c) => (
+                                {houseCategories.map((c) => (
                                     <option key={c.id} value={c.id}>
                                         {c.name}
                                     </option>
@@ -281,24 +389,22 @@ const HouseFormPage: React.FC = () => {
                             />
                         </div>
                         <div>
-                            <label className={labelClass}>Giá (VNĐ)</label>
-                            <input
-                                type="number"
-                                className={inputClass}
-                                placeholder="Nhập giá"
-                                value={formData.price || ''}
-                                onChange={(e) => handleChange('price', e.target.value ? Number(e.target.value) : undefined)}
+                            <label className={labelClass}>Giá</label>
+                            <PriceInput
+                                value={formData.price as number}
+                                onChange={(num) => handleChange('price', num || undefined)}
+                                className={`${inputClass} pr-12`}
                             />
                         </div>
                         <div>
                             <label className={labelClass}>Diện tích (m²)</label>
                             <input
-                                type="number"
+                                type="text"
+                                inputMode="decimal"
                                 className={inputClass}
-                                placeholder="Nhập diện tích"
-                                min={0}
+                                placeholder="Nhập diện tích (vd: 10.5)"
                                 value={formData.area || ''}
-                                onChange={(e) => handleChange('area', e.target.value ? Number(e.target.value) : undefined)}
+                                onChange={(e) => handleChange('area', e.target.value)}
                             />
                         </div>
                         <div>

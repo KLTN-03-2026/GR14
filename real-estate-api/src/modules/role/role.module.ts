@@ -3,8 +3,8 @@ import { RoleService } from './role.service';
 import { RoleController } from './role.controller';
 
 @Module({
-    controllers: [RoleController],
-    providers: [RoleService],
-    exports: [RoleService],
+  controllers: [RoleController],
+  providers: [RoleService],
+  exports: [RoleService],
 })
-export class RoleModule { }
+export class RoleModule {}

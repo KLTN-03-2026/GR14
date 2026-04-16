@@ -5,13 +5,16 @@ import type { PropertyCategory } from '@/types';
 import { Button, Modal, DataTable } from '@/components/ui';
 import type { Column } from '@/components/ui';
 
+type CategoryTypeFilter = 'all' | 'HOUSE' | 'LAND';
+
 const CategoryManagementPage: React.FC = () => {
     const [categories, setCategories] = useState<PropertyCategory[]>([]);
     const [loading, setLoading] = useState(false);
     const [modalOpen, setModalOpen] = useState(false);
     const [editingCategory, setEditingCategory] = useState<PropertyCategory | null>(null);
-    const [formData, setFormData] = useState({ code: '', name: '' });
+    const [formData, setFormData] = useState({ code: '', name: '', categoryType: 'HOUSE' as 'HOUSE' | 'LAND' });
     const [search, setSearch] = useState('');
+    const [categoryFilter, setCategoryFilter] = useState<CategoryTypeFilter>('all');
     const [deleteTarget, setDeleteTarget] = useState<PropertyCategory | null>(null);
     const [deleting, setDeleting] = useState(false);
 
@@ -49,15 +52,19 @@ const CategoryManagementPage: React.FC = () => {
     const handleOpenModal = (cat?: PropertyCategory) => {
         setEditingCategory(cat || null);
         if (cat) {
-            setFormData({ code: cat.code || '', name: cat.name || '' });
+            setFormData({
+                code: cat.code || '',
+                name: cat.name || '',
+                categoryType: cat.categoryType,
+            });
         } else {
-            setFormData({ code: '', name: '' });
+            setFormData({ code: '', name: '', categoryType: 'HOUSE' });
         }
         setModalOpen(true);
     };
 
     const handleSubmit = async () => {
-        if (!formData.code || !formData.name) return;
+        if (!formData.code || !formData.name || !formData.categoryType) return;
         try {
             const values = { ...formData };
             if (editingCategory) {
@@ -78,6 +85,12 @@ const CategoryManagementPage: React.FC = () => {
         { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
         { title: 'Mã', dataIndex: 'code', key: 'code' },
         { title: 'Tên danh mục', dataIndex: 'name', key: 'name' },
+        {
+            title: 'Loại',
+            key: 'categoryType',
+            width: 110,
+            render: (_, record) => (record.categoryType === 'HOUSE' ? 'Nhà' : 'Đất'),
+        },
         {
             title: 'Hành động',
             key: 'action',
@@ -113,14 +126,20 @@ const CategoryManagementPage: React.FC = () => {
     ];
 
     const filteredCategories = useMemo(() => {
+        let source = categories;
+
+        if (categoryFilter === 'HOUSE' || categoryFilter === 'LAND') {
+            source = source.filter((item) => item.categoryType === categoryFilter);
+        }
+
         const keyword = search.trim().toLowerCase();
-        if (!keyword) return categories;
-        return categories.filter((item) => {
+        if (!keyword) return source;
+        return source.filter((item) => {
             const code = item.code?.toLowerCase() || '';
             const name = item.name?.toLowerCase() || '';
             return code.includes(keyword) || name.includes(keyword);
         });
-    }, [categories, search]);
+    }, [categories, categoryFilter, search]);
 
     return (
         <div>
@@ -135,14 +154,45 @@ const CategoryManagementPage: React.FC = () => {
                 </Button>
             </div>
 
-            <div className="mb-4 w-full min-w-0 sm:max-w-[400px]">
-                <input
-                    type="text"
-                    placeholder="Tìm kiếm..."
-                    className="admin-control admin-filter-input w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                />
+            <div className="mb-6 space-y-3">
+                <div className="flex gap-2 flex-wrap">
+                    <button
+                        onClick={() => setCategoryFilter('all')}
+                        className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${categoryFilter === 'all'
+                            ? 'bg-brand-500 text-white'
+                            : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                            }`}
+                    >
+                        Tất cả ({categories.length})
+                    </button>
+                    <button
+                        onClick={() => setCategoryFilter('HOUSE')}
+                        className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${categoryFilter === 'HOUSE'
+                            ? 'bg-brand-500 text-white'
+                            : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                            }`}
+                    >
+                        Nhà ({categories.filter((item) => item.categoryType === 'HOUSE').length})
+                    </button>
+                    <button
+                        onClick={() => setCategoryFilter('LAND')}
+                        className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${categoryFilter === 'LAND'
+                            ? 'bg-brand-500 text-white'
+                            : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                            }`}
+                    >
+                        Đất ({categories.filter((item) => item.categoryType === 'LAND').length})
+                    </button>
+                </div>
+                <div className="w-full min-w-0 sm:max-w-[400px]">
+                    <input
+                        type="text"
+                        placeholder="Tìm kiếm..."
+                        className="admin-control admin-filter-input w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                    />
+                </div>
             </div>
 
             <DataTable columns={columns} dataSource={filteredCategories} rowKey="id" loading={loading} pagination={false} />
@@ -207,6 +257,17 @@ const CategoryManagementPage: React.FC = () => {
                             value={formData.name}
                             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                         />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Loại danh mục <span className="text-error-500">*</span></label>
+                        <select
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                            value={formData.categoryType}
+                            onChange={(e) => setFormData({ ...formData, categoryType: e.target.value as 'HOUSE' | 'LAND' })}
+                        >
+                            <option value="HOUSE">Nhà</option>
+                            <option value="LAND">Đất</option>
+                        </select>
                     </div>
                 </div>
             </Modal>

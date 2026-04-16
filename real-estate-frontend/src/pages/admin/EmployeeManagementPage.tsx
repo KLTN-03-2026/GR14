@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { toast } from 'react-hot-toast';
 import dayjs from "dayjs";
-import { employeeApi } from "@/api";
+import { employeeApi, userApi } from "@/api";
 import { getApiErrorMessage } from "@/utils";
 import type { Employee } from '@/types';
 import { Button, Modal, Badge, DataTable } from '@/components/ui';
@@ -25,6 +25,9 @@ const EmployeeManagementPage = () => {
   const [editing, setEditing] = useState<EmployeeRecord | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<EmployeeRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const PAGE_SIZE = 10;
   const [formData, setFormData] = useState({
     code: '',
     username: '',
@@ -36,11 +39,13 @@ const EmployeeManagementPage = () => {
   });
 
   // ================= LOAD DATA =================
-  const loadData = async () => {
+  const loadData = async (currentPage = page) => {
     try {
       setLoading(true);
-      const res = await employeeApi.getAll({ page: 1, limit: 10 });
-      setData(res.data.data);
+      const res = await employeeApi.getAll({ page: currentPage, limit: PAGE_SIZE });
+      const payload = res.data;
+      setData(payload.data || payload);
+      setTotal(payload.totalItems || payload.total || (payload.data?.length ?? 0));
     } catch (err) {
       toast.error(getApiErrorMessage(err, "Tải danh sách nhân viên thất bại"));
     } finally {
@@ -49,8 +54,13 @@ const EmployeeManagementPage = () => {
   };
 
   useEffect(() => {
-    loadData();
+    loadData(1);
   }, []);
+
+  const handlePageChange = (p: number) => {
+    setPage(p);
+    loadData(p);
+  };
 
   // ================= MODAL =================
   const openModal = (record?: EmployeeRecord) => {
@@ -107,14 +117,14 @@ const EmployeeManagementPage = () => {
 
       if (editing) {
         await employeeApi.update(editing.id, values);
-        toast.success("Update success");
+        toast.success("Cập nhật nhân viên thành công");
       } else {
         await employeeApi.create(values);
-        toast.success("Create success");
+        toast.success("Tạo nhân viên thành công");
       }
 
       setOpen(false);
-      loadData();
+      loadData(page);
 
     } catch (err: unknown) {
       const error = err as ApiError;
@@ -146,11 +156,33 @@ const EmployeeManagementPage = () => {
 
       setDeleteTarget(null);
 
-
     } catch (err) {
       toast.error(getApiErrorMessage(err, "Khóa tài khoản thất bại"));
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleUnlockAccount = async (record: EmployeeRecord) => {
+    if (!record.user?.id) return;
+    try {
+      await userApi.update(record.user.id, { status: 1 });
+      toast.success('Đã mở khóa tài khoản');
+
+      setData(prev =>
+        prev.map(item =>
+          item.id === record.id
+            ? {
+              ...item,
+              user: item.user
+                ? { ...item.user, status: 1 }
+                : item.user
+            }
+            : item
+        )
+      );
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Mở khóa tài khoản thất bại'));
     }
   };
 
@@ -188,23 +220,40 @@ const EmployeeManagementPage = () => {
               <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
           )} onClick={() => openModal(r)}>Sửa</Button>
-          <Button
-            size="sm"
-            variant="danger"
-            iconOnly
-            ariaLabel="Khóa"
-            startIcon={(
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 11c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 20a7 7 0 0114 0" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M18 6l4 4m0-4l-4 4" />
-              </svg>
-            )}
-            disabled={r.user?.status === 0}
-            onClick={() => setDeleteTarget(r)}
-          >
-            Khóa
-          </Button>
+          {r.user?.status === 1 ? (
+            <Button
+              size="sm"
+              variant="danger"
+              iconOnly
+              ariaLabel="Khóa"
+              startIcon={(
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 11c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 20a7 7 0 0114 0" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M18 6l4 4m0-4l-4 4" />
+                </svg>
+              )}
+              onClick={() => setDeleteTarget(r)}
+            >
+              Khóa
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-green-500 text-green-600 hover:bg-green-50"
+              iconOnly
+              ariaLabel="Mở khóa"
+              startIcon={(
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                </svg>
+              )}
+              onClick={() => handleUnlockAccount(r)}
+            >
+              Mở khóa
+            </Button>
+          )}
         </div>
       )
     }
@@ -238,7 +287,13 @@ const EmployeeManagementPage = () => {
         columns={columns}
         dataSource={data}
         loading={loading}
-        pagination={false}
+        pagination={{
+          current: page,
+          total,
+          pageSize: PAGE_SIZE,
+          onChange: handlePageChange,
+          showTotal: (t: number) => `Tổng ${t} nhân viên`,
+        }}
       />
 
       <Modal
