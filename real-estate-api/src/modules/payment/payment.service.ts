@@ -319,51 +319,94 @@ export class PaymentService {
     return { RspCode: '00', Message: 'Confirm Success' };
   }
 
-  async handleMoMoCallback(momoData: any) {
-    const isValid = this.momoService.verifySignature(momoData);
-    const transactionId = momoData.orderId;
-    const resultCode = momoData.resultCode;
+async handleMoMoCallback(momoData: any) {
+  const transactionId = momoData.orderId;
+  const resultCode = Number(momoData.resultCode); // query param là string
 
-    const payment = await this.prisma.payment.findUnique({
-      where: { transactionId },
-      include: {
-        subscription: {
-          include: { package: true, post: { select: { title: true } } },
-        },
-        user: { select: { fullName: true, email: true } },
+  const payment = await this.prisma.payment.findUnique({
+    where: { transactionId },
+    include: {
+      subscription: {
+        include: { package: true, post: { select: { title: true } } },
       },
+      user: { select: { fullName: true, email: true } },
+    },
+  });
+
+  if (!payment) throw new NotFoundException('Payment not found');
+
+  // Nếu IPN đã xử lý xong trước đó → trả kết quả luôn
+  if (payment.status === 1) return { success: true, message: 'Payment successful' };
+  if (payment.status === 2) return { success: false, message: 'Payment failed' };
+
+  // IPN chưa về kịp → fallback xử lý tại đây (không verify signature vì callback params khác IPN)
+  if (resultCode === 0) {
+    await this.activateSubscription(payment.id, payment.subscription);
+    this.sendPaymentNotification(payment, true);
+    return { success: true, message: 'Payment successful' };
+  } else {
+    await this.prisma.payment.update({
+      where: { id: payment.id },
+      data: { status: 2 },
     });
-
-    if (!payment) throw new NotFoundException('Payment not found');
-    if (payment.status === 1)
-      return { success: true, message: 'Payment already successful' };
-
-    await this.prisma.paymentTransaction.updateMany({
-      where: { transactionId },
-      data: {
-        status: isValid && resultCode === 0 ? 'success' : 'failed',
-        responseCode: String(resultCode),
-        responseData: JSON.stringify(momoData),
-      },
+    await this.prisma.vipSubscription.update({
+      where: { id: payment.subscriptionId },
+      data: { status: 3 },
     });
-
-    if (isValid && resultCode === 0) {
-      await this.activateSubscription(payment.id, payment.subscription);
-      this.sendPaymentNotification(payment, true);
-      return { success: true, message: 'Payment successful' };
-    } else {
-      await this.prisma.payment.update({
-        where: { id: payment.id },
-        data: { status: 2 },
-      });
-      await this.prisma.vipSubscription.update({
-        where: { id: payment.subscriptionId },
-        data: { status: 3 },
-      });
-      this.sendPaymentNotification(payment, false);
-      return { success: false, message: 'Payment failed' };
-    }
+    this.sendPaymentNotification(payment, false);
+    return { success: false, message: 'Payment failed' };
   }
+}
+// Thêm vào PaymentService, bên dưới handleMoMoCallback
+
+async handleMoMoIPN(momoData: any) {
+  const isValid = this.momoService.verifySignature(momoData);
+  const transactionId = momoData.orderId;
+  const resultCode = momoData.resultCode;
+
+  if (!isValid) {
+    return { message: 'Invalid signature' };
+  }
+
+  const payment = await this.prisma.payment.findUnique({
+    where: { transactionId },
+    include: {
+      subscription: {
+        include: { package: true, post: { select: { title: true } } },
+      },
+      user: { select: { fullName: true, email: true } },
+    },
+  });
+
+  if (!payment) return { message: 'Payment not found' };
+  if (payment.status === 1) return { message: 'Payment already confirmed' };
+
+  await this.prisma.paymentTransaction.updateMany({
+    where: { transactionId },
+    data: {
+      status: resultCode === 0 ? 'success' : 'failed',
+      responseCode: String(resultCode),
+      responseData: JSON.stringify(momoData),
+    },
+  });
+
+  if (resultCode === 0) {
+    await this.activateSubscription(payment.id, payment.subscription);
+    this.sendPaymentNotification(payment, true);
+  } else {
+    await this.prisma.payment.update({
+      where: { id: payment.id },
+      data: { status: 2 },
+    });
+    await this.prisma.vipSubscription.update({
+      where: { id: payment.subscriptionId },
+      data: { status: 3 },
+    });
+    this.sendPaymentNotification(payment, false);
+  }
+
+  return { message: 'IPN received' };
+}
 
   async simulatePaymentSuccess(paymentId: number, userId: number) {
     const payment = await this.prisma.payment.findFirst({

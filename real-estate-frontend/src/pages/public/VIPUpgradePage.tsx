@@ -201,7 +201,11 @@ const VIPUpgradePage = () => {
                 packageId: checkoutData.packageId,
                 paymentType: mode === 'post' ? 'POST_VIP' : 'ACCOUNT_VIP',
                 paymentMethod: paymentMethod as 'vnpay' | 'momo',
-                returnUrl: window.location.origin + '/payment/vnpay-callback',
+               returnUrl: window.location.origin + (
+                paymentMethod === 'momo' 
+                    ? '/payment/momo-callback' 
+                    : '/payment/vnpay-callback'
+                ),
             };
             if (mode === 'post' && postId) payload.postId = postId;
 

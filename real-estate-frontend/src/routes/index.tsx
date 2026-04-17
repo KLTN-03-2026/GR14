@@ -23,6 +23,7 @@ import PaymentSuccessPage from "@/pages/public/PaymentSuccessPage";
 import VNPayCallbackPage from "@/pages/public/VNPayCallbackPage";
 import AppointmentBookingPage from "@/pages/public/AppointmentBookingPage";
 import PaymentResultPage from "@/pages/public/PaymentResultPage";
+import MoMoCallbackPage from "@/pages/public/MomoPayCallbackPage";
 import FengshuiPage from "@/pages/public/FengShui";
 
 // Auth pages
@@ -57,6 +58,7 @@ import VipPackageFormPage from "@/pages/admin/VipPackageFormPage";
 import EmployeeDashboardPage from "@/pages/employee/EmployeeDashboardPage";
 import EmployeeAppointmentPage from "@/pages/employee/EmployeeAppointmentPage";
 import EmployeeCalendarPage from "@/pages/employee/EmployeeCalendarPage";
+import MoMoPayCallbackPage from "@/pages/public/MomoPayCallbackPage";
 
 const router = createBrowserRouter([
   // AUTH
@@ -139,7 +141,7 @@ const router = createBrowserRouter([
   { path: "/payment/success", element: <PaymentSuccessPage /> },
   { path: "/payment/failed", element: <PaymentResultPage /> },
   { path: "/payment/vnpay-callback", element: <VNPayCallbackPage /> },
-
+  { path: "/payment/momo-callback", element: <MoMoPayCallbackPage /> },
   {
     path: "/profile",
     element: (
