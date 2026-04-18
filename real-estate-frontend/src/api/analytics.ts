@@ -54,9 +54,11 @@ export const analyticsApi = {
       .then((r) => r.data),
   getAppointmentRates: () =>
     apiClient.get("/admin/analytics/appointments/rates").then((r) => r.data),
-  getEmployeePerformance: () =>
+  getEmployeePerformance: (type?: "day" | "month" | "year") =>
     apiClient
-      .get("/admin/analytics/appointments/performance")
+      .get(
+        `/admin/analytics/appointments/performance${type ? `?type=${type}` : ""}`,
+      )
       .then((r) => r.data),
   getHeatmap: () =>
     apiClient.get("/admin/analytics/appointments/heatmap").then((r) => r.data),
@@ -72,4 +74,28 @@ export const analyticsApi = {
     apiClient.get("/admin/analytics/compare").then((r) => r.data),
   compareHouseLandMonthly: () =>
     apiClient.get("/admin/analytics/compare/monthly").then((r) => r.data),
+  getEmployeeAnalytics: () =>
+    apiClient
+      .get<EmployeePerformance[]>("/admin/analytics/appointments/performance")
+      .then((res) => res.data),
+  getEmployeeProperties: () =>
+    apiClient
+      .get<EmployeeProperty[]>("/admin/analytics/employees/properties")
+      .then((res) => res.data),
 };
+export interface EmployeePerformance {
+  employeeId: number;
+  employeeCode: string;
+  fullName: string;
+  totalAppointments: number;
+  completed: number;
+  completionRate: number;
+}
+export interface EmployeeProperty {
+  employeeId: number;
+  employeeCode: string;
+  fullName: string;
+  houses: number;
+  lands: number;
+  total: number;
+}

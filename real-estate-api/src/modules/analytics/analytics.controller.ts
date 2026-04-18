@@ -122,10 +122,10 @@ export class AnalyticsController {
     return this.analyticsService.getAppointmentRates();
   }
 
-  /** GET /admin/analytics/appointments/performance */
+  /** GET /admin/analytics/appointments/performance?type=day|month|year (type is optional) */
   @Get('appointments/performance')
-  getPerformance() {
-    return this.analyticsService.getEmployeePerformance();
+  getPerformance(@Query('type') type?: string) {
+    return this.analyticsService.getEmployeePerformance(type);
   }
 
   /** GET /admin/analytics/appointments/heatmap */
@@ -158,5 +158,9 @@ export class AnalyticsController {
   @Get('compare/monthly')
   compareMonthly() {
     return this.analyticsService.compareHouseLandMonthly();
+  }
+  @Get('employees/properties')
+  getEmployeeProperties() {
+    return this.analyticsService.getEmployeeProperties();
   }
 }

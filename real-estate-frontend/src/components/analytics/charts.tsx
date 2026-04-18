@@ -29,6 +29,7 @@ interface ChartCardProps {
   subtitle?: string;
   children: ReactNode;
   action?: ReactNode;
+  headerBadge?: React.ReactNode;
 }
 
 interface KPICardProps {
@@ -37,6 +38,11 @@ interface KPICardProps {
   growth?: number | null;
   icon: ReactNode;
   accent: string;
+  color?: string;
+  loading?: boolean;
+  subtitle?: string;
+  isText?: boolean;
+  suffix?: string;
 }
 
 interface AreaChartProps {
@@ -61,6 +67,9 @@ interface BarChartProps {
   xKey?: string;
   height?: number;
   formatter?: (v: number) => string;
+  stacked?: boolean;
+  tooltip?: boolean;
+  legend?: boolean;
 }
 
 interface LineDef {
@@ -107,6 +116,7 @@ export function ChartCard({
   subtitle,
   children,
   action,
+  headerBadge,
 }: ChartCardProps) {
   return (
     <div
@@ -119,16 +129,14 @@ export function ChartCard({
     >
       <div className="flex items-start justify-between mb-5">
         <div>
-          <h3 className="font-semibold text-base" style={{ color: "#0f172a" }}>
-            {title}
-          </h3>
-          {subtitle && (
-            <p className="text-xs mt-0.5" style={{ color: "#64748b" }}>
-              {subtitle}
-            </p>
-          )}
+          <h3 className="font-semibold text-base">{title}</h3>
+          {subtitle && <p className="text-xs mt-0.5">{subtitle}</p>}
         </div>
-        {action}
+
+        <div className="flex items-center gap-2">
+          {headerBadge}
+          {action}
+        </div>
       </div>
       {children}
     </div>
@@ -136,7 +144,18 @@ export function ChartCard({
 }
 
 // ─── KPICard ──────────────────────────────────────────────────────────────────
-export function KPICard({ title, value, growth, icon, accent }: KPICardProps) {
+export function KPICard({
+  title,
+  value,
+  growth,
+  icon,
+  accent = "#6366f1",
+  color,
+  loading,
+  subtitle,
+  isText,
+  suffix,
+}: KPICardProps) {
   return (
     <div
       className="rounded-2xl p-5 relative overflow-hidden"
@@ -160,8 +179,10 @@ export function KPICard({ title, value, growth, icon, accent }: KPICardProps) {
             {title}
           </p>
           <p className="text-2xl font-bold" style={{ color: "#0f172a" }}>
-            {value}
+            {loading ? "..." : value}
+            {suffix && <span className="text-sm ml-1">{suffix}</span>}
           </p>
+          {subtitle && <p className="text-xs mt-1 text-gray-500">{subtitle}</p>}
           {growth !== undefined && growth !== null && (
             <p
               className="text-xs mt-1.5 font-medium"
@@ -344,36 +365,47 @@ export function AnalyticsBarChart({
   xKey = "time",
   height = 280,
   formatter,
+  stacked,
+  tooltip = true,
+  legend,
 }: BarChartProps) {
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
+
         <XAxis
           dataKey={xKey}
           tick={AXIS_STYLE}
           axisLine={false}
           tickLine={false}
         />
+
         <YAxis
           tick={AXIS_STYLE}
           axisLine={false}
           tickLine={false}
           tickFormatter={formatter}
         />
-        <Tooltip
-          content={({ active, payload, label }) => (
-            <ChartTooltip
-              active={active}
-              payload={payload as unknown as TooltipEntry[]}
-              label={label as string}
-              formatter={formatter}
-            />
-          )}
-        />
-        {bars.length > 1 && (
+        {tooltip !== false && (
+          <Tooltip
+            content={({ active, payload, label }) => (
+              <ChartTooltip
+                active={active}
+                payload={payload as unknown as TooltipEntry[]}
+                label={label as string}
+                formatter={formatter}
+              />
+            )}
+          />
+        )}
+        {(legend ?? bars.length > 1) && (
           <Legend
-            wrapperStyle={{ color: "#64748b", fontSize: 12, paddingTop: 12 }}
+            wrapperStyle={{
+              color: "#64748b",
+              fontSize: 12,
+              paddingTop: 12,
+            }}
           />
         )}
         {bars.map((b) => (
@@ -383,6 +415,7 @@ export function AnalyticsBarChart({
             name={b.name}
             fill={b.color}
             radius={[4, 4, 0, 0]}
+            stackId={stacked ? "a" : undefined}
           />
         ))}
       </BarChart>

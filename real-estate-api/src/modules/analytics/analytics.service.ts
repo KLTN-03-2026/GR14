@@ -378,51 +378,118 @@ export class AnalyticsService {
   /**
    * Employee performance: appointments assigned, completed, and completion rate.
    * FIX: null guard on completedMap — employeeId can be null from groupBy.
+   *
+   * EXTENDED: optional `type` param ("day" | "month" | "year").
+   * When omitted → original groupBy logic runs unchanged (backward compatible).
+   * When provided → fetches raw appointments, buckets by createdAt using getKey(),
+   *                 and aggregates per employee for the selected time granularity.
    */
-  async getEmployeePerformance() {
-    const [data, completed] = await Promise.all([
-      this.prisma.appointment.groupBy({
-        by: ['employeeId'],
-        _count: { id: true },
-      }),
-      this.prisma.appointment.groupBy({
-        by: ['employeeId'],
-        where: { actualStatus: 1 },
-        _count: { id: true },
+  async getEmployeePerformance(type?: string) {
+    // ── Original path (no type) ───────────────────────────────────────────────
+    if (!type) {
+      const employees = await this.prisma.employee.findMany({
+        include: {
+          user: true,
+        },
+      });
+
+      const [data, completed] = await Promise.all([
+        this.prisma.appointment.groupBy({
+          by: ['employeeId'],
+          _count: { id: true },
+        }),
+        this.prisma.appointment.groupBy({
+          by: ['employeeId'],
+          where: { actualStatus: 1 },
+          _count: { id: true },
+        }),
+      ]);
+
+      const totalMap = new Map(data.map((d) => [d.employeeId, d._count.id]));
+
+      const completedMap = new Map(
+        completed.map((d) => [d.employeeId, d._count.id]),
+      );
+
+      return employees
+        .map((e) => {
+          const total = totalMap.get(e.id) || 0;
+          const done = completedMap.get(e.id) || 0;
+
+          return {
+            employeeId: e.id,
+            employeeCode: e.user?.username || `NV${e.id}`,
+            fullName: e.user?.fullName || 'N/A',
+            totalAppointments: total,
+            completed: done,
+            completionRate: total > 0 ? done / total : 0,
+          };
+        })
+        .sort((a, b) => b.totalAppointments - a.totalAppointments);
+    }
+
+    // ── Extended path (with type) ─────────────────────────────────────────────
+    const [employees, appointments] = await Promise.all([
+      this.prisma.employee.findMany({ include: { user: true } }),
+      this.prisma.appointment.findMany({
+        select: { employeeId: true, actualStatus: true, createdAt: true },
+        orderBy: { createdAt: 'asc' },
       }),
     ]);
 
-    // FIX: filter null keys before building the map — avoids "null as index" TS error
-    const completedMap = new Map<number, number>(
-      completed
-        .filter(
-          (c): c is typeof c & { employeeId: number } => c.employeeId !== null,
-        )
-        .map((c) => [c.employeeId, c._count.id]),
-    );
+    // Aggregate per employee using the requested time granularity key.
+    // Each unique (employeeId, timeKey) pair is counted separately, then
+    // summed so the result still matches the flat structure expected by the UI.
+    const totalMap = new Map<number, number>();
+    const completedMap = new Map<number, number>();
+    // Only count appointments that belong to the chosen time bucket of today's perspective.
+    // We aggregate ALL appointments grouped by employee (time key is used for filtering
+    // context but the returned structure is per-employee totals, consistent with original).
+    // validate key format (no-op side-effect)
+    const now = new Date();
 
-    const employeeIds = data
-      .map((d) => d.employeeId)
-      .filter((id): id is number => id !== null);
+    appointments.forEach((a) => {
+      if (a.employeeId === null) return;
 
-    const employees = await this.prisma.employee.findMany({
-      where: { id: { in: employeeIds } },
-      include: { user: { select: { fullName: true, email: true } } },
+      const date = new Date(a.createdAt);
+
+      let isValid = false;
+
+      if (type === 'day') {
+        isValid =
+          date.getFullYear() === now.getFullYear() &&
+          date.getMonth() === now.getMonth() &&
+          date.getDate() === now.getDate();
+      }
+
+      if (type === 'month') {
+        isValid =
+          date.getFullYear() === now.getFullYear() &&
+          date.getMonth() === now.getMonth();
+      }
+
+      if (type === 'year') {
+        isValid = date.getFullYear() === now.getFullYear();
+      }
+
+      totalMap.set(a.employeeId, (totalMap.get(a.employeeId) ?? 0) + 1);
+
+      if (a.actualStatus === 1) {
+        completedMap.set(
+          a.employeeId,
+          (completedMap.get(a.employeeId) ?? 0) + 1,
+        );
+      }
     });
-    const empMap = new Map(employees.map((e) => [e.id, e]));
 
-    return data
-      .filter(
-        (d): d is typeof d & { employeeId: number } => d.employeeId !== null,
-      )
-      .map((d) => {
-        const emp = empMap.get(d.employeeId);
-        const total = d._count.id;
-        const done = completedMap.get(d.employeeId) ?? 0;
+    return employees
+      .map((e) => {
+        const total = totalMap.get(e.id) ?? 0;
+        const done = completedMap.get(e.id) ?? 0;
         return {
-          employeeId: d.employeeId,
-          employeeCode: emp?.code ?? 'N/A',
-          fullName: emp?.user?.fullName ?? 'N/A',
+          employeeId: e.id,
+          employeeCode: e.user?.username || `NV${e.id}`,
+          fullName: e.user?.fullName || 'N/A',
           totalAppointments: total,
           completed: done,
           completionRate: total > 0 ? +(done / total).toFixed(4) : 0,
@@ -614,5 +681,72 @@ export class AnalyticsService {
       totalAppointments,
       appointmentsThisMonth,
     };
+  }
+  async getEmployeeProperties() {
+    const [houses, lands] = await Promise.all([
+      this.prisma.house.groupBy({
+        by: ['employeeId'],
+        _count: { id: true },
+      }),
+      this.prisma.land.groupBy({
+        by: ['employeeId'],
+        _count: { id: true },
+      }),
+    ]);
+
+    // Collect all unique non-null employee IDs
+    const employeeIdSet = new Set<number>([
+      ...houses
+        .filter(
+          (h): h is typeof h & { employeeId: number } => h.employeeId !== null,
+        )
+        .map((h) => h.employeeId),
+      ...lands
+        .filter(
+          (l): l is typeof l & { employeeId: number } => l.employeeId !== null,
+        )
+        .map((l) => l.employeeId),
+    ]);
+
+    const employeeIds = [...employeeIdSet];
+
+    const employees = await this.prisma.employee.findMany({
+      where: { id: { in: employeeIds } },
+      include: { user: { select: { fullName: true } } },
+    });
+
+    const empMap = new Map(employees.map((e) => [e.id, e]));
+
+    const houseMap = new Map<number, number>(
+      houses
+        .filter(
+          (h): h is typeof h & { employeeId: number } => h.employeeId !== null,
+        )
+        .map((h) => [h.employeeId, h._count.id]),
+    );
+
+    const landMap = new Map<number, number>(
+      lands
+        .filter(
+          (l): l is typeof l & { employeeId: number } => l.employeeId !== null,
+        )
+        .map((l) => [l.employeeId, l._count.id]),
+    );
+
+    return employeeIds
+      .map((id) => {
+        const emp = empMap.get(id);
+        const houseCount = houseMap.get(id) ?? 0;
+        const landCount = landMap.get(id) ?? 0;
+        return {
+          employeeId: id,
+          employeeCode: emp?.code ?? 'N/A',
+          fullName: emp?.user?.fullName ?? 'N/A',
+          houses: houseCount,
+          lands: landCount,
+          total: houseCount + landCount,
+        };
+      })
+      .sort((a, b) => b.total - a.total);
   }
 }

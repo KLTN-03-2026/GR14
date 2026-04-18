@@ -39,7 +39,8 @@ import PostAnalyticsPage from "./analytics/post";
 import RevenueAnalyticsPage from "./analytics/revenue";
 import AppointmentAnalyticsPage from "./analytics/appointment";
 import BehaviorAnalyticsPage from "./analytics/behavior";
-
+import EmployeeAnalyticsPage from "./analytics/employee";
+//import EmployeeAnalyticsPage from "./analytics/employee";
 // ─── Analytics Context ────────────────────────────────────────────────────────
 export const AnalyticsContext = createContext<AnalyticsContextValue>({
   timeType: "month",
@@ -54,7 +55,8 @@ type TabKey =
   | "post"
   | "revenue"
   | "appointment"
-  | "behavior";
+  | "behavior"
+  | "employee";
 
 interface Tab {
   key: TabKey;
@@ -99,6 +101,12 @@ const TABS: Tab[] = [
     label: "Hành vi",
     icon: Heart,
     activeColor: "#f43f5e",
+  },
+  {
+    key: "employee",
+    label: "Nhân viên",
+    icon: Activity,
+    activeColor: "#0ea5e9",
   },
 ];
 
@@ -893,6 +901,7 @@ const DashboardPage: React.FC = () => {
           {activeTab === "revenue" && <RevenueAnalyticsPage />}
           {activeTab === "appointment" && <AppointmentAnalyticsPage />}
           {activeTab === "behavior" && <BehaviorAnalyticsPage />}
+          {activeTab === "employee" && <EmployeeAnalyticsPage />}
         </div>
       </div>
     </AnalyticsContext.Provider>
