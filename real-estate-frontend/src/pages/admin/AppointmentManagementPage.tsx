@@ -12,6 +12,8 @@ import {
     APPOINTMENT_ACTUAL_STATUS_LABELS,
 } from '@/constants';
 import { Button, Modal, Badge, DataTable } from '@/components/ui';
+import DetailDrawer from '@/components/ui/DetailDrawer';
+import AppointmentDetailPanel from '@/components/common/AppointmentDetailPanel';
 import type { Column } from '@/components/ui';
 
 type ApiError = {
@@ -77,6 +79,7 @@ const AppointmentManagementPage: React.FC = () => {
     const [deleting, setDeleting] = useState(false);
     const [slotSuggestionOpen, setSlotSuggestionOpen] = useState(false);
     const [slotSuggestions, setSlotSuggestions] = useState<Array<{ at: string; availableEmployees: number }>>([]);
+    const [detailItem, setDetailItem] = useState<Appointment | null>(null);
 
     const loadAppointments = useCallback(async () => {
         setLoading(true);
@@ -293,7 +296,8 @@ const AppointmentManagementPage: React.FC = () => {
             key: 'slaStatus',
             width: 120,
             render: (_, r) => {
-                const sla = r.slaStatus ?? 0;
+                const sla = r.slaStatus;
+                if (sla === undefined || sla === null) return <Badge color="light">N/A</Badge>;
                 const color = sla === 2 ? 'error' : sla === 1 ? 'warning' : 'success';
                 return <Badge color={color}>{SLA_STATUS_LABELS[sla] || 'Đúng hạn'}</Badge>;
             },
@@ -345,7 +349,7 @@ const AppointmentManagementPage: React.FC = () => {
                 const actualUpdated = record.actualStatus !== undefined && record.actualStatus !== null;
 
                 return (
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
                         {record.status === 0 && (
                             <>
                                 <Button size="sm" variant="primary" iconOnly ariaLabel="Duyệt" onClick={() => openApproveModal(record)} startIcon={(
@@ -383,22 +387,24 @@ const AppointmentManagementPage: React.FC = () => {
                                 </svg>
                             )}>Sửa</Button>
                         )}
-                        <Button
-                            size="sm"
-                            variant="danger"
-                            iconOnly
-                            ariaLabel="Xóa"
-                            startIcon={(
-                                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                            )}
-                            onClick={() => {
-                                setDeleteTarget(record);
-                            }}
-                        >
-                            Xóa
-                        </Button>
+                        {!actualUpdated && (
+                            <Button
+                                size="sm"
+                                variant="danger"
+                                iconOnly
+                                ariaLabel="Xóa"
+                                startIcon={(
+                                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                )}
+                                onClick={() => {
+                                    setDeleteTarget(record);
+                                }}
+                            >
+                                Xóa
+                            </Button>
+                        )}
                     </div>
                 );
             },
@@ -472,6 +478,7 @@ const AppointmentManagementPage: React.FC = () => {
                 dataSource={appointments}
                 rowKey="id"
                 loading={loading}
+                onRow={(record) => ({ onClick: () => setDetailItem(record) })}
                 pagination={{
                     current: page,
                     total,
@@ -597,6 +604,14 @@ const AppointmentManagementPage: React.FC = () => {
                     </select>
                 </div>
             </Modal>
+
+            <DetailDrawer
+                isOpen={!!detailItem}
+                onClose={() => setDetailItem(null)}
+                title={detailItem ? `Chi tiết lịch hẹn #${detailItem.id}` : 'Chi tiết lịch hẹn'}
+            >
+                {detailItem && <AppointmentDetailPanel appointment={detailItem} />}
+            </DetailDrawer>
         </div>
     );
 };

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'react-hot-toast';
-import { userApi } from '@/api';
+import { userApi, roleApi } from '@/api';
 import { formatDateTime, getApiErrorMessage } from '@/utils';
-import type { User } from '@/types';
+import type { User, Role } from '@/types';
 import { DEFAULT_PAGE_SIZE } from '@/constants';
 import { Button, Badge, Modal, DataTable } from '@/components/ui';
 import type { Column } from '@/components/ui';
@@ -17,6 +17,7 @@ type ApiError = {
 
 const UserManagementPage: React.FC = () => {
     const [users, setUsers] = useState<User[]>([]);
+    const [roles, setRoles] = useState<Role[]>([]);
     const [loading, setLoading] = useState(false);
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(1);
@@ -31,6 +32,7 @@ const UserManagementPage: React.FC = () => {
         fullName: '',
         email: '',
         phone: '',
+        roleId: '',
     });
 
     const loadUsers = useCallback(async () => {
@@ -51,6 +53,7 @@ const UserManagementPage: React.FC = () => {
 
     useEffect(() => {
         loadUsers();
+        roleApi.getAll().then(res => setRoles(res.data?.data || res.data)).catch(() => {});
     }, [loadUsers]);
 
     const handleDelete = async () => {
@@ -68,6 +71,16 @@ const UserManagementPage: React.FC = () => {
         }
     };
 
+    const handleUnlock = async (user: User) => {
+        try {
+            await userApi.update(user.id, { status: 1 });
+            toast.success('Đã mở khóa tài khoản');
+            loadUsers();
+        } catch (err) {
+            toast.error(getApiErrorMessage(err, 'Mở khóa thất bại'));
+        }
+    };
+
     const handleOpenModal = (user?: User) => {
         setEditingUser(user || null);
         if (user) {
@@ -77,9 +90,10 @@ const UserManagementPage: React.FC = () => {
                 fullName: user.fullName || '',
                 email: user.email || '',
                 phone: user.phone || '',
+                roleId: user.userRoles?.[0]?.roleId?.toString() || '',
             });
         } else {
-            setFormData({ username: '', password: '', fullName: '', email: '', phone: '' });
+            setFormData({ username: '', password: '', fullName: '', email: '', phone: '', roleId: '' });
         }
         setModalOpen(true);
     };
@@ -105,6 +119,9 @@ const UserManagementPage: React.FC = () => {
                 email: formData.email,
                 phone: formData.phone,
             };
+            if (formData.roleId) {
+                values.roleIds = [Number(formData.roleId)];
+            }
             if (!editingUser) values.password = formData.password;
 
             if (editingUser) {
@@ -161,25 +178,42 @@ const UserManagementPage: React.FC = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                         </svg>
                     )}>Sửa</Button>
-                    <Button
-                        size="sm"
-                        variant="danger"
-                        iconOnly
-                        ariaLabel="Khóa"
-                        startIcon={(
-                            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 11c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 20a7 7 0 0114 0" />
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M18 6l4 4m0-4l-4 4" />
-                            </svg>
-                        )}
-                        disabled={record.status === 0}
-                        onClick={() => {
-                            setDeleteTarget(record);
-                        }}
-                    >
-                        Khóa
-                    </Button>
+                    {record.status === 1 ? (
+                        <Button
+                            size="sm"
+                            variant="danger"
+                            iconOnly
+                            ariaLabel="Khóa"
+                            startIcon={(
+                                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 11c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 20a7 7 0 0114 0" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M18 6l4 4m0-4l-4 4" />
+                                </svg>
+                            )}
+                            onClick={() => {
+                                setDeleteTarget(record);
+                            }}
+                        >
+                            Khóa
+                        </Button>
+                    ) : (
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-green-500 text-green-600 hover:bg-green-50"
+                            iconOnly
+                            ariaLabel="Mở khóa"
+                            startIcon={(
+                                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                                </svg>
+                            )}
+                            onClick={() => handleUnlock(record)}
+                        >
+                            Mở khóa
+                        </Button>
+                    )}
                 </div>
             ),
         },
@@ -297,6 +331,19 @@ const UserManagementPage: React.FC = () => {
                             value={formData.phone}
                             onChange={(e) => setFormData((prev) => ({ ...prev, phone: e.target.value }))}
                         />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Cấp vai trò (không bắt buộc)</label>
+                        <select
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 bg-white"
+                            value={formData.roleId}
+                            onChange={(e) => setFormData(prev => ({ ...prev, roleId: e.target.value }))}
+                        >
+                            <option value="">-- Có thể chọn sau --</option>
+                            {roles.map(r => (
+                                <option key={r.id} value={r.id.toString()}>{r.name} ({r.code})</option>
+                            ))}
+                        </select>
                     </div>
                 </div>
             </Modal>

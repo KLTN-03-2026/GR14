@@ -94,9 +94,21 @@ services:
       MOMO_ENDPOINT: ${MOMO_ENDPOINT:-https://test-payment.momo.vn/v2/gateway/api/create}
       MOMO_RETURN_URL: ${MOMO_RETURN_URL}
       MOMO_NOTIFY_URL: ${MOMO_NOTIFY_URL}
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672?heartbeat=30}
+      RABBITMQ_RECONNECT_SECONDS: ${RABBITMQ_RECONNECT_SECONDS:-5}
+      RABBITMQ_CONNECTION_TIMEOUT_MS: ${RABBITMQ_CONNECTION_TIMEOUT_MS:-30000}
       REDIS_URL: redis://redis:6379
       OLLAMA_URL: ${OLLAMA_URL:-http://real-estate-ollama:11434}
+      OLLAMA_TIMEOUT_MS: ${OLLAMA_TIMEOUT_MS:-9000}
+      LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
+      GEMINI_MODEL_PRIMARY: ${GEMINI_MODEL_PRIMARY:-gemini-2.5-flash}
+      GEMINI_MODEL_FALLBACK_1: ${GEMINI_MODEL_FALLBACK_1:-gemini-flash-latest}
+      GEMINI_MODEL_FALLBACK_2: ${GEMINI_MODEL_FALLBACK_2:-gemini-2.5-flash-lite}
+      GEMINI_API_URL: ${GEMINI_API_URL:-https://generativelanguage.googleapis.com/v1beta}
+      GEMINI_TIMEOUT_MS: ${GEMINI_TIMEOUT_MS:-30000}
+      GEMINI_MAX_RETRIES: ${GEMINI_MAX_RETRIES:-2}
+      GEMINI_RETRY_BASE_MS: ${GEMINI_RETRY_BASE_MS:-1200}
+      GEMINI_THINKING_BUDGET: ${GEMINI_THINKING_BUDGET:-0}
       QDRANT_URL: ${QDRANT_URL:-http://real-estate-qdrant:6333}
       RAG_COLLECTION: ${RAG_COLLECTION:-real_estate_rag}
       CHAT_MODEL: ${CHAT_MODEL:-qwen2.5:7b}
@@ -139,6 +151,13 @@ services:
     depends_on:
       - backend
 
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - "8080:8080"
+    networks:
+      - default
 
 volumes:
   mysql_data:

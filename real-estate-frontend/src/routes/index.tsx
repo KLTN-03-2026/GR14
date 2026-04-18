@@ -23,6 +23,7 @@ import PaymentSuccessPage from "@/pages/public/PaymentSuccessPage";
 import VNPayCallbackPage from "@/pages/public/VNPayCallbackPage";
 import AppointmentBookingPage from "@/pages/public/AppointmentBookingPage";
 import PaymentResultPage from "@/pages/public/PaymentResultPage";
+import MoMoCallbackPage from "@/pages/public/MomoPayCallbackPage";
 import FengshuiPage from "@/pages/public/FengShui";
 
 // Auth pages
@@ -54,8 +55,10 @@ import VipPackageManagementPage from "@/pages/admin/VipPackageManagementPage";
 import VipPackageFormPage from "@/pages/admin/VipPackageFormPage";
 
 // Employee pages
+import EmployeeDashboardPage from "@/pages/employee/EmployeeDashboardPage";
 import EmployeeAppointmentPage from "@/pages/employee/EmployeeAppointmentPage";
 import EmployeeCalendarPage from "@/pages/employee/EmployeeCalendarPage";
+import MoMoPayCallbackPage from "@/pages/public/MomoPayCallbackPage";
 
 const router = createBrowserRouter([
   // AUTH
@@ -75,9 +78,8 @@ const router = createBrowserRouter([
       { path: "lands", element: <LandListPage /> },
       { path: "lands/:id", element: <LandDetailPage /> },
 
-      // Posts
+      // Posts — static routes MUST be declared before dynamic :id routes
       { path: "posts", element: <NewsPage /> },
-      { path: "posts/:id", element: <NewsDetailPage /> },
       {
         path: "posts/new",
         element: (
@@ -94,6 +96,7 @@ const router = createBrowserRouter([
           </ProtectedRoute>
         ),
       },
+      { path: "posts/:id", element: <NewsDetailPage /> },
 
       { path: "about", element: <AboutMe /> },
       { path: "fengshui", element: <FengshuiPage /> },
@@ -138,7 +141,7 @@ const router = createBrowserRouter([
   { path: "/payment/success", element: <PaymentSuccessPage /> },
   { path: "/payment/failed", element: <PaymentResultPage /> },
   { path: "/payment/vnpay-callback", element: <VNPayCallbackPage /> },
-
+  { path: "/payment/momo-callback", element: <MoMoPayCallbackPage /> },
   {
     path: "/profile",
     element: (
@@ -200,7 +203,15 @@ const router = createBrowserRouter([
       </ProtectedRoute>
     ),
     children: [
-      { index: true, element: <EmployeeAppointmentPage /> },
+      { index: true, element: <EmployeeDashboardPage /> },
+      { path: "dashboard", element: <EmployeeDashboardPage /> },
+      { path: "houses", element: <HouseManagementPage /> },
+      { path: "houses/create", element: <HouseFormPage /> },
+      { path: "houses/:id/edit", element: <HouseFormPage /> },
+      { path: "lands", element: <LandManagementPage /> },
+      { path: "lands/create", element: <LandFormPage /> },
+      { path: "lands/:id/edit", element: <LandFormPage /> },
+      { path: "posts", element: <PostManagementPage /> },
       { path: "appointments", element: <EmployeeAppointmentPage /> },
       { path: "calendar", element: <EmployeeCalendarPage /> },
       { path: "profile", element: <ProfilePage /> },

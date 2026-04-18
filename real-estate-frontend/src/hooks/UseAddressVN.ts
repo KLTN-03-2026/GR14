@@ -1,56 +1,51 @@
-import { useState, useEffect } from 'react';
-import { message } from 'antd';
+import { useState, useEffect, useCallback } from 'react';
+import toast from 'react-hot-toast';
+
+export type VietnamProvince = {
+    province_code: string;
+    name: string;
+};
+
+export type VietnamWard = {
+    ward_code: string;
+    ward_name: string;
+    province_code: string;
+};
+
+const VIETNAM_ADMIN_API_BASE = 'https://34tinhthanh.com/api';
 
 export const useVietnamAddress = () => {
-    const [provinces, setProvinces] = useState<any[]>([]);
-    const [districts, setDistricts] = useState<any[]>([]);
-    const [wards, setWards] = useState<any[]>([]);
+    const [provinces, setProvinces] = useState<VietnamProvince[]>([]);
+    const [wards, setWards] = useState<VietnamWard[]>([]);
 
     // Load tất cả Tỉnh/Thành phố khi hook được mount
     useEffect(() => {
-        fetch('https://provinces.open-api.vn/api/p/')
-            .then(res => res.json())
+        fetch(`${VIETNAM_ADMIN_API_BASE}/provinces`)
+            .then((res) => res.json())
             .then(data => setProvinces(data))
-            .catch(() => message.error('Không thể tải danh sách tỉnh/thành phố'));
+            .catch(() => toast.error('Không thể tải danh sách tỉnh/thành phố'));
     }, []);
 
-    const loadDistricts = (provinceName: string) => {
-        const province = provinces.find(p => p.name === provinceName);
+    const loadWards = useCallback((provinceName: string) => {
+        const province = provinces.find((p) => p.name === provinceName);
         if (!province) {
-            setDistricts([]);
             setWards([]);
             return;
         }
 
-        fetch(`https://provinces.open-api.vn/api/p/${province.code}?depth=2`)
-            .then(res => res.json())
-            .then(data => setDistricts(data.districts || []))
-            .catch(() => message.error('Không thể tải quận/huyện'));
-    };
+        fetch(`${VIETNAM_ADMIN_API_BASE}/wards?province_code=${province.province_code}`)
+            .then((res) => res.json())
+            .then((data) => setWards(data.wards || data || []))
+            .catch(() => toast.error('Không thể tải phường/xã'));
+    }, [provinces]);
 
-    const loadWards = (districtName: string) => {
-        const district = districts.find(d => d.name === districtName);
-        if (!district) {
-            setWards([]);
-            return;
-        }
-
-        fetch(`https://provinces.open-api.vn/api/d/${district.code}?depth=2`)
-            .then(res => res.json())
-            .then(data => setWards(data.wards || []))
-            .catch(() => message.error('Không thể tải phường/xã'));
-    };
-
-    const resetAddress = () => {
-        setDistricts([]);
+    const resetAddress = useCallback(() => {
         setWards([]);
-    };
+    }, []);
 
     return {
         provinces,
-        districts,
         wards,
-        loadDistricts,
         loadWards,
         resetAddress
     };

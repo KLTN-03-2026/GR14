@@ -11,50 +11,80 @@ async function bootstrap() {
 
   // ── Hybrid App: HTTP server + RabbitMQ consumer ──
   const app = await NestFactory.create(AppModule, {
-    logger: process.env.NODE_ENV === 'production'
-      ? ['error', 'warn', 'log']
-      : ['error', 'warn', 'log', 'debug', 'verbose'],
+    logger:
+      process.env.NODE_ENV === 'production'
+        ? ['error', 'warn', 'log']
+        : ['error', 'warn', 'log', 'debug', 'verbose'],
   });
 
   const configService = app.get(ConfigService);
 
   // Security headers
-  app.use(helmet());
+  app.use(
+    helmet({
+      crossOriginOpenerPolicy: false,
+      crossOriginResourcePolicy: false,
+    }),
+  );
 
   // Compression for responses
   app.use(compression());
+
+  const rmqUrl =
+    configService.get('RABBITMQ_URL') ||
+    'amqp://guest:guest@localhost:5672?heartbeat=30';
+  const rmqReconnectSeconds = Number(
+    configService.get('RABBITMQ_RECONNECT_SECONDS') || 5,
+  );
+  const rmqConnectionTimeoutMs = Number(
+    configService.get('RABBITMQ_CONNECTION_TIMEOUT_MS') || 30000,
+  );
 
   // Kết nối đến RabbitMQ
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
     options: {
-      urls: [configService.get('RABBITMQ_URL') || 'amqp://guest:guest@localhost:5672'],
+      urls: [rmqUrl],
       queue: 'mail_queue',
       queueOptions: {
         durable: true,
       },
+      socketOptions: {
+        heartbeat: 30,
+        connectionTimeout: rmqConnectionTimeoutMs,
+      },
+      reconnectTimeInSeconds: rmqReconnectSeconds,
     },
   });
 
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
     options: {
-      urls: [configService.get('RABBITMQ_URL') || 'amqp://guest:guest@localhost:5672'],
+      urls: [rmqUrl],
       queue: 'appointment_auto_assign_queue',
       queueOptions: {
         durable: true,
       },
+      socketOptions: {
+        heartbeat: 30,
+        connectionTimeout: rmqConnectionTimeoutMs,
+      },
+      reconnectTimeInSeconds: rmqReconnectSeconds,
     },
   });
 
   // CORS configuration
-  const frontendUrl = configService.get('FRONTEND_URL') || 'http://localhost:3000';
+  const frontendUrl =
+    configService.get('FRONTEND_URL') || 'http://localhost:3000';
   app.enableCors({
-    origin: process.env.NODE_ENV === 'production'
-      ? [frontendUrl]
-      : ['http://localhost:3000', 'http://localhost:3001'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    origin: [
+      frontendUrl,
+      'http://localhost:3000',
+      'http://localhost:3001',
+      /^http:\/\/209\.97\.165\.69(:\d+)?$/, // Cho phép IP VPS với bất kỳ port nào
+    ],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
     credentials: true,
   });
 
@@ -78,7 +108,9 @@ async function bootstrap() {
   // Khởi động microservice trước HTTP server
   await app.startAllMicroservices();
   logger.log('RabbitMQ consumer: listening on queue [mail_queue]');
-  logger.log('RabbitMQ consumer: listening on queue [appointment_auto_assign_queue]');
+  logger.log(
+    'RabbitMQ consumer: listening on queue [appointment_auto_assign_queue]',
+  );
 
   const port = configService.get('PORT') || 5000;
   await app.listen(port);
@@ -86,4 +118,3 @@ async function bootstrap() {
   logger.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 }
 bootstrap();
-

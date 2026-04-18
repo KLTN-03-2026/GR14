@@ -5,6 +5,9 @@ import type { Role } from '@/types';
 import { Button, Modal, DataTable } from '@/components/ui';
 import type { Column } from '@/components/ui';
 
+/** Các role cốt lõi của hệ thống – không được phép xóa */
+const SYSTEM_ROLES = ['ADMIN', 'EMPLOYEE', 'CUSTOMER'];
+
 const RoleManagementPage: React.FC = () => {
     const [roles, setRoles] = useState<Role[]>([]);
     const [loading, setLoading] = useState(false);
@@ -56,7 +59,10 @@ const RoleManagementPage: React.FC = () => {
     };
 
     const handleSubmit = async () => {
-        if (!formData.code || !formData.name) return;
+        if (!formData.code || !formData.name) {
+            toast.error('Vui lòng nhập đầy đủ mã và tên vai trò');
+            return;
+        }
         try {
             const values = { ...formData };
             if (editingRole) {
@@ -69,7 +75,7 @@ const RoleManagementPage: React.FC = () => {
             setModalOpen(false);
             loadRoles();
         } catch {
-            // validation
+            toast.error('Có lỗi xảy ra, vui lòng thử lại');
         }
     };
 
@@ -82,33 +88,37 @@ const RoleManagementPage: React.FC = () => {
             title: 'Hành động',
             key: 'action',
             width: 150,
-            render: (_, record) => (
-                <div className="flex items-center gap-2">
-                    <Button size="sm" variant="outline" iconOnly ariaLabel="Sửa" startIcon={(
-                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                    )} onClick={() => handleOpenModal(record)}>
-                        Sửa
-                    </Button>
-                    <Button
-                        size="sm"
-                        variant="danger"
-                        iconOnly
-                        ariaLabel="Xóa"
-                        startIcon={(
+            render: (_, record) => {
+                const isSystemRole = SYSTEM_ROLES.includes(record.code);
+                return (
+                    <div className="flex items-center gap-2">
+                        <Button size="sm" variant="outline" iconOnly ariaLabel="Sửa" startIcon={(
                             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                             </svg>
-                        )}
-                        onClick={() => {
-                            setDeleteTarget(record);
-                        }}
-                    >
-                        Xóa
-                    </Button>
-                </div>
-            ),
+                        )} onClick={() => handleOpenModal(record)}>
+                            Sửa
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant="danger"
+                            iconOnly
+                            ariaLabel="Xóa"
+                            disabled={isSystemRole}
+                            startIcon={(
+                                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            )}
+                            onClick={() => {
+                                if (!isSystemRole) setDeleteTarget(record);
+                            }}
+                        >
+                            Xóa
+                        </Button>
+                    </div>
+                );
+            },
         },
     ];
 

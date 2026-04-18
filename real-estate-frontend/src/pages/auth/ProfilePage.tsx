@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Form, Input, Button, Tabs, message, Spin, Tag } from 'antd';
+import { Form, Input, Button, Tabs, Spin, Tag } from 'antd';
+import toast from 'react-hot-toast';
 import { UserOutlined, PhoneOutlined, HomeOutlined, LockOutlined, MailOutlined, CrownOutlined } from '@ant-design/icons';
 import { authApi } from '@/api';
 import { useAuthStore } from '@/stores/authStore';
@@ -89,13 +90,13 @@ const ProfilePage: React.FC = () => {
                 address: values.address,
             });
             
-            message.success('Cập nhật thông tin thành công!');
+            toast.success('Cập nhật thông tin thành công!');
             
             if (res.data && res.data.data) {
                  setUser({ ...user, ...res.data.data }); 
             }
         } catch (error: any) {
-            message.error(error.response?.data?.message || 'Cập nhật thất bại');
+            toast.error(error.response?.data?.message || 'Cập nhật thất bại');
         } finally {
             setLoadingSubmit(false);
         }
@@ -109,10 +110,10 @@ const ProfilePage: React.FC = () => {
                 oldPassword: values.oldPassword,
                 newPassword: values.newPassword,
             });
-            message.success('Đổi mật khẩu thành công!');
+            toast.success('Đổi mật khẩu thành công!');
             formPassword.resetFields(); 
         } catch (error: any) {
-            message.error(error.response?.data?.message || 'Mật khẩu cũ không chính xác');
+            toast.error(error.response?.data?.message || 'Mật khẩu cũ không chính xác');
         } finally {
             setLoadingSubmit(false);
         }

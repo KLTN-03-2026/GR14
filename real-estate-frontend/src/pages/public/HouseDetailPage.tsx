@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { HeartOutlined, HeartFilled, CalendarOutlined } from '@ant-design/icons';
 import { houseApi, recommendationApi } from '@/api';
+import { PROPERTY_STATUS, PROPERTY_STATUS_LABELS } from '@/constants';
 import { useFavorites } from '@/context/FavoritesContext';
 import { Loading } from '@/components/common';
 import { formatCurrency, formatArea, getFullAddress, formatDateTime } from '@/utils';
@@ -14,6 +15,13 @@ const getImages = (house: House): string[] => {
     return house.images.map((img: any) =>
         typeof img === 'string' ? img : img.url ?? ''
     ).filter(Boolean);
+};
+
+const getPropertyStatusTagClass = (status: number): string => {
+    if (status === PROPERTY_STATUS.SOLD) {
+        return 'bg-red-50 text-red-700 border-red-200';
+    }
+    return 'bg-emerald-50 text-emerald-700 border-emerald-200';
 };
 
 /* ── Lightbox Modal ──────────────────────────────────────────────────── */
@@ -148,7 +156,6 @@ interface GalleryProps {
 
 const Gallery: React.FC<GalleryProps> = ({ images, title }) => {
     const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-
     const openLightbox = (index: number) => setLightboxIndex(index);
     const closeLightbox = () => setLightboxIndex(null);
 
@@ -388,14 +395,12 @@ const HouseDetailPage: React.FC = () => {
             const isFav = isFavoritedHouse(house!.id);
             if (isFav) {
                 await removeFavoritedHouse(house!.id);
-                message.success('Đã bỏ yêu thích');
+                toast.success('Đã bỏ yêu thích');
             } else {
                 await addHouseFavorite(house!.id);
-                message.success('Đã thêm vào yêu thích');
+                toast.success('Đã thêm vào yêu thích');
                 recommendationApi.trackBehavior({ action: 'save', houseId: house!.id }).catch(() => { });
             }
-            setIsFavorited(!isFavorited);
-            toast.success(isFavorited ? 'Đã bỏ yêu thích' : 'Đã thêm vào yêu thích');
         } catch {
             toast.error('Có lỗi xảy ra');
         }
@@ -406,6 +411,8 @@ const HouseDetailPage: React.FC = () => {
 
     const images = getImages(house);
     const fullAddress = getFullAddress(house);
+    const houseStatusLabel = PROPERTY_STATUS_LABELS[house.status] || 'Không xác định';
+    const houseStatusTagClass = getPropertyStatusTagClass(house.status);
 
     return (
         <div className="w-full bg-white pb-20">
@@ -492,12 +499,22 @@ const HouseDetailPage: React.FC = () => {
                                     <tr className="border-b border-gray-100">
                                         <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Hướng</td>
                                         <td className="px-4 py-3 text-[#1a1a1a]">{house.direction || 'Chưa cập nhật'}</td>
+                                        <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Trạng thái</td>
+                                        <td className="px-4 py-3 text-[#1a1a1a]">
+                                            <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[12px] font-semibold ${houseStatusTagClass}`}>
+                                                {houseStatusLabel}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    <tr className="border-b border-gray-100">
                                         <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Danh mục</td>
                                         <td className="px-4 py-3 text-[#1a1a1a]">{house.category?.name || 'Chưa cập nhật'}</td>
+                                        <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Ngày đăng</td>
+                                        <td className="px-4 py-3 text-[#1a1a1a]">{formatDateTime(house.createdAt)}</td>
                                     </tr>
                                     <tr>
-                                        <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Ngày đăng</td>
-                                        <td className="px-4 py-3 text-[#1a1a1a]" colSpan={3}>{formatDateTime(house.createdAt)}</td>
+                                        <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Cập nhật</td>
+                                        <td className="px-4 py-3 text-[#1a1a1a]" colSpan={3}>{formatDateTime(house.updatedAt)}</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -537,6 +554,12 @@ const HouseDetailPage: React.FC = () => {
                                 {formatCurrency(house.price)}
                             </p>
 
+                            <div className="mb-5 flex justify-center">
+                                <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold ${houseStatusTagClass}`}>
+                                    Trạng thái: {houseStatusLabel}
+                                </span>
+                            </div>
+
                             {/* Nút Yêu thích */}
                             <button
                                 onClick={handleFavorite}
@@ -549,14 +572,21 @@ const HouseDetailPage: React.FC = () => {
                                 {isFavoritedHouse(house.id) ? 'Đã yêu thích' : 'Yêu thích'}
                             </button>
 
-                            {/* Nút Đặt lịch hẹn */}
-                            <button
-                                onClick={() => navigate(`/appointment?houseId=${house.id}`)}
-                                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-[#254b86] text-white text-[14px] font-semibold hover:bg-[#1a3660] transition-colors duration-200"
-                            >
-                                <CalendarOutlined className="text-[15px]" />
-                                Đặt Lịch Hẹn
-                            </button>
+                            {/* Nút Đặt lịch hẹn — ẩn nếu nhà đã bán */}
+                            {house.status === PROPERTY_STATUS.SOLD ? (
+                                <div className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-gray-100 text-gray-400 text-[14px] font-semibold border border-gray-200 cursor-not-allowed select-none">
+                                    <CalendarOutlined className="text-[15px]" />
+                                    Nhà đã được bán
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={() => navigate(`/appointment?houseId=${house.id}`)}
+                                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-[#254b86] text-white text-[14px] font-semibold hover:bg-[#1a3660] transition-colors duration-200"
+                                >
+                                    <CalendarOutlined className="text-[15px]" />
+                                    Đặt Lịch Hẹn
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>

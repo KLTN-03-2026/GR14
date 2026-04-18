@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Row, Col, Typography, Button, Card, Tag } from 'antd';
+import { Row, Col, Typography, Button } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { featuredApi, recommendationApi } from '@/api';
 import { PropertyCard } from '@/components/common';
 import { useAuthStore } from '@/stores/authStore';
-import { formatCurrency, formatArea, formatDate, getFullAddress } from '@/utils';
+import { formatCurrency, formatArea, getFullAddress } from '@/utils';
 import type { House, Land, AIRecommendation, Post } from '@/types';
 import banner1 from '@/assets/ABbn1.jpg';
 import banner2 from '@/assets/ABbn2.jpg';
@@ -13,21 +13,13 @@ import danang from '@/assets/danang.png';
 import hanoi from '@/assets/hanoi.jpg';
 import cantho from '@/assets/cantho.jpeg';
 import binhduong from '@/assets/binhduong.jpg';
+import tphcm from '@/assets/tphcm.jpg';
+import bdsBan from '@/assets/bdsBan.png';
+import bdsThue from '@/assets/bdsThue.png';
+import duan from '@/assets/duan.png';
+import wikibds from '@/assets/wikiBds.png';
 
-const { Title, Paragraph } = Typography;
-
-const toPlainText = (value?: string) => {
-    if (!value) return '';
-
-    return value
-        .replace(/<[^>]*>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/\s+/g, ' ')
-        .trim();
-};
+const { Title } = Typography;
 
 const HomePage: React.FC = () => {
     const navigate = useNavigate();
@@ -508,7 +500,7 @@ const HomePage: React.FC = () => {
                 <div className="grid grid-cols-4 gap-4">
                     {/* Big card */}
                     <div className="col-span-2 row-span-2 relative rounded-xl overflow-hidden group cursor-pointer sr-reveal" style={{ '--sr-delay': '100ms' } as React.CSSProperties}>
-                        <img src="/src/assets/tphcm.jpg" className="w-full h-full object-cover group-hover:scale-105 transition" />
+                        <img src={tphcm} className="w-full h-full object-cover group-hover:scale-105 transition" />
                         <div className="absolute inset-0 bg-black/40" />
                         <div className="absolute bottom-4 left-4 text-white">
                             <h3 className="text-xl font-semibold">TP Hồ Chí Minh</h3>
@@ -570,66 +562,121 @@ const HomePage: React.FC = () => {
             </div>
 
             {/* ================= FEATURED POSTS ================= */}
-            <div style={{ maxWidth: 1200, margin: '0 auto 48px', padding: '0 24px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-                    <Title level={2}>Bài viết nổi bật</Title>
-                    <Button type="link" onClick={() => navigate('/posts')}>
+            <div className="sr-reveal" style={{ maxWidth: 1200, margin: '0 auto 48px', padding: '0 24px' }}>
+                {/* Header */}
+                <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-[10px] flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #f97316, #eab308)' }}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
+                                <path d="M12 2L13.5 8.5L20 7L15.5 12L20 17L13.5 15.5L12 22L10.5 15.5L4 17L8.5 12L4 7L10.5 8.5L12 2Z" />
+                            </svg>
+                        </div>
+                        <h2 className="text-[22px] font-bold text-[#1a1a1a] m-0 leading-none">Bài viết nổi bật</h2>
+                        <span className="text-[10px] font-bold tracking-wide uppercase text-orange-600 bg-orange-50 border border-orange-200 rounded-full px-2.5 py-[3px]">
+                            {featuredPosts.length} bài
+                        </span>
+                    </div>
+                    <button
+                        onClick={() => navigate('/posts')}
+                        className="text-[13px] font-semibold text-[#254b86] hover:underline bg-transparent border-none cursor-pointer"
+                    >
                         Xem tất cả →
-                    </Button>
+                    </button>
                 </div>
-                <Row gutter={[16, 16]}>
-                    {featuredPosts.map((post) => (
-                        <Col xs={24} sm={12} lg={6} key={post.id}>
-                            <Card
-                                hoverable
-                                onClick={() => navigate(`/posts/${post.id}`)}
-                                style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
-                                bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column' }}
-                                cover={
-                                    <img
-                                        src={post.images?.[0]?.url || 'https://via.placeholder.com/600x400?text=No+Image'}
-                                        alt={post.title}
-                                        style={{ height: 220, objectFit: 'cover' }}
-                                    />
-                                }
-                            >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                                    <Tag color="gold">VIP</Tag>
-                                    <Tag color="blue">{formatDate(post.postedAt || post.createdAt)}</Tag>
+                <div className="h-[3px] rounded-sm mb-6" style={{ background: 'linear-gradient(90deg, #f97316 0%, #eab308 40%, transparent 100%)' }} />
+
+                {featuredPosts.length === 0 ? (
+                    <div className="text-center py-10 text-gray-400 text-sm">Chưa có bài viết VIP nổi bật.</div>
+                ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+                        {featuredPosts.map((post, idx) => {
+                            const imgSrc = post.images?.[0]?.url || 'https://placehold.co/600x400?text=No+Image';
+                            const location = [post.district, post.city].filter(Boolean).join(', ');
+                            const formatPostPrice = (v?: number) => {
+                                if (!v) return 'Liên hệ';
+                                if (v >= 1e9) return (v / 1e9).toFixed(1).replace(/\.0$/, '') + ' tỷ';
+                                if (v >= 1e6) return (v / 1e6).toFixed(0) + ' triệu';
+                                return v.toLocaleString('vi-VN') + ' đ';
+                            };
+                            return (
+                                <div
+                                    key={post.id}
+                                    className="sr-reveal"
+                                    style={{ padding: '2px', borderRadius: '24px 0 24px 0', background: 'linear-gradient(135deg, #f97316, #eab308)', '--sr-delay': `${idx * 80}ms` } as React.CSSProperties}
+                                >
+                                    <div
+                                        className="bg-white flex flex-col cursor-pointer group hover:shadow-lg transition-shadow duration-300 overflow-hidden"
+                                        style={{ borderRadius: '22px 0 22px 0' }}
+                                        onClick={() => navigate(`/posts/${post.id}`)}
+                                    >
+                                        {/* Image */}
+                                        <div className="relative overflow-hidden" style={{ height: 200, borderRadius: '22px 0 0 0' }}>
+                                            <img
+                                                src={imgSrc}
+                                                alt={post.title}
+                                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                                style={{ borderRadius: '22px 0 0 0' }}
+                                            />
+                                            {/* VIP badge */}
+                                            <div className="absolute top-3 right-3">
+                                                <span className="text-white text-[11px] font-extrabold px-2.5 py-1 rounded shadow-md tracking-wide" style={{ background: 'linear-gradient(135deg, #f97316, #eab308)' }}>
+                                                    ⭐ VIP
+                                                </span>
+                                            </div>
+                                            {/* Price overlay */}
+                                            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-3 py-2.5">
+                                                <span className="text-white font-bold text-sm">{formatPostPrice(post.price)}</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Body */}
+                                        <div className="p-4 flex flex-col gap-2.5 flex-1">
+                                            <h3 className="text-[14px] font-bold text-[#1a1a1a] leading-snug line-clamp-2 min-h-[40px] m-0 group-hover:text-orange-600 transition-colors">
+                                                {post.title}
+                                            </h3>
+
+                                            {location && (
+                                                <div className="flex items-center gap-1.5 text-[12px] text-gray-500">
+                                                    <svg className="shrink-0" width="12" height="12" viewBox="0 0 20 20" fill="#254b86">
+                                                        <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+                                                    </svg>
+                                                    <span className="line-clamp-1">{location}</span>
+                                                </div>
+                                            )}
+
+                                            {(post as any).area && (
+                                                <div className="text-[12px] text-gray-600">
+                                                    Diện tích: <span className="font-semibold text-[#1a1a1a]">{(post as any).area} m²</span>
+                                                </div>
+                                            )}
+
+                                            {/* Footer */}
+                                            <div className="flex items-center justify-between mt-auto pt-3 border-t border-gray-100">
+                                                <span className="text-[13px] font-bold text-[#254b86]">{formatPostPrice(post.price)}</span>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); navigate(`/posts/${post.id}`); }}
+                                                    className="px-3.5 py-1.5 bg-[#254b86] text-white border border-[#254b86] text-[12px] font-semibold rounded-lg hover:bg-white hover:text-[#254b86] transition-all duration-200 whitespace-nowrap"
+                                                >
+                                                    Xem chi tiết
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-
-                                <Title level={4} ellipsis={{ rows: 2 }} style={{ marginBottom: 8, minHeight: 64 }}>
-                                    {post.title}
-                                </Title>
-
-                                <Paragraph ellipsis={{ rows: 4 }} style={{ marginBottom: 0, minHeight: 88 }}>
-                                    {toPlainText(post.description)}
-                                </Paragraph>
-                            </Card>
-                        </Col>
-                    ))}
-
-                    {featuredPosts.length === 0 && (
-                        <Col span={24}>
-                            <Card>
-                                <Paragraph style={{ margin: 0, textAlign: 'center', color: '#888' }}>
-                                    Chưa có bài viết VIP nổi bật.
-                                </Paragraph>
-                            </Card>
-                        </Col>
-                    )}
-
-                </Row>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
 
             {/* ================= INFO SECTION ================= */}
             <div className="bg-gray-50 py-20 px-4">
                 <div className="max-w-[1200px] mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
                     {[
-                        { img: '/src/assets/bdsBan.png', title: 'Bất động sản bán', desc: 'Bạn có thể tìm thấy ngôi nhà mơ ước hoặc cơ hội đầu tư hấp dẫn thông qua lượng tin rao lớn, uy tín.' },
-                        { img: '/src/assets/bdsThue.png', title: 'Bất động sản cho thuê', desc: 'Cập nhật thường xuyên các loại hình bất động sản cho thuê như nhà riêng, chung cư, văn phòng.' },
-                        { img: '/src/assets/duan.png', title: 'Đánh giá dự án', desc: 'Các video và bài viết đánh giá giúp bạn có góc nhìn khách quan trước khi đầu tư.' },
-                        { img: '/src/assets/wikibds.png', title: 'Wiki BĐS', desc: 'Cung cấp kiến thức, kinh nghiệm mua bán, đầu tư bất động sản và thông tin hữu ích.' },
+                        { img: bdsBan, title: 'Bất động sản bán', desc: 'Bạn có thể tìm thấy ngôi nhà mơ ước hoặc cơ hội đầu tư hấp dẫn thông qua lượng tin rao lớn, uy tín.' },
+                        { img: bdsThue, title: 'Bất động sản cho thuê', desc: 'Cập nhật thường xuyên các loại hình bất động sản cho thuê như nhà riêng, chung cư, văn phòng.' },
+                        { img: duan, title: 'Đánh giá dự án', desc: 'Các video và bài viết đánh giá giúp bạn có góc nhìn khách quan trước khi đầu tư.' },
+                        { img: wikibds, title: 'Wiki BĐS', desc: 'Cung cấp kiến thức, kinh nghiệm mua bán, đầu tư bất động sản và thông tin hữu ích.' },
                     ].map((item, index) => (
                         <div key={index} className="bg-white rounded-2xl p-6 shadow-sm hover:shadow-xl transition-all duration-300 text-center group">
                             <div className="w-[150px] h-[150px] mx-auto mb-5 flex items-center justify-center bg-blue-50 rounded-xl group-hover:bg-blue-100 transition">

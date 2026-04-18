@@ -1,7 +1,17 @@
 import {
-    Controller, Get, Post, Put, Delete,
-    Param, Body, Query, UseGuards, ParseIntPipe,
-    UploadedFiles, UseInterceptors,
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Param,
+  Body,
+  Query,
+  UseGuards,
+  ParseIntPipe,
+  UploadedFiles,
+  UseInterceptors,
+  Req,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { FilesInterceptor } from '@nestjs/platform-express';
@@ -13,57 +23,98 @@ import { Multer } from 'multer';
 
 @Controller('lands')
 export class LandController {
-    constructor(private readonly landService: LandService) { }
+  constructor(private readonly landService: LandService) { }
 
-    @Get()
-    findAll(
-        @Query('page') page = 1,
-        @Query('limit') limit = 10,
-        @Query('search') search?: string,
-        @Query('status') status?: string,
-    ) {
-        const parsedStatus = status ? Number(status) : undefined;
-        if (search) return this.landService.search(search, +page, +limit, parsedStatus);
-        return this.landService.findAll(+page, +limit, parsedStatus);
-    }
+  @Get()
+  findAll(
+    @Query('page') page = 1,
+    @Query('limit') limit = 10,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('categoryId') categoryId?: string,
+  ) {
+    const parsedStatus = status ? Number(status) : undefined;
+    const parsedCategoryId =
+      categoryId !== undefined && categoryId !== ''
+        ? Number(categoryId)
+        : undefined;
 
-    @Get('search')
-    search(@Query('q') query: string, @Query('page') page = 1, @Query('limit') limit = 10) {
-        return this.landService.search(query, +page, +limit);
-    }
+    if (search)
+      return this.landService.search(
+        search,
+        +page,
+        +limit,
+        parsedStatus,
+        parsedCategoryId,
+      );
 
-    @Get(':id')
-    findById(@Param('id', ParseIntPipe) id: number) {
-        return this.landService.findById(id);
-    }
+    return this.landService.findAll(
+      +page,
+      +limit,
+      parsedStatus,
+      parsedCategoryId,
+    );
+  }
 
-    @Post()
-    @UseGuards(AuthGuard('jwt'), RolesGuard)
-    @Roles('ADMIN', 'EMPLOYEE')
-    @UseInterceptors(FilesInterceptor('images', 10))
-    create(
-        @Body() dto: CreateLandDto,
-        @UploadedFiles() files: Express.Multer.File[],
-    ) {
-        return this.landService.create(dto, files);
-    }
+  @Get('search')
+  search(
+    @Query('q') query: string,
+    @Query('page') page = 1,
+    @Query('limit') limit = 10,
+  ) {
+    return this.landService.search(query, +page, +limit);
+  }
 
-    @Put(':id')
-    @UseGuards(AuthGuard('jwt'), RolesGuard)
-    @Roles('ADMIN', 'EMPLOYEE')
-    @UseInterceptors(FilesInterceptor('images', 10))
-    update(
-        @Param('id', ParseIntPipe) id: number,
-        @Body() dto: UpdateLandDto,
-        @UploadedFiles() files: Express.Multer.File[],
-    ) {
-        return this.landService.update(id, dto, files);
-    }
+  @Get('me/assigned')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('EMPLOYEE')
+  findMyAssigned(
+    @Req() req: any,
+    @Query('page') page = 1,
+    @Query('limit') limit = 10,
+    @Query('status') status?: string,
+    @Query('categoryId') categoryId?: string,
+  ) {
+    const parsedStatus = status ? Number(status) : undefined;
+    const parsedCategoryId =
+      categoryId !== undefined && categoryId !== ''
+        ? Number(categoryId)
+        : undefined;
+    return this.landService.findMyAssigned(req.user.id, +page, +limit, parsedStatus, parsedCategoryId);
+  }
 
-    @Delete(':id')
-    @UseGuards(AuthGuard('jwt'), RolesGuard)
-    @Roles('ADMIN', 'EMPLOYEE')
-    delete(@Param('id', ParseIntPipe) id: number) {
-        return this.landService.delete(id);
-    }
+  @Get(':id')
+  findById(@Param('id', ParseIntPipe) id: number) {
+    return this.landService.findById(id);
+  }
+
+  @Post()
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'EMPLOYEE')
+  @UseInterceptors(FilesInterceptor('images', 10))
+  create(
+    @Body() dto: CreateLandDto,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    return this.landService.create(dto, files);
+  }
+
+  @Put(':id')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'EMPLOYEE')
+  @UseInterceptors(FilesInterceptor('images', 10))
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateLandDto,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    return this.landService.update(id, dto, files);
+  }
+
+  @Delete(':id')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'EMPLOYEE')
+  delete(@Param('id', ParseIntPipe) id: number) {
+    return this.landService.delete(id);
+  }
 }

@@ -4,7 +4,6 @@ import { DollarSign, CreditCard, TrendingUp, Users } from "lucide-react";
 import { analyticsApi } from "@/api/analytics";
 import { useAnalyticsContext } from "@/pages/admin/DashboardPage";
 import type {
-  TimeType,
   TimeSeriesPoint,
   SummaryKPI,
   GatewayRevenue,

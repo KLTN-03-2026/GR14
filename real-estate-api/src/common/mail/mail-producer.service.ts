@@ -24,16 +24,16 @@ import { ClientProxy } from '@nestjs/microservices';
  */
 @Injectable()
 export class MailProducerService {
-    constructor(
-        // 'MAIL_SERVICE' là token đăng ký trong ClientsModule (mail.module.ts)
-        @Inject('MAIL_SERVICE') private readonly client: ClientProxy,
-    ) { }
+  constructor(
+    // 'MAIL_SERVICE' là token đăng ký trong ClientsModule (mail.module.ts)
+    @Inject('MAIL_SERVICE') private readonly client: ClientProxy,
+  ) {}
 
-    /**
-     * Đẩy job gửi mail vào queue – NON-BLOCKING (fire-and-forget).
-     * Request hiện tại không phải chờ SMTP phản hồi.
-     */
-    sendMail(to: string, subject: string, html: string): void {
-        this.client.emit<void>('mail.send', { to, subject, html });
-    }
+  /**
+   * Đẩy job gửi mail vào queue – NON-BLOCKING (fire-and-forget).
+   * Request hiện tại không phải chờ SMTP phản hồi.
+   */
+  sendMail(to: string, subject: string, html: string): void {
+    this.client.emit<void>('mail.send', { to, subject, html });
+  }
 }

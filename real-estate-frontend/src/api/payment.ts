@@ -13,13 +13,18 @@ export const paymentApi = {
     createPayment: (data: CreatePaymentRequest) =>
         apiClient.post('/payment/create', data),
 
+    /** Lấy payment của user hiện tại (dùng cho trang cá nhân) */
     getMyPayments: (params?: Record<string, unknown>) =>
         apiClient.get('/payment/my', { params }),
+
+    /** Lấy toàn bộ payment trong hệ thống – chỉ ADMIN (dùng cho admin panel) */
+    getAllPayments: (params?: Record<string, unknown>) =>
+        apiClient.get('/payment/admin/all', { params }),
 
     getPaymentById: (id: number) =>
         apiClient.get(`/payment/${id}`),
 
-    // Mock/Test
+    // Mock/Test – backend đã guard @Roles('ADMIN')
     simulateSuccess: (paymentId: number) =>
         apiClient.post(`/payment/${paymentId}/simulate-success`),
 
@@ -30,6 +35,9 @@ export const paymentApi = {
     cancelSubscription: (id: number) =>
         apiClient.post(`/vip-packages/subscriptions/${id}/cancel`),
 
-    verifyVNPayReturn: (queryString: string) => 
+    verifyVNPayReturn: (queryString: string) =>
         apiClient.get(`/payment/vnpay-return${queryString}`),
+
+    getPostVipPackages: () =>
+        apiClient.get('/vip-packages', { params: { type: 'post', limit: 100 } }),
 };

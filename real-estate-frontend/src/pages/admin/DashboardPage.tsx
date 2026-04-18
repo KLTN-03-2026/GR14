@@ -737,8 +737,8 @@ const DashboardPage: React.FC = () => {
           houseApi.getAll({ limit: 1 }),
           landApi.getAll({ limit: 1 }),
           userApi.getAll({ limit: 1 }),
-          appointmentApi.getAll(),
-          postApi.getAll(),
+          appointmentApi.getAll({ limit: 1 } as any),
+          postApi.getAll({ limit: 1 } as any),
         ]);
 
       setStats({
@@ -756,12 +756,11 @@ const DashboardPage: React.FC = () => {
             : 0,
         appointments:
           appointmentsRes.status === "fulfilled"
-            ? (appointmentsRes.value.data.data || appointmentsRes.value.data)
-                ?.length || 0
+            ? appointmentsRes.value.data.totalItems || 0
             : 0,
         posts:
           postsRes.status === "fulfilled"
-            ? (postsRes.value.data.data || postsRes.value.data)?.length || 0
+            ? postsRes.value.data.totalItems || 0
             : 0,
       });
     } catch (error) {

@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
-import { landApi } from '@/api';
+import { landApi, propertyCategoryApi } from '@/api';
 import { formatCurrency, formatArea } from '@/utils';
-import type { Land } from '@/types';
+import type { Land, PropertyCategory } from '@/types';
+import { useAuthStore } from '@/stores/authStore';
 import { DEFAULT_PAGE_SIZE } from '@/constants';
 import { Button, Badge, DataTable, ImageLightbox } from '@/components/ui';
 import Modal from '@/components/ui/Modal';
 import LoadingOverlay from '@/components/ui/LoadingOverlay';
+import DetailDrawer from '@/components/ui/DetailDrawer';
+import LandDetailPanel from '@/components/common/LandDetailPanel';
 import type { Column } from '@/components/ui';
 
 const LandManagementPage: React.FC = () => {
@@ -15,12 +18,16 @@ const LandManagementPage: React.FC = () => {
     const SOLD_STATUS = 0;
 
     const navigate = useNavigate();
+    const { hasRole } = useAuthStore();
+    const isEmployee = hasRole('EMPLOYEE');
     const [lands, setLands] = useState<Land[]>([]);
     const [loading, setLoading] = useState(false);
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(1);
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState<number>(ACTIVE_STATUS);
+    const [categoryFilter, setCategoryFilter] = useState<string>('');
+    const [categories, setCategories] = useState<PropertyCategory[]>([]);
     const [activeCount, setActiveCount] = useState(0);
     const [soldCount, setSoldCount] = useState(0);
     const [previewOpen, setPreviewOpen] = useState(false);
@@ -29,6 +36,18 @@ const LandManagementPage: React.FC = () => {
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState<Land | null>(null);
     const [deleting, setDeleting] = useState(false);
+    const [detailItem, setDetailItem] = useState<Land | null>(null);
+
+    const landCategories = categories.filter((c) => c.categoryType === 'LAND');
+
+    const loadCategories = useCallback(async () => {
+        try {
+            const res = await propertyCategoryApi.getAll();
+            setCategories(res.data.data || res.data);
+        } catch {
+            toast.error('Lỗi tải danh mục');
+        }
+    }, []);
 
     const loadLands = useCallback(async () => {
         setLoading(true);
@@ -39,17 +58,21 @@ const LandManagementPage: React.FC = () => {
                 status: statusFilter,
             };
             if (search) listParams.search = search;
+            if (categoryFilter) listParams.categoryId = Number(categoryFilter);
 
             const countParams = (status: number): Record<string, unknown> => {
                 const params: Record<string, unknown> = { page: 1, limit: 1, status };
                 if (search) params.search = search;
+                if (categoryFilter) params.categoryId = Number(categoryFilter);
                 return params;
             };
 
+            const fetchMethod = isEmployee ? landApi.getMyLands : landApi.getAll;
+
             const [listRes, activeRes, soldRes] = await Promise.all([
-                landApi.getAll(listParams),
-                landApi.getAll(countParams(ACTIVE_STATUS)),
-                landApi.getAll(countParams(SOLD_STATUS)),
+                fetchMethod(listParams),
+                fetchMethod(countParams(ACTIVE_STATUS)),
+                fetchMethod(countParams(SOLD_STATUS)),
             ]);
 
             const data = listRes.data;
@@ -70,7 +93,11 @@ const LandManagementPage: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [page, search, statusFilter]);
+    }, [page, search, statusFilter, categoryFilter]);
+
+    useEffect(() => {
+        loadCategories();
+    }, [loadCategories]);
 
     useEffect(() => {
         loadLands();
@@ -107,7 +134,8 @@ const LandManagementPage: React.FC = () => {
                             src={images[0].url}
                             alt=""
                             className="w-[60px] h-[50px] object-cover rounded cursor-zoom-in"
-                            onClick={() => {
+                            onClick={(e) => {
+                                e.stopPropagation();
                                 setPreviewImages(images.map((img) => img.url));
                                 setPreviewIndex(0);
                                 setPreviewOpen(true);
@@ -156,9 +184,9 @@ const LandManagementPage: React.FC = () => {
             render: (area: number) => formatArea(area),
         },
         {
-            title: 'Loại đất',
-            dataIndex: 'landType',
-            key: 'landType',
+            title: 'Danh mục',
+            key: 'category',
+            render: (_: unknown, record: Land) => record.category?.name || '—',
         },
         {
             title: 'Trạng thái',
@@ -175,7 +203,7 @@ const LandManagementPage: React.FC = () => {
             key: 'action',
             width: 200,
             render: (_: unknown, record: Land) => (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                     <Button
                         size="sm"
                         variant="outline"
@@ -246,14 +274,31 @@ const LandManagementPage: React.FC = () => {
                         Đã bán ({soldCount})
                     </button>
                 </div>
-                <div className="w-full min-w-0 sm:max-w-[400px]">
-                    <input
-                        type="text"
-                        placeholder="Tìm kiếm..."
-                        className="admin-control admin-filter-input w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                        value={search}
-                        onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                    />
+                <div className="flex flex-col sm:flex-row gap-3 w-full min-w-0">
+                    <div className="w-full sm:max-w-[220px]">
+                        <select
+                            className="admin-control admin-filter-input h-10 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-[13px] text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                            value={categoryFilter}
+                            onChange={(e) => {
+                                setCategoryFilter(e.target.value);
+                                setPage(1);
+                            }}
+                        >
+                            <option value="">Tất cả danh mục</option>
+                            {landCategories.map((category) => (
+                                <option key={category.id} value={String(category.id)}>{category.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="w-full sm:max-w-[400px]">
+                        <input
+                            type="text"
+                            placeholder="Tìm kiếm..."
+                            className="admin-control admin-filter-input w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                            value={search}
+                            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                        />
+                    </div>
                 </div>
             </div>
 
@@ -264,6 +309,7 @@ const LandManagementPage: React.FC = () => {
                         dataSource={lands}
                         rowKey="id"
                         loading={loading}
+                        onRow={(record) => ({ onClick: () => setDetailItem(record) })}
                         pagination={{
                             current: page,
                             total,
@@ -323,6 +369,14 @@ const LandManagementPage: React.FC = () => {
                 title="Đang xóa đất"
                 description="Vui lòng đợi hệ thống xử lý ảnh và dữ liệu..."
             />
+
+            <DetailDrawer
+                isOpen={!!detailItem}
+                onClose={() => setDetailItem(null)}
+                title={detailItem ? `Chi tiết: ${detailItem.title}` : 'Chi tiết đất'}
+            >
+                {detailItem && <LandDetailPanel land={detailItem} />}
+            </DetailDrawer>
         </div>
     );
 };

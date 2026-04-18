@@ -131,6 +131,9 @@ const WelcomeCard: React.FC<{ onChipClick: (text: string) => void; loading: bool
         </div>
     </div>
 );
+const generateFallbackId = () => {
+    return `session-${Date.now()}`;
+};
 
 /* ─── Main Widget ──────────────────────────────────────────────────────── */
 const ChatbotWidget: React.FC = () => {
@@ -149,7 +152,7 @@ const ChatbotWidget: React.FC = () => {
         const generated =
             typeof crypto !== 'undefined' && 'randomUUID' in crypto
                 ? crypto.randomUUID()
-                : `session-${Date.now()}`;
+                : generateFallbackId();
         localStorage.setItem(key, generated);
         return generated;
     }, []);

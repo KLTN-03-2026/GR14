@@ -1,8 +1,9 @@
-import { useEffect, useState, useCallback } from 'react';
+﻿import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { message } from 'antd';
+import toast from 'react-hot-toast';
 import { HeartOutlined, HeartFilled, CalendarOutlined } from '@ant-design/icons';
 import { landApi, recommendationApi } from '@/api';
+import { PROPERTY_STATUS, PROPERTY_STATUS_LABELS } from '@/constants';
 import { useFavorites } from '@/context/FavoritesContext';
 import { Loading } from '@/components/common';
 import { formatCurrency, formatArea, getFullAddress, formatDateTime } from '@/utils';
@@ -15,6 +16,13 @@ const getImages = (land: Land): string[] => {
     return land.images.map((img: any) =>
         typeof img === 'string' ? img : img.url ?? ''
     ).filter(Boolean);
+};
+
+const getPropertyStatusTagClass = (status: number): string => {
+    if (status === PROPERTY_STATUS.SOLD) {
+        return 'bg-red-50 text-red-700 border-red-200';
+    }
+    return 'bg-emerald-50 text-emerald-700 border-emerald-200';
 };
 
 /* ── Lightbox Modal ──────────────────────────────────────────────────── */
@@ -369,7 +377,7 @@ const LandDetailPage: React.FC = () => {
             const res = await landApi.getById(landId);
             setLand(res.data.data || res.data);
         } catch {
-            message.error('Không tìm thấy bất động sản');
+            toast.error('Không tìm thấy bất động sản');
             navigate('/lands');
         } finally {
             setLoading(false);
@@ -378,7 +386,7 @@ const LandDetailPage: React.FC = () => {
 
     const handleFavorite = async () => {
         if (!isAuthenticated) {
-            message.warning('Vui lòng đăng nhập để yêu thích');
+            toast('Vui lòng đăng nhập để yêu thích');
             navigate('/login');
             return;
         }
@@ -386,14 +394,14 @@ const LandDetailPage: React.FC = () => {
             const isFav = isFavoritedLand(land!.id);
             if (isFav) {
                 await removeFavoritedLand(land!.id);
-                message.success('Đã bỏ yêu thích');
+                toast.success('Đã bỏ yêu thích');
             } else {
                 await addLandFavorite(land!.id);
-                message.success('Đã thêm vào yêu thích');
+                toast.success('Đã thêm vào yêu thích');
                 recommendationApi.trackBehavior({ action: 'save', landId: land!.id }).catch(() => { });
             }
         } catch {
-            message.error('Có lỗi xảy ra');
+            toast.error('Có lỗi xảy ra');
         }
     };
 
@@ -402,6 +410,8 @@ const LandDetailPage: React.FC = () => {
 
     const images = getImages(land);
     const fullAddress = getFullAddress(land);
+    const landStatusLabel = PROPERTY_STATUS_LABELS[land.status] || 'Không xác định';
+    const landStatusTagClass = getPropertyStatusTagClass(land.status);
 
     return (
         <div className="w-full bg-white pb-20">
@@ -486,16 +496,24 @@ const LandDetailPage: React.FC = () => {
                                         <td className="px-4 py-3 text-[#1a1a1a]">{land.direction || 'Chưa cập nhật'}</td>
                                     </tr>
                                     <tr className="border-b border-gray-100">
-                                        <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Loại đất</td>
-                                        <td className="px-4 py-3 text-[#1a1a1a]">{land.landType || 'Chưa cập nhật'}</td>
-                                        <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Pháp lý</td>
-                                        <td className="px-4 py-3 text-[#1a1a1a]">{land.legalStatus || 'Chưa cập nhật'}</td>
-                                    </tr>
-                                    <tr>
+                                        <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Trạng thái</td>
+                                        <td className="px-4 py-3 text-[#1a1a1a]">
+                                            <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[12px] font-semibold ${landStatusTagClass}`}>
+                                                {landStatusLabel}
+                                            </span>
+                                        </td>
                                         <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Danh mục</td>
                                         <td className="px-4 py-3 text-[#1a1a1a]">{land.category?.name || 'Chưa cập nhật'}</td>
+                                    </tr>
+                                    <tr className="border-b border-gray-100">
+                                        <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Pháp lý</td>
+                                        <td className="px-4 py-3 text-[#1a1a1a]">{land.legalStatus || 'Chưa cập nhật'}</td>
                                         <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Ngày đăng</td>
                                         <td className="px-4 py-3 text-[#1a1a1a]">{formatDateTime(land.createdAt)}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="px-4 py-3 text-gray-500 bg-[#fafafa] font-medium">Cập nhật</td>
+                                        <td className="px-4 py-3 text-[#1a1a1a]" colSpan={3}>{formatDateTime(land.updatedAt)}</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -537,6 +555,12 @@ const LandDetailPage: React.FC = () => {
                             <p className="text-[22px] font-bold text-[#254b86] mb-5 text-center">
                                 {formatCurrency(land.price)}
                             </p>
+
+                            <div className="mb-5 flex justify-center">
+                                <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold ${landStatusTagClass}`}>
+                                    Trạng thái: {landStatusLabel}
+                                </span>
+                            </div>
 
                             {/* Nút Yêu thích */}
                             <button

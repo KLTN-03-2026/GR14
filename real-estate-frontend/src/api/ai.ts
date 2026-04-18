@@ -35,6 +35,35 @@ export interface ChatResponseData {
     suggestedQuestions?: string[];
 }
 
+export interface GenerateDescriptionPayload {
+    tone: 'polite' | 'friendly';
+    postType: string;
+    title: string;
+    city?: string;
+    district?: string;
+    ward?: string;
+    address?: string;
+    price?: number;
+    area?: number;
+    bedrooms?: number;
+    bathrooms?: number;
+    floors?: number;
+    frontWidth?: number;
+    landLength?: number;
+    landType?: string;
+    direction?: string;
+    legalStatus?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    minArea?: number;
+    maxArea?: number;
+    startDate?: string;
+    endDate?: string;
+    discountCode?: string;
+    contactPhone?: string;
+    contactLink?: string;
+}
+
 const N8N_CHAT_WEBHOOK_URL = import.meta.env.VITE_N8N_CHAT_WEBHOOK_URL || '/webhook/chat';
 
 const pickTrimmed = (obj: Record<string, unknown> | undefined, key: string): unknown => {
@@ -110,12 +139,15 @@ export const aiApi = {
             console.warn('n8n webhook unavailable, fallback to backend /ai/chat', error);
         }
 
-        // Fallback to backend direct endpoint if n8n is unavailable or schema is incomplete.
         const backendResponse = await apiClient.post('/ai/chat', {
             question,
             sessionId,
         });
 
         return normalizeChatPayload(backendResponse.data);
+    },
+    generateDescription: async (payload: GenerateDescriptionPayload): Promise<{ description: string }> => {
+        const response = await apiClient.post('/ai/generate-description', payload);
+        return response.data;
     },
 };

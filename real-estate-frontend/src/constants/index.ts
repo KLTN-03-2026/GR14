@@ -7,7 +7,7 @@ export const PROPERTY_STATUS = {
 
 export const PROPERTY_STATUS_LABELS: Record<number, string> = {
     0: 'Đã bán',
-    1: 'Hoạt động',
+    1: 'Đang bán',
 };
 
 export const APPOINTMENT_STATUS = {

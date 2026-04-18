@@ -1,48 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Input, Select, Empty } from 'antd';
+import { Empty } from 'antd';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { landApi, propertyCategoryApi } from '@/api';
-import { PropertyCard, Loading } from '@/components/common';
+import { PropertyCard, Loading, PropertyListingFilters } from '@/components/common';
 import { DEFAULT_PAGE_SIZE } from '@/constants';
+import { useVietnamAddress } from '@/hooks/UseAddressVN';
+import { buildProvinceCanonicalLookup, getLocalizedPropertyCategoryName, normalizeProvinceName, sortProvinceOptions } from '@/utils';
 import type { Land, PropertyCategory } from '@/types';
-
-
-const PROVINCES = [
-    'Hà Nội','TP. Hồ Chí Minh','Hải Phòng','Đà Nẵng','Cần Thơ','Huế',
-    'An Giang','Bắc Ninh','Cà Mau','Cao Bằng','Đắk Lắk','Điện Biên',
-    'Đồng Nai','Đồng Tháp','Gia Lai','Hà Tĩnh','Hưng Yên','Khánh Hòa',
-    'Lai Châu','Lâm Đồng','Lạng Sơn','Lào Cai','Nghệ An','Ninh Bình',
-    'Phú Thọ','Quảng Ngãi','Quảng Ninh','Quảng Trị','Sơn La','Tây Ninh',
-    'Thái Nguyên','Thanh Hóa','Tuyên Quang','Vĩnh Long',
-].map((p) => ({ label: p, value: p }));
-
-const PRICE_RANGES = [
-    { label: 'Dưới 1 tỷ', value: '0-1' },
-    { label: '1 - 2 tỷ',  value: '1-2' },
-    { label: '2 - 3 tỷ',  value: '2-3' },
-    { label: '3 - 5 tỷ',  value: '3-5' },
-    { label: '5 - 7 tỷ',  value: '5-7' },
-    { label: '7 - 10 tỷ', value: '7-10' },
-    { label: '10 - 20 tỷ',value: '10-20' },
-    { label: '20 - 50 tỷ',value: '20-50' },
-    { label: 'Trên 50 tỷ',value: '50-999' },
-];
-
-const AREA_RANGES = [
-    { label: 'Dưới 30 m²',   value: '0-30' },
-    { label: '30 - 50 m²',   value: '30-50' },
-    { label: '50 - 80 m²',   value: '50-80' },
-    { label: '80 - 100 m²',  value: '80-100' },
-    { label: '100 - 150 m²', value: '100-150' },
-    { label: '150 - 200 m²', value: '150-200' },
-    { label: '200 - 300 m²', value: '200-300' },
-    { label: '300 - 500 m²', value: '300-500' },
-    { label: 'Trên 500 m²',  value: '500-9999' },
-];
-
-const DIRECTIONS = [
-    'Đông','Tây','Nam','Bắc','Đông Bắc','Đông Nam','Tây Bắc','Tây Nam',
-].map((d) => ({ label: d, value: d }));
 
 
 interface CustomPaginationProps {
@@ -87,25 +51,34 @@ const LandListPage: React.FC = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
 
-    const [allLands, setAllLands]     = useState<Land[]>([]);
-    const [lands, setLands]           = useState<Land[]>([]);
+    const [allLands, setAllLands] = useState<Land[]>([]);
+    const [lands, setLands] = useState<Land[]>([]);
     const [categories, setCategories] = useState<PropertyCategory[]>([]);
-    const [loading, setLoading]       = useState(false);
-    const [total, setTotal]           = useState(0);
+    const [loading, setLoading] = useState(false);
+    const [total, setTotal] = useState(0);
+    const [provinceLookup, setProvinceLookup] = useState<Record<string, string>>({});
+    const { provinces } = useVietnamAddress();
+    const provinceOptions = sortProvinceOptions(provinces);
+    const landCategoryOptions = categories
+        .filter((category) => category.categoryType === 'LAND')
+        .map((category) => ({
+            label: getLocalizedPropertyCategoryName(category.code, category.name),
+            value: category.id,
+        }));
 
     const [filters, setFilters] = useState({
-        search:     searchParams.get('search')     || '',
+        search: searchParams.get('search') || '',
         categoryId: searchParams.get('categoryId') || undefined,
-        province:   searchParams.get('province')   || undefined,
+        province: searchParams.get('province') || undefined,
         priceRange: searchParams.get('priceRange') || undefined,
-        areaRange:  searchParams.get('areaRange')  || undefined,
-        direction:  searchParams.get('direction')  || undefined,
-        page:       Number(searchParams.get('page')) || 1,
-        limit:      DEFAULT_PAGE_SIZE,
+        areaRange: searchParams.get('areaRange') || undefined,
+        direction: searchParams.get('direction') || undefined,
+        page: Number(searchParams.get('page')) || 1,
+        limit: DEFAULT_PAGE_SIZE,
     });
 
     useEffect(() => { loadCategories(); fetchAllLands(); }, []);
-    useEffect(() => { applyFiltersAndPagination(); }, [filters, allLands]);
+    useEffect(() => { applyFiltersAndPagination(); }, [filters, allLands, provinceLookup]);
 
     const loadCategories = async () => {
         try {
@@ -123,6 +96,28 @@ const LandListPage: React.FC = () => {
         finally { setLoading(false); }
     };
 
+
+    useEffect(() => {
+        const provinceValues = allLands.flatMap((land: any) =>
+            [land.city, land.province].filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+        );
+
+        if (provinceValues.length === 0) {
+            setProvinceLookup({});
+            return;
+        }
+
+        let cancelled = false;
+        buildProvinceCanonicalLookup(provinceValues).then((lookup: Record<string, string>) => {
+            if (!cancelled) {
+                setProvinceLookup(lookup);
+            }
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [allLands]);
     const applyFiltersAndPagination = () => {
         let list = [...allLands];
         if (filters.search) {
@@ -134,8 +129,14 @@ const LandListPage: React.FC = () => {
             );
         }
         if (filters.categoryId) list = list.filter((l: any) => l.categoryId === Number(filters.categoryId));
-        if (filters.province)   list = list.filter((l: any) => l.city === filters.province || l.province === filters.province);
-        if (filters.direction)  list = list.filter((l: any) => l.direction === filters.direction);
+        if (filters.province) {
+            const selectedProvince = normalizeProvinceName(filters.province as string);
+            list = list.filter((l: any) =>
+                (l.city ? (provinceLookup[l.city] || normalizeProvinceName(l.city)) === selectedProvince : false) ||
+                (l.province ? (provinceLookup[l.province] || normalizeProvinceName(l.province)) === selectedProvince : false)
+            );
+        }
+        if (filters.direction) list = list.filter((l: any) => l.direction === filters.direction);
         if (filters.priceRange) {
             const [min, max] = filters.priceRange.split('-').map(Number);
             list = list.filter((l: any) => { const p = Number(l.price) || 0; return p >= min * 1e9 && p <= max * 1e9; });
@@ -172,18 +173,14 @@ const LandListPage: React.FC = () => {
                 <h1 className="text-[32px] font-bold text-[#1a1a1a] mb-8 tracking-tight">Danh Sách Nhà Đất</h1>
 
                 {/* Filter bar */}
-                <div className="flex flex-wrap lg:flex-nowrap items-center gap-2.5 mb-10">
-                    <Input
-                        className="h-[42px] flex-1 min-w-[160px] rounded-lg text-[14px] !border-[#d9d9d9] hover:!border-[#254b86] focus:!border-[#254b86]"
-                        placeholder="Tìm kiếm bất động sản" value={filters.search}
-                        onChange={(e) => handleFilterChange('search', e.target.value)} allowClear
-                    />
-                    <Select className="h-[42px] w-full lg:w-[120px] shrink-0" placeholder="Địa điểm"  allowClear value={filters.province}   onChange={(v) => handleFilterChange('province', v)}   options={PROVINCES} />
-                    <Select className="h-[42px] w-full lg:w-[120px] shrink-0" placeholder="Giá Bán"   allowClear value={filters.priceRange} onChange={(v) => handleFilterChange('priceRange', v)} options={PRICE_RANGES} />
-                    <Select className="h-[42px] w-full lg:w-[120px] shrink-0" placeholder="Diện Tích" allowClear value={filters.areaRange}  onChange={(v) => handleFilterChange('areaRange', v)}  options={AREA_RANGES} />
-                    <Select className="h-[42px] w-full lg:w-[110px] shrink-0" placeholder="Hướng"     allowClear value={filters.direction}  onChange={(v) => handleFilterChange('direction', v)}  options={DIRECTIONS} />
-                    <Select className="h-[42px] w-full lg:w-[100px] shrink-0" placeholder="Loại"      allowClear value={filters.categoryId} onChange={(v) => handleFilterChange('categoryId', v)} options={categories.map((c) => ({ label: c.name, value: c.id }))} />
-                </div>
+                <PropertyListingFilters
+                    values={filters}
+                    provinceOptions={provinceOptions}
+                    categoryOptions={landCategoryOptions}
+                    onChange={handleFilterChange}
+                    searchPlaceholder="Tìm kiếm bất động sản"
+                    categoryPlaceholder="Loại"
+                />
 
                 {/* Danh sách */}
                 {loading ? (
@@ -201,6 +198,7 @@ const LandListPage: React.FC = () => {
                     </>
                 )}
             </div>
+
         </div>
     );
 };

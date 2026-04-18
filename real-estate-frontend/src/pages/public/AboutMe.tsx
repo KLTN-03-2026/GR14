@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import banner1 from "../../assets/ABbn1.jpg";
 import banner2 from "../../assets/ABbn2.jpg";
@@ -9,26 +9,104 @@ import iconTienPhong from "../../assets/tamnhin.png";
 import iconTanTam from "../../assets/giatri.png";
 
 import anhCauChuyen from "../../assets/imggiatri.jpg";
-import anhSuMenh from "../../assets/imgtamnhin.png";
-import anhLienHe from "../../assets/imgmuctieu.png";
+
+const anhSuMenh =
+  "https://images.unsplash.com/photo-1486325212027-8081e485255e?w=800&q=80";
+const anhLienHe =
+  "https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=800&q=80";
 
 const slideImages = [banner1, banner2, banner3];
 
+
+function useScrollReveal(threshold = 0.15): {
+  ref: React.RefObject<HTMLDivElement | null>;
+  visible: boolean;
+} {
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+          observer.unobserve(el);
+        }
+      },
+      { threshold }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [threshold]);
+
+  return { ref, visible };
+}
+
+
+const baseTransition =
+  "transition-all duration-700 ease-out";
+
+const fromBottom = (visible: boolean) =>
+  `${baseTransition} ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
+  }`;
+
+const fromRight = (visible: boolean) =>
+  `${baseTransition} ${visible ? "opacity-100 translate-x-0" : "opacity-0 translate-x-16"
+  }`;
+
+const fromLeft = (visible: boolean) =>
+  `${baseTransition} ${visible ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-16"
+  }`;
+
+const fadeIn = (visible: boolean) =>
+  `${baseTransition} ${visible ? "opacity-100" : "opacity-0"}`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 const AboutMe = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
+
+  // Bóc tách biến để tránh lỗi "Cannot access refs during render"
+  const { ref: heroRef, visible: heroVisible } = useScrollReveal(0.1);
+
+  // --- Giá Trị Cốt Lõi ---
+  const { ref: coreTitleRef, visible: coreTitleVisible } = useScrollReveal(0.1);
+  const { ref: core1Ref, visible: core1Visible } = useScrollReveal(0.15);
+  const { ref: core2Ref, visible: core2Visible } = useScrollReveal(0.15);
+  const { ref: core3Ref, visible: core3Visible } = useScrollReveal(0.15);
+
+  // --- Câu Chuyện ---
+  const { ref: storyImgRef, visible: storyImgVisible } = useScrollReveal(0.15);
+  const { ref: storyTextRef, visible: storyTextVisible } = useScrollReveal(0.15);
+
+  // --- Sứ Mệnh ---
+  const { ref: missionTextRef, visible: missionTextVisible } = useScrollReveal(0.15);
+  const { ref: missionImgRef, visible: missionImgVisible } = useScrollReveal(0.15);
+
+  // --- Liên Hệ ---
+  const { ref: contactImgRef, visible: contactImgVisible } = useScrollReveal(0.15);
+  const { ref: contactFormRef, visible: contactFormVisible } = useScrollReveal(0.15);
 
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % slideImages.length);
     }, 3000);
-
     return () => clearInterval(interval);
   }, []);
 
   return (
     <div className="bg-white min-h-screen font-sans text-gray-800">
+
+      {/* ── Hero ── */}
       <div className="bg-gray-50 py-20 px-6">
-        <div className="max-w-7xl mx-auto text-center">
+        <div
+          ref={heroRef}
+          className={`max-w-7xl mx-auto text-center ${fromBottom(heroVisible)}`}
+        >
           <h1 className="text-5xl font-bold text-gray-900 mb-8">
             Về Chúng Tôi
           </h1>
@@ -45,22 +123,37 @@ const AboutMe = () => {
         </div>
       </div>
 
+      {/* ── Giá Trị Cốt Lõi ── */}
       <div className="max-w-7xl mx-auto py-24 px-6">
-        <h2 className="text-4xl font-bold text-center text-gray-900 mb-16">
-          Giá Trị Cốt Lõi
-        </h2>
+        <div ref={coreTitleRef} className={fadeIn(coreTitleVisible)}>
+          <h2 className="text-4xl font-bold text-center text-gray-900 mb-16">
+            Giá Trị Cốt Lõi
+          </h2>
+        </div>
+
         <div className="grid md:grid-cols-3 gap-12 text-center">
-          <div className="flex flex-col items-center">
+
+          {/* Card 1 */}
+          <div
+            ref={core1Ref}
+            style={{ transitionDelay: "0ms" }}
+            className={`flex flex-col items-center ${fromBottom(core1Visible)}`}
+          >
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-8 w-24 h-24 flex items-center justify-center">
               <img src={iconMinhBach} alt="Minh Bạch" className="w-12 h-12" />
             </div>
             <h3 className="text-2xl font-semibold mb-4 text-gray-900">Minh Bạch</h3>
             <p className="text-gray-600 leading-relaxed text-justify px-4">
-              Lấy sự trung thực làm nền tảng. Mọi quy trình tại Black’s City luôn rõ ràng, giúp bạn hoàn toàn an tâm trong từng quyết định đầu tư.
+              Lấy sự trung thực làm nền tảng. Mọi quy trình tại Black's City luôn rõ ràng, giúp bạn hoàn toàn an tâm trong từng quyết định đầu tư.
             </p>
           </div>
 
-          <div className="flex flex-col items-center">
+          {/* Card 2 */}
+          <div
+            ref={core2Ref}
+            style={{ transitionDelay: "150ms" }}
+            className={`flex flex-col items-center ${fromBottom(core2Visible)}`}
+          >
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-8 w-24 h-24 flex items-center justify-center">
               <img src={iconTienPhong} alt="Tiên Phong" className="w-12 h-12" />
             </div>
@@ -70,28 +163,45 @@ const AboutMe = () => {
             </p>
           </div>
 
-          <div className="flex flex-col items-center">
+          {/* Card 3 */}
+          <div
+            ref={core3Ref}
+            style={{ transitionDelay: "300ms" }}
+            className={`flex flex-col items-center ${fromBottom(core3Visible)}`}
+          >
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-8 w-24 h-24 flex items-center justify-center">
               <img src={iconTanTam} alt="Tận Tâm" className="w-12 h-12" />
             </div>
             <h3 className="text-2xl font-semibold mb-4 text-gray-900">Tận Tâm</h3>
             <p className="text-gray-600 leading-relaxed text-justify px-4">
-              Mỗi khách hàng là một cộng sự. Black’s City không chỉ bán bất động sản, mà còn đồng hành cùng bạn kiến tạo không gian sống bền vững.
+              Mỗi khách hàng là một cộng sự. Black's City không chỉ bán bất động sản, mà còn đồng hành cùng bạn kiến tạo không gian sống bền vững.
             </p>
           </div>
+
         </div>
       </div>
 
+      {/* ── Câu Chuyện Của Chúng Tôi ── */}
       <div className="bg-gray-50 py-24 px-6">
         <div className="max-w-7xl mx-auto grid md:grid-cols-2 gap-16 items-center">
-          <div className="rounded-3xl overflow-hidden shadow-md h-[400px]">
-            <img 
+
+          {/* Ảnh — fade bình thường */}
+          <div
+            ref={storyImgRef}
+            className={`rounded-3xl overflow-hidden shadow-md h-[400px] ${fadeIn(storyImgVisible)}`}
+          >
+            <img
               src={anhCauChuyen}
-              alt="Our Story" 
+              alt="Our Story"
               className="w-full h-full object-cover"
             />
           </div>
-          <div>
+
+          {/* Nội dung — trượt từ phải vào */}
+          <div
+            ref={storyTextRef}
+            className={fromRight(storyTextVisible)}
+          >
             <h2 className="text-4xl font-bold text-gray-900 mb-8">
               Câu Chuyện Của Chúng Tôi
             </h2>
@@ -104,12 +214,19 @@ const AboutMe = () => {
               </p>
             </div>
           </div>
+
         </div>
       </div>
 
+      {/* ── Sứ Mệnh ── */}
       <div className="max-w-7xl mx-auto py-24 px-6">
         <div className="grid md:grid-cols-2 gap-16 items-center">
-          <div>
+
+          {/* Nội dung — trượt từ trái vào */}
+          <div
+            ref={missionTextRef}
+            className={fromLeft(missionTextVisible)}
+          >
             <h2 className="text-4xl font-bold text-gray-900 mb-8">
               Sứ Mệnh
             </h2>
@@ -118,30 +235,47 @@ const AboutMe = () => {
                 Tại <span className="font-semibold text-gray-800">Black's City</span>, sứ mệnh của chúng tôi là trở thành người đồng hành công nghệ số một trong mọi hành trình bất động sản. Chúng tôi tận dụng trí tuệ nhân tạo (AI) để cung cấp những gợi ý chính xác và giải pháp tối ưu, giúp khách hàng hiện thực hóa giấc mơ về một không gian sống lý tưởng hoặc danh mục đầu tư sinh lời bền vững.
               </p>
               <p>
-                Chúng tôi không chỉ xây dựng các công trình hay nền tảng số  chúng tôi xây dựng niềm tin, sự an tâm và một tương lai thịnh vượng cho cộng đồng khách hàng thông qua sự minh bạch và tận tâm tuyệt đối.
+                Chúng tôi không chỉ xây dựng các công trình hay nền tảng số — chúng tôi xây dựng niềm tin, sự an tâm và một tương lai thịnh vượng cho cộng đồng khách hàng thông qua sự minh bạch và tận tâm tuyệt đối.
               </p>
             </div>
           </div>
-          <div className="rounded-3xl overflow-hidden shadow-md h-[400px]">
-            <img 
+
+          {/* Ảnh — fade bình thường */}
+          <div
+            ref={missionImgRef}
+            className={`rounded-3xl overflow-hidden shadow-md h-[400px] ${fadeIn(missionImgVisible)}`}
+          >
+            <img
               src={anhSuMenh}
-              alt="Our Mission" 
+              alt="Our Mission"
               className="w-full h-full object-cover"
             />
           </div>
+
         </div>
       </div>
 
+      {/* ── Liên Hệ ── */}
       <div className="bg-gray-50 py-24 px-6">
         <div className="max-w-7xl mx-auto grid md:grid-cols-2 gap-16 items-stretch">
-          <div className="rounded-3xl overflow-hidden shadow-md flex h-full">
-            <img 
+
+          {/* Ảnh — trượt từ trái vào */}
+          <div
+            ref={contactImgRef}
+            className={`rounded-3xl overflow-hidden shadow-md flex h-full ${fromLeft(contactImgVisible)}`}
+          >
+            <img
               src={anhLienHe}
-              alt="Contact" 
+              alt="Contact"
               className="w-full h-full object-cover"
             />
           </div>
-          <div className="bg-white p-12 rounded-3xl shadow-lg border border-gray-100 flex flex-col justify-center">
+
+          {/* Form — trượt từ phải vào, cùng lúc với ảnh */}
+          <div
+            ref={contactFormRef}
+            className={`bg-white p-12 rounded-3xl shadow-lg border border-gray-100 flex flex-col justify-center ${fromRight(contactFormVisible)}`}
+          >
             <div className="text-center mb-10">
               <h2 className="text-4xl font-bold text-gray-900 mb-3">Liên Hệ</h2>
               <p className="text-gray-600">Vui lòng để lại thông tin để nhận tư vấn chi tiết từ Black's City.</p>
@@ -164,8 +298,10 @@ const AboutMe = () => {
               </button>
             </form>
           </div>
+
         </div>
       </div>
+
     </div>
   );
 };

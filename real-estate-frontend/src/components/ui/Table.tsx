@@ -52,6 +52,7 @@ interface DataTableProps<T extends object> {
     dataSource: T[];
     rowKey: keyof T & string;
     loading?: boolean;
+    onRow?: (record: T) => { onClick?: () => void; style?: React.CSSProperties; className?: string };
     pagination?: {
         current: number;
         total: number;
@@ -66,6 +67,7 @@ export function DataTable<T extends object>({
     dataSource,
     rowKey,
     loading = false,
+    onRow,
     pagination,
 }: DataTableProps<T>) {
     const totalPages = pagination ? Math.ceil(pagination.total / pagination.pageSize) : 0;
@@ -127,8 +129,15 @@ export function DataTable<T extends object>({
                                 </td>
                             </tr>
                         ) : (
-                            dataSource.map((record, rowIdx) => (
-                                <tr key={record[rowKey] as React.Key} className="hover:bg-brand-25/40 transition-colors">
+                            dataSource.map((record, rowIdx) => {
+                                const rowProps = onRow?.(record) ?? {};
+                                return (
+                                <tr
+                                    key={record[rowKey] as React.Key}
+                                    className={`hover:bg-brand-25/40 transition-colors ${rowProps.onClick ? 'cursor-pointer' : ''} ${rowProps.className ?? ''}`}
+                                    style={rowProps.style}
+                                    onClick={rowProps.onClick}
+                                >
                                     {columns.map((col, colIdx) => {
                                         let cellContent: ReactNode | undefined;
                                         const dataIndex = col.dataIndex;
@@ -157,7 +166,8 @@ export function DataTable<T extends object>({
                                         );
                                     })}
                                 </tr>
-                            ))
+                                );
+                            })
                         )}
                     </tbody>
                 </table>

@@ -6,9 +6,9 @@ import { MailModule } from '../../common/mail/mail.module';
 import { AiModule } from '../ai/ai.module';
 
 @Module({
-    imports: [CloudinaryModule, MailModule, AiModule],
-    controllers: [PostController],
-    providers: [PostService],
-    exports: [PostService],
+  imports: [CloudinaryModule, MailModule, AiModule],
+  controllers: [PostController],
+  providers: [PostService],
+  exports: [PostService],
 })
-export class PostModule { }
+export class PostModule {}
