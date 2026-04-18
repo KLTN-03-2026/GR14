@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from 'react';
+﻿import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { message } from 'antd';
+import toast from 'react-hot-toast';
 import { HeartOutlined, HeartFilled, CalendarOutlined } from '@ant-design/icons';
 import { landApi, recommendationApi } from '@/api';
 import { PROPERTY_STATUS, PROPERTY_STATUS_LABELS } from '@/constants';
@@ -377,7 +377,7 @@ const LandDetailPage: React.FC = () => {
             const res = await landApi.getById(landId);
             setLand(res.data.data || res.data);
         } catch {
-            message.error('Không tìm thấy bất động sản');
+            toast.error('Không tìm thấy bất động sản');
             navigate('/lands');
         } finally {
             setLoading(false);
@@ -386,7 +386,7 @@ const LandDetailPage: React.FC = () => {
 
     const handleFavorite = async () => {
         if (!isAuthenticated) {
-            message.warning('Vui lòng đăng nhập để yêu thích');
+            toast('Vui lòng đăng nhập để yêu thích');
             navigate('/login');
             return;
         }
@@ -394,14 +394,14 @@ const LandDetailPage: React.FC = () => {
             const isFav = isFavoritedLand(land!.id);
             if (isFav) {
                 await removeFavoritedLand(land!.id);
-                message.success('Đã bỏ yêu thích');
+                toast.success('Đã bỏ yêu thích');
             } else {
                 await addLandFavorite(land!.id);
-                message.success('Đã thêm vào yêu thích');
+                toast.success('Đã thêm vào yêu thích');
                 recommendationApi.trackBehavior({ action: 'save', landId: land!.id }).catch(() => { });
             }
         } catch {
-            message.error('Có lỗi xảy ra');
+            toast.error('Có lỗi xảy ra');
         }
     };
 

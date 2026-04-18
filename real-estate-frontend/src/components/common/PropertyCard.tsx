@@ -1,7 +1,7 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Link } from "react-router-dom";
-import { message } from 'antd';
+import toast from 'react-hot-toast';
 import { HeartOutlined, HeartFilled, EnvironmentOutlined } from '@ant-design/icons';
 import { useAuthStore } from '@/stores/authStore';
 import { useFavorites } from '@/context/FavoritesContext';
@@ -67,7 +67,7 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ property, type = 'house' })
         e.preventDefault();
         e.stopPropagation();
         if (!isAuthenticated) {
-            message.warning('Vui lòng đăng nhập để yêu thích');
+            toast('Vui lòng đăng nhập để yêu thích');
             navigate('/login');
             return;
         }
@@ -78,17 +78,17 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ property, type = 'house' })
                 } else {
                     await removeFavoritedLand(property.id);
                 }
-                message.success('Đã bỏ yêu thích');
+                toast.success('Đã bỏ yêu thích');
             } else {
                 if (isHouse) {
                     await addHouseFavorite(property.id);
                 } else {
                     await addLandFavorite(property.id);
                 }
-                message.success('Đã thêm vào yêu thích');
+                toast.success('Đã thêm vào yêu thích');
             }
         } catch {
-            message.error('Có lỗi xảy ra');
+            toast.error('Có lỗi xảy ra');
         }
     };
 

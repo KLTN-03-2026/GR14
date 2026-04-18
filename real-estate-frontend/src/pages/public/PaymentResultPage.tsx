@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Spin, message } from 'antd';
+import { Button, Spin } from 'antd';
+import toast from 'react-hot-toast';
 import {
   CheckCircleOutlined,
   CalendarOutlined,
@@ -42,7 +43,7 @@ const PaymentSuccessPage = () => {
       }
     } catch {
       setError(true);
-      message.error('Không thể tải thông tin thanh toán');
+      toast.error('Không thể tải thông tin thanh toán');
     } finally {
       setLoading(false);
     }

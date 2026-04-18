@@ -154,11 +154,13 @@ export class VipPackageService {
   }
 
   private async ensureUniqueActivePriority(
+    packageType: string,
     priorityLevel: number,
     excludeId?: number,
   ) {
     const existed = await this.prisma.vipPackage.findFirst({
       where: {
+        packageType,
         priorityLevel,
         status: 1,
         ...(excludeId ? { id: { not: excludeId } } : {}),
@@ -180,6 +182,7 @@ export class VipPackageService {
     priorityLevel: number;
     price: number;
     features?: string | null;
+    packageType: string;
   }) {
     if (input.status !== 1) return;
 
@@ -218,6 +221,7 @@ export class VipPackageService {
     const activePackages = await this.prisma.vipPackage.findMany({
       where: {
         status: 1,
+        packageType: input.packageType,
         ...(input.id ? { id: { not: input.id } } : {}),
       },
       select: {
@@ -271,8 +275,10 @@ export class VipPackageService {
 
   async createPackage(dto: CreateVipPackageDto) {
     const nextStatus = dto.status ?? 1;
+    const pType = dto.packageType || 'POST_VIP';
+
     if (nextStatus === 1) {
-      await this.ensureUniqueActivePriority(dto.priorityLevel);
+      await this.ensureUniqueActivePriority(pType, dto.priorityLevel);
     }
 
     const normalizedFeatures = this.normalizeFeatures(dto.features);
@@ -282,6 +288,7 @@ export class VipPackageService {
       priorityLevel: dto.priorityLevel,
       price: dto.price,
       features: normalizedFeatures,
+      packageType: pType,
     });
 
     const vipPackage = await this.prisma.vipPackage.create({
@@ -293,6 +300,7 @@ export class VipPackageService {
         priorityLevel: dto.priorityLevel,
         features: normalizedFeatures,
         status: nextStatus,
+        packageType: pType,
       },
     });
 
@@ -350,9 +358,10 @@ export class VipPackageService {
 
     const nextPriorityLevel = dto.priorityLevel ?? vipPackage.priorityLevel;
     const nextStatus = dto.status ?? vipPackage.status;
+    const nextPackageType = dto.packageType ?? vipPackage.packageType;
 
     if (nextStatus === 1) {
-      await this.ensureUniqueActivePriority(nextPriorityLevel, id);
+      await this.ensureUniqueActivePriority(nextPackageType, nextPriorityLevel, id);
     }
 
     const normalizedFeatures = this.normalizeFeatures(dto.features);
@@ -366,6 +375,7 @@ export class VipPackageService {
         normalizedFeatures !== undefined
           ? normalizedFeatures
           : vipPackage.features,
+      packageType: nextPackageType,
     });
 
     const updated = await this.prisma.vipPackage.update({

@@ -145,7 +145,7 @@ export class AiService {
     private readonly redis: RedisService,
     private readonly compareService: AiChatCompareService,
     private readonly descriptionGeneratorService: DescriptionGeneratorService,
-  ) {}
+  ) { }
 
   async indexOne(type: 'house' | 'land' | 'post', id: number): Promise<void> {
     try {
@@ -325,9 +325,9 @@ export class AiService {
 
     const candidateLimit = hasIntentFilter
       ? Math.max(
-          this.retrievalTopK * this.retrievalCandidateMultiplier,
-          this.retrievalTopK * 3,
-        )
+        this.retrievalTopK * this.retrievalCandidateMultiplier,
+        this.retrievalTopK * 3,
+      )
       : this.retrievalTopK;
 
     let rawHits: VectorHit[] = [];
@@ -561,8 +561,8 @@ export class AiService {
     // Extract suggestedQuestions from LLM structured output if available
     const llmSuggestions = Array.isArray(structured?.suggestedQuestions)
       ? (structured.suggestedQuestions as string[])
-          .filter((s) => typeof s === 'string' && s.trim().length > 0)
-          .slice(0, 3)
+        .filter((s) => typeof s === 'string' && s.trim().length > 0)
+        .slice(0, 3)
       : [];
     const suggestedQuestions =
       llmSuggestions.length > 0 ? llmSuggestions : defaultSuggestions;
@@ -1072,8 +1072,8 @@ export class AiService {
           '✅ Badge VIP nổi bật trên hồ sơ cá nhân',
           '',
           '**Cách nâng cấp:**',
-          `1. Đăng nhập → Vào **Hồ sơ cá nhân**: ${this.frontendUrl}/profile`,
-          '2. Chọn mục **"Nâng cấp VIP"** hoặc **"Gói dịch vụ"**',
+          `1. Đăng nhập → Vào **Hồ sơ cá nhân**`,
+          '2. Chọn mục **"Nâng cấp VIP"**',
           '3. Chọn gói phù hợp → Thanh toán → Kích hoạt ngay',
           '',
           'Bạn có câu hỏi về các gói VIP không?',
@@ -1191,69 +1191,69 @@ export class AiService {
       answer: string;
       suggestedQuestions: string[];
     }[] = [
-      {
-        pattern: /\bso hong\b/,
-        answer:
-          'Sổ hồng (Giấy chứng nhận quyền sử dụng đất, quyền sở hữu nhà ở và tài sản khác gắn liền với đất) là văn bản pháp lý do Nhà nước cấp cho chủ sở hữu bất động sản. Đây là giấy tờ quan trọng nhất khi mua bán nhà đất, giúp đảm bảo quyền lợi hợp pháp của người sở hữu.\n\nLưu ý khi mua nhà:\n- Kiểm tra sổ hồng chính chủ\n- Xác minh thông tin trên sổ với thực tế\n- Kiểm tra có bị thế chấp hay tranh chấp không',
-        suggestedQuestions: [
-          'Sổ đỏ khác sổ hồng thế nào?',
-          'Thủ tục mua bán nhà đất',
-          'Tìm nhà có sổ hồng',
-        ],
-      },
-      {
-        pattern: /\bso do\b/,
-        answer:
-          'Sổ đỏ là tên gọi dân gian của Giấy chứng nhận quyền sử dụng đất (bìa đỏ). Hiện nay, sổ đỏ và sổ hồng đã được hợp nhất thành một loại giấy chứng nhận duy nhất, thường gọi chung là "sổ hồng".\n\nSự khác biệt trước đây:\n- Sổ đỏ: cấp cho đất không có nhà\n- Sổ hồng: cấp cho nhà ở và đất ở đô thị',
-        suggestedQuestions: [
-          'Sổ hồng là gì?',
-          'Thủ tục sang tên sổ đỏ',
-          'Tìm đất nền có sổ',
-        ],
-      },
-      {
-        pattern: /\b(cong chung|thu tuc|sang ten)\b/,
-        answer:
-          'Thủ tục công chứng mua bán nhà đất gồm các bước chính:\n1. Hai bên thỏa thuận giá và điều khoản\n2. Chuẩn bị hồ sơ: CMND/CCCD, sổ hồng, hợp đồng mua bán\n3. Công chứng hợp đồng tại văn phòng công chứng\n4. Nộp thuế (thuế thu nhập cá nhân 2%, lệ phí trước bạ 0.5%)\n5. Đăng ký sang tên tại Văn phòng đăng ký đất đai\n\nThời gian: khoảng 15-30 ngày làm việc.',
-        suggestedQuestions: [
-          'Phí công chứng bao nhiêu?',
-          'Tìm nhà ở Đà Nẵng',
-          'Kinh nghiệm mua nhà lần đầu',
-        ],
-      },
-      {
-        pattern:
-          /\b(thue|phi|le phi|truoc ba)\b.*\b(mua|ban|nha|dat)\b|\b(mua|ban|nha|dat)\b.*\b(thue|phi|le phi)\b/,
-        answer:
-          'Các loại thuế/phí khi mua bán bất động sản:\n- Thuế thu nhập cá nhân (TNCN): 2% giá bán (người bán chịu)\n- Lệ phí trước bạ: 0.5% giá trị BĐS (người mua chịu)\n- Phí công chứng: theo biểu phí quy định\n- Phí thẩm định hồ sơ: khoảng 0.15% giá trị BĐS\n\nLưu ý: Một số trường hợp được miễn thuế TNCN (nhà duy nhất, sở hữu trên 5 năm...).',
-        suggestedQuestions: [
-          'Thủ tục mua bán nhà đất',
-          'Sổ hồng là gì?',
-          'Tìm nhà dưới 3 tỷ',
-        ],
-      },
-      {
-        pattern:
-          /\b(kinh nghiem|luu y|loi khuyen)\b.*\b(mua)\b|\b(mua)\b.*\b(lan dau|luu y|kinh nghiem)\b/,
-        answer:
-          'Kinh nghiệm mua nhà lần đầu:\n1. Xác định ngân sách rõ ràng (bao gồm phí phát sinh)\n2. Ưu tiên vị trí: gần trường học, bệnh viện, chợ\n3. Kiểm tra pháp lý: sổ hồng, quy hoạch, tranh chấp\n4. Xem nhà thực tế nhiều lần, nhiều thời điểm\n5. Kiểm tra kết cấu, hệ thống điện nước\n6. So sánh giá với khu vực lân cận\n7. Thương lượng giá hợp lý\n8. Sử dụng dịch vụ công chứng uy tín\n\nĐừng vội vàng, hãy tìm hiểu kỹ trước khi quyết định!',
-        suggestedQuestions: [
-          'Tìm nhà dưới 3 tỷ',
-          'Sổ hồng là gì?',
-          'Thủ tục mua bán nhà đất',
-        ],
-      },
-      {
-        pattern: /\b(phong thuy|feng\s*shui|huong nha|tuoi)\b/,
-        answer:
-          'Phong thủy khi mua nhà là yếu tố nhiều người Việt quan tâm:\n- Hướng nhà: nên chọn hướng hợp tuổi gia chủ\n- Hình dáng đất: vuông vức là tốt nhất\n- Đường vào nhà: tránh ngõ cụt, đường đâm thẳng vào nhà\n- Xung quanh: tránh gần nghĩa trang, bệnh viện, đường cao tốc\n\nTuy nhiên, vị trí, giá cả và pháp lý vẫn là yếu tố quan trọng nhất khi quyết định mua.',
-        suggestedQuestions: [
-          'Tìm nhà hướng Đông',
-          'Kinh nghiệm mua nhà lần đầu',
-          'Tìm đất nền giá rẻ',
-        ],
-      },
-    ];
+        {
+          pattern: /\bso hong\b/,
+          answer:
+            'Sổ hồng (Giấy chứng nhận quyền sử dụng đất, quyền sở hữu nhà ở và tài sản khác gắn liền với đất) là văn bản pháp lý do Nhà nước cấp cho chủ sở hữu bất động sản. Đây là giấy tờ quan trọng nhất khi mua bán nhà đất, giúp đảm bảo quyền lợi hợp pháp của người sở hữu.\n\nLưu ý khi mua nhà:\n- Kiểm tra sổ hồng chính chủ\n- Xác minh thông tin trên sổ với thực tế\n- Kiểm tra có bị thế chấp hay tranh chấp không',
+          suggestedQuestions: [
+            'Sổ đỏ khác sổ hồng thế nào?',
+            'Thủ tục mua bán nhà đất',
+            'Tìm nhà có sổ hồng',
+          ],
+        },
+        {
+          pattern: /\bso do\b/,
+          answer:
+            'Sổ đỏ là tên gọi dân gian của Giấy chứng nhận quyền sử dụng đất (bìa đỏ). Hiện nay, sổ đỏ và sổ hồng đã được hợp nhất thành một loại giấy chứng nhận duy nhất, thường gọi chung là "sổ hồng".\n\nSự khác biệt trước đây:\n- Sổ đỏ: cấp cho đất không có nhà\n- Sổ hồng: cấp cho nhà ở và đất ở đô thị',
+          suggestedQuestions: [
+            'Sổ hồng là gì?',
+            'Thủ tục sang tên sổ đỏ',
+            'Tìm đất nền có sổ',
+          ],
+        },
+        {
+          pattern: /\b(cong chung|thu tuc|sang ten)\b/,
+          answer:
+            'Thủ tục công chứng mua bán nhà đất gồm các bước chính:\n1. Hai bên thỏa thuận giá và điều khoản\n2. Chuẩn bị hồ sơ: CMND/CCCD, sổ hồng, hợp đồng mua bán\n3. Công chứng hợp đồng tại văn phòng công chứng\n4. Nộp thuế (thuế thu nhập cá nhân 2%, lệ phí trước bạ 0.5%)\n5. Đăng ký sang tên tại Văn phòng đăng ký đất đai\n\nThời gian: khoảng 15-30 ngày làm việc.',
+          suggestedQuestions: [
+            'Phí công chứng bao nhiêu?',
+            'Tìm nhà ở Đà Nẵng',
+            'Kinh nghiệm mua nhà lần đầu',
+          ],
+        },
+        {
+          pattern:
+            /\b(thue|phi|le phi|truoc ba)\b.*\b(mua|ban|nha|dat)\b|\b(mua|ban|nha|dat)\b.*\b(thue|phi|le phi)\b/,
+          answer:
+            'Các loại thuế/phí khi mua bán bất động sản:\n- Thuế thu nhập cá nhân (TNCN): 2% giá bán (người bán chịu)\n- Lệ phí trước bạ: 0.5% giá trị BĐS (người mua chịu)\n- Phí công chứng: theo biểu phí quy định\n- Phí thẩm định hồ sơ: khoảng 0.15% giá trị BĐS\n\nLưu ý: Một số trường hợp được miễn thuế TNCN (nhà duy nhất, sở hữu trên 5 năm...).',
+          suggestedQuestions: [
+            'Thủ tục mua bán nhà đất',
+            'Sổ hồng là gì?',
+            'Tìm nhà dưới 3 tỷ',
+          ],
+        },
+        {
+          pattern:
+            /\b(kinh nghiem|luu y|loi khuyen)\b.*\b(mua)\b|\b(mua)\b.*\b(lan dau|luu y|kinh nghiem)\b/,
+          answer:
+            'Kinh nghiệm mua nhà lần đầu:\n1. Xác định ngân sách rõ ràng (bao gồm phí phát sinh)\n2. Ưu tiên vị trí: gần trường học, bệnh viện, chợ\n3. Kiểm tra pháp lý: sổ hồng, quy hoạch, tranh chấp\n4. Xem nhà thực tế nhiều lần, nhiều thời điểm\n5. Kiểm tra kết cấu, hệ thống điện nước\n6. So sánh giá với khu vực lân cận\n7. Thương lượng giá hợp lý\n8. Sử dụng dịch vụ công chứng uy tín\n\nĐừng vội vàng, hãy tìm hiểu kỹ trước khi quyết định!',
+          suggestedQuestions: [
+            'Tìm nhà dưới 3 tỷ',
+            'Sổ hồng là gì?',
+            'Thủ tục mua bán nhà đất',
+          ],
+        },
+        {
+          pattern: /\b(phong thuy|feng\s*shui|huong nha|tuoi)\b/,
+          answer:
+            'Phong thủy khi mua nhà là yếu tố nhiều người Việt quan tâm:\n- Hướng nhà: nên chọn hướng hợp tuổi gia chủ\n- Hình dáng đất: vuông vức là tốt nhất\n- Đường vào nhà: tránh ngõ cụt, đường đâm thẳng vào nhà\n- Xung quanh: tránh gần nghĩa trang, bệnh viện, đường cao tốc\n\nTuy nhiên, vị trí, giá cả và pháp lý vẫn là yếu tố quan trọng nhất khi quyết định mua.',
+          suggestedQuestions: [
+            'Tìm nhà hướng Đông',
+            'Kinh nghiệm mua nhà lần đầu',
+            'Tìm đất nền giá rẻ',
+          ],
+        },
+      ];
 
     for (const qa of qaBank) {
       if (qa.pattern.test(normalized)) {

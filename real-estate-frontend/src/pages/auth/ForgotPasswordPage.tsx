@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { message } from 'antd';
+import toast from 'react-hot-toast';
 import { authApi } from '@/api';
 
 // Import Layout
@@ -29,16 +29,16 @@ const ForgotPasswordPage: React.FC = () => {
     const handleSendOtp = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!email.includes('@')) {
-            return message.error('Vui lòng nhập email hợp lệ');
+            return toast.error('Vui lòng nhập email hợp lệ');
         }
 
         setLoading(true);
         try {
             await authApi.forgotPassword({ email });
-            message.success('Mã OTP đã được gửi đến email của bạn');
+            toast.success('Mã OTP đã được gửi đến email của bạn');
             setStep(2); // Chuyển sang bước 2
         } catch (error: any) {
-            message.error(error.response?.data?.message || 'Không tìm thấy email này trong hệ thống');
+            toast.error(error.response?.data?.message || 'Không tìm thấy email này trong hệ thống');
         } finally {
             setLoading(false);
         }
@@ -48,16 +48,16 @@ const ForgotPasswordPage: React.FC = () => {
     const handleResetPassword = async (e: React.FormEvent) => {
         e.preventDefault();
         if (newPassword.length < 6) {
-            return message.error('Mật khẩu phải có ít nhất 6 ký tự');
+            return toast.error('Mật khẩu phải có ít nhất 6 ký tự');
         }
 
         setLoading(true);
         try {
             await authApi.resetPassword({ email, otp, newPassword });
-            message.success('Đặt lại mật khẩu thành công!');
+            toast.success('Đặt lại mật khẩu thành công!');
             navigate('/login');
         } catch (error: any) {
-            message.error(error.response?.data?.message || 'Mã OTP không đúng hoặc đã hết hạn');
+            toast.error(error.response?.data?.message || 'Mã OTP không đúng hoặc đã hết hạn');
         } finally {
             setLoading(false);
         }

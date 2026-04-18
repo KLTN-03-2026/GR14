@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { CKEditor } from '@ckeditor/ckeditor5-react';
 import ClassicEditor from '@ckeditor/ckeditor5-build-classic/build/ckeditor';
 import { StarFilled } from '@ant-design/icons';
-import { message } from 'antd';
+import toast from 'react-hot-toast';
 import PostTypeSelector from './PostTypeSelector';
 import AiDescriptionGeneratorModal from './AiDescriptionGeneratorModal';
 import { aiApi } from '@/api/ai';
@@ -262,12 +262,12 @@ const PostForm: React.FC<PostFormProps> = ({
 
     const handleGenerateAiDescription = async (tone: 'polite' | 'friendly') => {
         if (!postType) {
-            message.warning('Vui lòng chọn loại bài đăng trước khi tạo mô tả');
+            toast('Vui lòng chọn loại bài đăng trước khi tạo mô tả');
             setIsAiModalOpen(false);
             return;
         }
         if (!formData.title) {
-            message.warning('Vui lòng nhập tiêu đề để AI hiểu bạn muốn bán/cho thuê gì');
+            toast('Vui lòng nhập tiêu đề để AI hiểu bạn muốn bán/cho thuê gì');
             setIsAiModalOpen(false);
             return;
         }
@@ -314,11 +314,11 @@ const PostForm: React.FC<PostFormProps> = ({
 
             handleFieldChange('description', formattedText);
 
-            message.success('Tạo mô tả thành công!');
+            toast.success('Tạo mô tả thành công!');
             setIsAiModalOpen(false); // Close modal when finished
         } catch (error: any) {
             const backendMsg = error.response?.data?.message || 'Có lỗi xảy ra khi tạo mô tả, vui lòng thử lại sau.';
-            message.error(backendMsg);
+            toast.error(backendMsg);
             console.error('AI Desc Generator error:', error);
             setIsAiModalOpen(false);
         } finally {

@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   Param,
   Query,
@@ -11,7 +12,6 @@ import {
   Ip,
   Res,
   DefaultValuePipe,
-  Put
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { PaymentService } from './payment.service';
@@ -22,9 +22,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('payment')
 export class PaymentController {
-  constructor(private paymentService: PaymentService) {}
+  constructor(private paymentService: PaymentService) { }
 
-  // 1. GATEWAY CALLBACKS & IPN (VNPay gọi về)
   @Get('vnpay/callback')
   async vnpayCallback(@Query() query: VNPayCallbackDto, @Res() res: Response) {
     const result = await this.paymentService.handleVNPayCallback(query);
@@ -34,15 +33,28 @@ export class PaymentController {
     return res.redirect(302, redirectUrl);
   }
 
-  // THÊM MỚI: Route IPN cho VNPay update ngầm trạng thái
   @Get('vnpay/ipn')
   async vnpayIpn(@Query() query: any, @Res() res: Response) {
     const result = await this.paymentService.handleVNPayIPN(query);
-    // VNPay yêu cầu trả về HTTP Status 200 kèm JSON format chuẩn của họ
     return res.status(200).json(result);
   }
 
-  // 2. USER ROUTES
+  @Get('momo/callback')
+  async momoCallback(@Query() query: any, @Res() res: Response) {
+    const result = await this.paymentService.handleMoMoCallback(query);
+    const redirectUrl = result.success
+      ? `${process.env.FRONTEND_URL}/payment/success?orderId=${query.orderId}`
+      : `${process.env.FRONTEND_URL}/payment/failed?resultCode=${query.resultCode}`;
+    return res.redirect(302, redirectUrl);
+  }
+
+  @Post('momo/notify')
+async momoNotify(@Body() body: any, @Res() res: Response) {
+  await this.paymentService.handleMoMoIPN(body);
+  return res.status(200).json({ message: 'ok' });
+}
+
+
   @UseGuards(JwtAuthGuard)
   @Post('create')
   async createPayment(
@@ -57,39 +69,49 @@ export class PaymentController {
   @Get('my')
   async getMyPayments(
     @Request() req,
-    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number, // Đã fix parse pipe sạch hơn
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
   ) {
-    return this.paymentService.getMyPayments(req.user.id, page);
+    return this.paymentService.getMyPayments(req.user.id, page, limit);
   }
 
-  // 3. ADMIN ROUTES
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @Get('admin/all')
   async getAllPayments(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+    @Query('search') search?: string,
+    @Query('method') method?: string,
+    @Query('status') status?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
-    return this.paymentService.getAllPayments(page, limit);
+    return this.paymentService.getAllPayments(page, limit, search, method, status, startDate, endDate);
   }
 
-  // 4. DYNAMIC ROUTES (Luôn để cuối)
-  @UseGuards(JwtAuthGuard)
-  @Get(':id')
-  async getPaymentById(@Param('id', ParseIntPipe) id: number, @Request() req) {
-    return this.paymentService.getPaymentById(id, req.user.id);
-  }
-
-  // Chỉ ADMIN mới được gọi simulate để tránh abuse
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @Post(':id/simulate-success')
-  async simulateSuccess(@Param('id', ParseIntPipe) id: number, @Request() req) {
+  async simulateSuccess(
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req,
+  ) {
     return this.paymentService.simulatePaymentSuccess(id, req.user.id);
   }
-  @Put(':id/upgrade-vip')
+
   @UseGuards(JwtAuthGuard)
-  upgradeToVip(@Param('id') id: string, @Request() req: any) {
-     return this.paymentService.initiatePostVipUpgrade(Number(id), req.user.id);
+  @Put(':id/upgrade-vip')
+  upgradeToVip(@Param('id', ParseIntPipe) id: number, @Request() req) {
+    return this.paymentService.initiatePostVipUpgrade(id, req.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':id')
+  async getPaymentById(
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req,
+  ) {
+    return this.paymentService.getPaymentById(id, req.user.id);
   }
 }

@@ -48,8 +48,13 @@ const NewsCard = ({ post }: Props) => {
             onClick={() => navigate(`/posts/${post.id}`)}
             className={`relative p-4 rounded-2xl flex gap-4 cursor-pointer transition hover:scale-[1.01]
       ${post.isVip
-                    ? "bg-white border-2 border-orange-400 shadow-lg"
-                    : "bg-white shadow hover:shadow-md"
+                    ? (post.vipPriorityLevel && post.vipPriorityLevel >= 3 
+                        ? 'bg-white border-[2px] border-[#d97706] shadow-lg' 
+                        : post.vipPriorityLevel === 2 
+                            ? 'bg-white border-[2px] border-[#7c3aed] shadow-md' 
+                            : 'bg-white border-[2px] border-[#2563eb] shadow-md'
+                      )
+                    : "bg-white border border-transparent shadow hover:shadow-md"
                 }`}
         >
 
@@ -62,9 +67,28 @@ const NewsCard = ({ post }: Props) => {
                 />
 
                 {post.isVip && (
-                    <span className="absolute top-2 left-2 bg-orange-500 text-white text-xs px-2 py-1 rounded">
-                        VIP
-                    </span>
+                    <div className="absolute top-2 left-2 flex flex-col gap-1.5 z-10">
+                        {post.vipPriorityLevel && post.vipPriorityLevel >= 3 && (
+                            <>
+                                <span className="bg-gradient-to-r from-red-500 to-orange-500 text-white text-[11px] font-bold px-2 py-1 rounded shadow-sm flex items-center gap-1">
+                                    ⚡ Tin Khẩn
+                                </span>
+                                <span className="bg-[#d97706] text-white text-[11px] font-bold px-2 py-1 rounded shadow-sm flex items-center gap-1">
+                                    👑 VIP Pro
+                                </span>
+                            </>
+                        )}
+                        {post.vipPriorityLevel === 2 && (
+                            <span className="bg-[#7c3aed] text-white text-[11px] font-bold px-2 py-1 rounded shadow-sm flex items-center gap-1">
+                                ✨ Nổi bật (Standard)
+                            </span>
+                        )}
+                        {(!post.vipPriorityLevel || post.vipPriorityLevel === 1) && (
+                            <span className="bg-[#2563eb] text-white text-[11px] font-bold px-2 py-1 rounded shadow-sm flex items-center gap-1">
+                                💎 VIP (Basic)
+                            </span>
+                        )}
+                    </div>
                 )}
             </div>
 

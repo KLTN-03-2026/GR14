@@ -11,6 +11,7 @@ interface FormData {
     price: number | '';
     priorityLevel: number | '';
     status: number;
+    packageType: string;
 }
 
 interface PriorityItem {
@@ -145,6 +146,7 @@ const VipPackageFormPage: React.FC = () => {
         price: '',
         priorityLevel: '',
         status: 1,
+        packageType: 'POST_VIP',
     });
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [priorityItems, setPriorityItems] = useState<PriorityItem[]>([]);
@@ -190,6 +192,7 @@ const VipPackageFormPage: React.FC = () => {
                 price: pkg.price || '',
                 priorityLevel: pkg.priorityLevel || detectedTier?.priorityLevel || '',
                 status: pkg.status ?? 1,
+                packageType: pkg.packageType || 'POST_VIP',
             });
             const parsedFeature = parseFeatureConfig(pkg.features);
             if (detectedTier) {
@@ -474,6 +477,20 @@ const VipPackageFormPage: React.FC = () => {
                         </div>
 
                         <div>
+                            <label className={labelClass}>Phân loại gói</label>
+                            <select
+                                className={inputClass}
+                                value={formData.packageType}
+                                onChange={(e) => handleChange('packageType', e.target.value)}
+                            >
+                                <option value="POST_VIP">Nổi bật bài đăng (POST_VIP)</option>
+                                <option value="ACCOUNT_VIP">Nâng tài khoản (ACCOUNT_VIP)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div className="md:col-span-1">
                             <label className={labelClass}>Trạng thái</label>
                             <select
                                 className={inputClass}
