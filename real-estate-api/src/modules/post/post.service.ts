@@ -508,7 +508,7 @@ export class PostService {
       where: { id },
       include: {
         user: {
-          select: { id: true, username: true, fullName: true, phone: true },
+          select: { id: true, username: true, fullName: true, phone: true, isVip: true, vipPriorityLevel: true },
         },
         images: {
           select: { id: true, url: true, position: true },

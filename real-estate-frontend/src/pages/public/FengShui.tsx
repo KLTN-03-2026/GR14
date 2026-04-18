@@ -1,6 +1,7 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { message, DatePicker, Select, Radio } from 'antd';
+import { DatePicker, Select, Radio } from 'antd';
+import toast from 'react-hot-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { fengshuiApi } from '@/api/fengshui';
 import { PropertyCard, Loading } from '@/components/common';
@@ -174,16 +175,16 @@ const FengshuiPage: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'nha' | 'dat'>('nha');
 
     const handleSubmit = async () => {
-        if (!isAuthenticated) { message.warning('Vui lòng đăng nhập để sử dụng'); navigate('/login'); return; }
-        if (!form.name.trim()) { message.error('Vui lòng nhập họ tên'); return; }
-        if (!form.birthDate) { message.error('Vui lòng chọn ngày sinh'); return; }
+        if (!isAuthenticated) { toast('Vui lòng đăng nhập để sử dụng'); navigate('/login'); return; }
+        if (!form.name.trim()) { toast.error('Vui lòng nhập họ tên'); return; }
+        if (!form.birthDate) { toast.error('Vui lòng chọn ngày sinh'); return; }
         setLoading(true);
         try {
             const res = await fengshuiApi.analyze(form);
             setResult(res.data);
             setTimeout(() => document.getElementById('fengshui-result')?.scrollIntoView({ behavior: 'smooth' }), 100);
         } catch {
-            message.error('Có lỗi xảy ra, vui lòng thử lại');
+            toast.error('Có lỗi xảy ra, vui lòng thử lại');
         } finally {
             setLoading(false);
         }

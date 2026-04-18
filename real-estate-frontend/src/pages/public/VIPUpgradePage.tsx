@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Button, message, Spin, Modal, Empty, Alert } from 'antd';
+import { Button, Spin, Modal, Empty, Alert } from 'antd';
+import toast from 'react-hot-toast';
 import {
     CheckCircleOutlined,
     CrownOutlined,
@@ -26,6 +27,7 @@ interface VipPackage {
     price: number;
     durationDays: number;
     priorityLevel: number;
+    packageType: string;
     features?: string | string[];
 }
 
@@ -42,19 +44,6 @@ interface PaymentResult {
     endDate: string;
 }
 
-const POST_VIP_PRICE: Record<number, number> = {
-    3: 10000,
-    7: 19000,
-    15: 39000,
-    30: 69000,
-};
-
-const ACCOUNT_VIP_PRICE: Record<number, number> = {
-    3: 19000,
-    7: 39000,
-    15: 79000,
-    30: 119000,
-};
 
 const POST_VIP_FEATURES: Record<number, string[]> = {
     3: [
@@ -160,7 +149,7 @@ const VIPUpgradePage = () => {
             const raw: VipPackage[] = res.data?.data || [];
             setPackages(raw.filter((p) => p.durationDays > 1));
         } catch {
-            message.error('Không thể tải danh sách gói VIP');
+            toast.error('Không thể tải danh sách gói VIP');
         } finally {
             setLoading(false);
         }
@@ -173,17 +162,10 @@ const VIPUpgradePage = () => {
         setSearchParams(next, { replace: true });
     };
 
-    const getPackageDisplay = (pkg: VipPackage): { price: number; features: string[] } => {
-        const priceMap = mode === 'post' ? POST_VIP_PRICE : ACCOUNT_VIP_PRICE;
-        const featMap = mode === 'post' ? POST_VIP_FEATURES : ACCOUNT_VIP_FEATURES;
 
-        const price = priceMap[pkg.durationDays] ?? pkg.price;
-        const features = featMap[pkg.durationDays] ?? DEFAULT_FEATURES;
-        return { price, features };
-    };
 
     const handleCheckout = (packageId: number) => {
-        if (!user) { message.warning('Vui lòng đăng nhập trước'); return; }
+        if (!user) { toast('Vui lòng đăng nhập trước'); return; }
         const pkg = packages.find((p) => p.id === packageId);
         if (!pkg) return;
         setCheckoutData({ packageId, vipPackage: pkg });
@@ -192,8 +174,8 @@ const VIPUpgradePage = () => {
     };
 
     const handlePayment = async () => {
-        if (!paymentMethod) { message.warning('Vui lòng chọn phương thức thanh toán'); return; }
-        if (!checkoutData || !user) { message.error('Dữ liệu không hợp lệ'); return; }
+        if (!paymentMethod) { toast('Vui lòng chọn phương thức thanh toán'); return; }
+        if (!checkoutData || !user) { toast.error('Dữ liệu không hợp lệ'); return; }
 
         try {
             setIsProcessing(true);
@@ -219,7 +201,7 @@ const VIPUpgradePage = () => {
             }
             window.location.href = paymentUrl;
         } catch (error: any) {
-            message.error(error?.message || error?.response?.data?.message || 'Có lỗi xảy ra');
+            toast.error(error?.message || error?.response?.data?.message || 'Có lỗi xảy ra');
         } finally {
             setIsProcessing(false);
         }
@@ -377,10 +359,37 @@ const VIPUpgradePage = () => {
                     gap: 20,
                     alignItems: 'stretch',
                 }}>
-                    {packages.map((pkg) => {
+                    {packages.filter(p => p.packageType === (mode === 'post' ? 'POST_VIP' : 'ACCOUNT_VIP')).map((pkg) => {
                         const tier = TIER_STYLE[pkg.priorityLevel] ?? TIER_STYLE[1];
                         const isPopular = pkg.priorityLevel === 3;
-                        const { price, features } = getPackageDisplay(pkg);
+                        const price = Number(pkg.price);
+                        
+                        let features: string[] = DEFAULT_FEATURES;
+                        try {
+                            if (pkg.features && typeof pkg.features === 'string') {
+                                const parsed = JSON.parse(pkg.features);
+                                const isAccount = pkg.packageType === 'ACCOUNT_VIP';
+                                features = [
+                                    parsed.highlight 
+                                        ? (isAccount ? 'Nổi bật TẤT CẢ bài đăng' : 'Làm nổi bật bài đăng') 
+                                        : null,
+                                    isAccount ? 'Đăng tin không giới hạn' : null,
+                                    isAccount ? 'Sử dụng AI tạo mô tả tự động' : null,
+                                    isAccount ? 'Tra cứu Phong thủy không giới hạn' : null,
+                                    parsed.topPost ? 'Ưu tiên hiển thị cao' : null,
+                                    parsed.featured ? 'Nhãn nổi bật/Featured' : null,
+                                    parsed.urgent ? 'Gắn nhãn Khẩn / Tin gấp' : null,
+                                    parsed.badge ? `Huy hiệu ${parsed.badge}` : null,
+                                ].filter(Boolean) as string[];
+                            } else if (Array.isArray(pkg.features)) {
+                                features = pkg.features;
+                            }
+                        } catch {
+                            // Fallback to mode specific default features map if parsing fails
+                            const featMap = mode === 'post' ? POST_VIP_FEATURES : ACCOUNT_VIP_FEATURES;
+                            features = featMap[pkg.durationDays] ?? DEFAULT_FEATURES;
+                        }
+
                         const displayTier = getDisplayVipTier(pkg.priorityLevel);
 
                         return (
@@ -493,7 +502,7 @@ const VIPUpgradePage = () => {
                 width={440}
             >
                 {checkoutData && (() => {
-                    const { price } = getPackageDisplay(checkoutData.vipPackage);
+                    const price = Number(checkoutData.vipPackage.price);
                     return (
                         <div style={{ paddingTop: 8 }}>
                             <div style={{

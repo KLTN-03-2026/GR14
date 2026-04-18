@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Result, Button, Card, Statistic, Spin, message } from 'antd';
+import { Result, Button, Card, Statistic, Spin } from 'antd';
+import toast from 'react-hot-toast';
 import { CheckCircleOutlined, CalendarOutlined, GiftOutlined } from '@ant-design/icons';
 import { paymentApi, postApi } from '@/api';
 import { parseVipPackageBenefitLines } from '@/utils';
@@ -81,10 +82,10 @@ const PaymentSuccessPage = () => {
         await postApi.create(submitData);
         setAutoPosted(true);
         sessionStorage.removeItem(POST_DRAFT_KEY);
-        message.success('✅ Đã tự động gửi bài đăng lên hệ thống (chờ Admin duyệt).');
+        toast.success('✅ Đã tự động gửi bài đăng lên hệ thống (chờ Admin duyệt).');
       } catch (e: any) {
         const errMsg = e?.response?.data?.message || 'Không thể tự động gửi bài đăng.';
-        message.error(`❌ ${Array.isArray(errMsg) ? errMsg[0] : errMsg}`);
+        toast.error(`❌ ${Array.isArray(errMsg) ? errMsg[0] : errMsg}`);
       } finally {
         setAutoPosting(false);
       }
@@ -105,7 +106,7 @@ const PaymentSuccessPage = () => {
         
         if (payments.length === 0) {
           setError(true);
-          message.warning('Không tìm thấy thông tin thanh toán');
+          toast('Không tìm thấy thông tin thanh toán');
           return;
         }
         
@@ -120,7 +121,7 @@ const PaymentSuccessPage = () => {
     } catch (error) {
       console.error('Error fetching payment:', error);
       setError(true);
-      message.error('❌ Không thể tải thông tin thanh toán');
+      toast.error('❌ Không thể tải thông tin thanh toán');
     } finally {
       setLoading(false);
     }

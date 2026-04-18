@@ -1,6 +1,7 @@
-import React from 'react';
+﻿import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Dropdown, message, type MenuProps } from 'antd';
+import { Dropdown, type MenuProps } from 'antd';
+import toast from 'react-hot-toast';
 import { useAuthStore } from '@/stores/authStore';
 import group from "../../assets/logo.png";
 
@@ -27,7 +28,7 @@ const PublicHeader: React.FC = () => {
   const handleCreatePostClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
     if (isAuthenticated) return;
     event.preventDefault();
-    message.warning('Vui lòng đăng nhập để đăng bài viết');
+    toast('Vui lòng đăng nhập để đăng bài viết');
     navigate('/login');
   };
 

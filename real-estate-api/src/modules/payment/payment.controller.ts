@@ -22,7 +22,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('payment')
 export class PaymentController {
-  constructor(private paymentService: PaymentService) {}
+  constructor(private paymentService: PaymentService) { }
 
   @Get('vnpay/callback')
   async vnpayCallback(@Query() query: VNPayCallbackDto, @Res() res: Response) {
@@ -81,8 +81,13 @@ async momoNotify(@Body() body: any, @Res() res: Response) {
   async getAllPayments(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+    @Query('search') search?: string,
+    @Query('method') method?: string,
+    @Query('status') status?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
-    return this.paymentService.getAllPayments(page, limit);
+    return this.paymentService.getAllPayments(page, limit, search, method, status, startDate, endDate);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

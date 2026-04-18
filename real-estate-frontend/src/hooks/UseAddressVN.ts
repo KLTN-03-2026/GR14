@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { message } from 'antd';
+import toast from 'react-hot-toast';
 
 export type VietnamProvince = {
     province_code: string;
@@ -23,7 +23,7 @@ export const useVietnamAddress = () => {
         fetch(`${VIETNAM_ADMIN_API_BASE}/provinces`)
             .then((res) => res.json())
             .then(data => setProvinces(data))
-            .catch(() => message.error('Không thể tải danh sách tỉnh/thành phố'));
+            .catch(() => toast.error('Không thể tải danh sách tỉnh/thành phố'));
     }, []);
 
     const loadWards = useCallback((provinceName: string) => {
@@ -36,7 +36,7 @@ export const useVietnamAddress = () => {
         fetch(`${VIETNAM_ADMIN_API_BASE}/wards?province_code=${province.province_code}`)
             .then((res) => res.json())
             .then((data) => setWards(data.wards || data || []))
-            .catch(() => message.error('Không thể tải phường/xã'));
+            .catch(() => toast.error('Không thể tải phường/xã'));
     }, [provinces]);
 
     const resetAddress = useCallback(() => {

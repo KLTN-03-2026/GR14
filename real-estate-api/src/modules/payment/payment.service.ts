@@ -20,35 +20,6 @@ export class PaymentService {
     private mailProducer: MailProducerService,
   ) { }
 
-  private readonly postVipPriceByDuration: Record<number, number> = {
-    3: 10000,
-    7: 19000,
-    15: 39000,
-    30: 69000,
-  };
-
-  private readonly accountVipPriceByDuration: Record<number, number> = {
-    3: 19000,
-    7: 39000,
-    15: 79000,
-    30: 119000,
-  };
-
-  private resolveVipAmount(durationDays: number, paymentType: PaymentType): number {
-    const pricingMap =
-      paymentType === PaymentType.POST_VIP
-        ? this.postVipPriceByDuration
-        : this.accountVipPriceByDuration;
-
-    const amount = pricingMap[durationDays];
-    if (!amount) {
-      throw new BadRequestException(
-        `Không hỗ trợ bảng giá cho gói ${durationDays} ngày`,
-      );
-    }
-    return amount;
-  }
-
   async createPayment(dto: CreatePaymentDto, userId: number, ipAddr: string) {
     const vipPackage = await this.prisma.vipPackage.findUnique({
       where: { id: dto.packageId },
@@ -58,10 +29,13 @@ export class PaymentService {
       throw new NotFoundException('VIP package not found or inactive');
     }
 
-    const resolvedAmount = this.resolveVipAmount(
-      vipPackage.durationDays,
-      dto.paymentType,
-    );
+    if (vipPackage.packageType !== String(dto.paymentType)) {
+      throw new BadRequestException(
+        `Loại thanh toán không khớp với loại gói (${vipPackage.packageType})`,
+      );
+    }
+
+    const resolvedAmount = Number(vipPackage.price);
 
     let finalPostId: number | undefined = undefined;
 
@@ -80,6 +54,23 @@ export class PaymentService {
         throw new NotFoundException(
           'Post not found or you do not own this post',
         );
+
+      if (post.isVip && post.vipExpiry && post.vipExpiry > new Date()) {
+        if (post.vipPriorityLevel > vipPackage.priorityLevel) {
+          throw new BadRequestException(
+            `Bài đăng đang sử dụng gói VIP cao hơn (Mức ${post.vipPriorityLevel}), không thể gia hạn bằng gói cấp thấp hơn.`,
+          );
+        }
+      }
+    } else if (dto.paymentType === String(PaymentType.ACCOUNT_VIP)) {
+      const dbUser = await this.prisma.user.findUnique({ where: { id: userId } });
+      if (dbUser?.isVip && dbUser.vipExpiry && dbUser.vipExpiry > new Date()) {
+        if (dbUser.vipPriorityLevel > vipPackage.priorityLevel) {
+          throw new BadRequestException(
+            `Tài khoản đang dùng VIP Mức ${dbUser.vipPriorityLevel}, không thể gia hạn bằng gói Mức ${vipPackage.priorityLevel}.`,
+          );
+        }
+      }
     }
 
     return await this.prisma.$transaction(async (tx) => {
@@ -162,6 +153,7 @@ export class PaymentService {
 
     await this.prisma.$transaction(async (tx) => {
       let startDate = new Date();
+      const newPriorityLevel = subscription.package?.priorityLevel ?? 0;
 
       if (subscription.postId) {
         // ── VIP cho 1 bài viết ──
@@ -169,7 +161,13 @@ export class PaymentService {
           where: { id: subscription.postId },
         });
         if (post?.isVip && post.vipExpiry && post.vipExpiry > now) {
-          startDate = new Date(post.vipExpiry);
+          if (newPriorityLevel > post.vipPriorityLevel) {
+            // Nâng cấp: Ghi đè, kích hoạt từ bây giờ
+            startDate = now;
+          } else {
+            // Gia hạn cùng cấp: Cộng dồn ngày
+            startDate = new Date(post.vipExpiry);
+          }
         }
       } else {
         // ── VIP cho tài khoản ──
@@ -177,7 +175,11 @@ export class PaymentService {
           where: { id: subscription.userId },
         });
         if (user?.isVip && user.vipExpiry && user.vipExpiry > now) {
-          startDate = new Date(user.vipExpiry);
+          if (newPriorityLevel > user.vipPriorityLevel) {
+            startDate = now;
+          } else {
+            startDate = new Date(user.vipExpiry);
+          }
         }
       }
 
@@ -204,7 +206,7 @@ export class PaymentService {
           data: {
             isVip: true,
             vipExpiry: endDate,
-            vipPriorityLevel: subscription.package?.priorityLevel ?? 0,
+            vipPriorityLevel: newPriorityLevel,
             status: 1,
             postedAt: now,
           },
@@ -215,19 +217,25 @@ export class PaymentService {
           where: { id: subscription.userId },
           data: {
             isVip: true,
-            vipExpiry: endDate
+            vipExpiry: endDate,
+            vipPriorityLevel: newPriorityLevel,
           },
         });
 
-        // Đây là phần quan trọng nhất: Cập nhật tất cả bài viết của user thành VIP
+        // Phần quan trọng: Cập nhật an toàn, không đè lên các bài đăng đã mua VIP riêng đắt tiền hơn
         await tx.post.updateMany({
           where: {
-            userId: subscription.userId
+            userId: subscription.userId,
+            OR: [
+              { isVip: false },
+              { vipExpiry: { lt: now } },
+              { vipPriorityLevel: { lt: newPriorityLevel } }
+            ]
           },
           data: {
             isVip: true,
             vipExpiry: endDate,
-            vipPriorityLevel: subscription.package?.priorityLevel ?? 0,
+            vipPriorityLevel: newPriorityLevel,
           },
         });
       }
@@ -499,10 +507,41 @@ async handleMoMoIPN(momoData: any) {
   }
 
   /** Lấy toàn bộ lịch sử thanh toán – chỉ ADMIN */
-  async getAllPayments(page = 1, limit = 10) {
+  async getAllPayments(page = 1, limit = 10, search?: string, method?: string, status?: string, startDate?: string, endDate?: string) {
     const skip = (page - 1) * limit;
+
+    const whereCondition: any = {};
+
+    if (search) {
+      whereCondition.user = {
+        OR: [
+          { fullName: { contains: search } },
+          { email: { contains: search } }
+        ]
+      };
+    }
+
+    if (method) {
+      whereCondition.paymentMethod = method;
+    }
+
+    if (status !== undefined && status !== '') {
+      whereCondition.status = parseInt(status);
+    }
+
+    if (startDate || endDate) {
+      whereCondition.createdAt = {};
+      if (startDate) {
+        whereCondition.createdAt.gte = new Date(startDate);
+      }
+      if (endDate) {
+        whereCondition.createdAt.lte = new Date(endDate);
+      }
+    }
+
     const [payments, total] = await Promise.all([
       this.prisma.payment.findMany({
+        where: whereCondition,
         include: {
           user: { select: { id: true, fullName: true, email: true } },
           subscription: {
@@ -516,7 +555,7 @@ async handleMoMoIPN(momoData: any) {
         skip,
         take: limit,
       }),
-      this.prisma.payment.count(),
+      this.prisma.payment.count({ where: whereCondition }),
     ]);
 
     return {

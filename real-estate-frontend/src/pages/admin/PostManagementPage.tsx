@@ -229,9 +229,23 @@ const PostManagementPage: React.FC = () => {
         {
             title: 'Tiêu đề',
             width: 220,
-            render: (_, record) => (
-                <span className="font-medium">{record.title}</span>
-            ),
+            render: (_, record) => {
+                const isVip = isVipPost(record);
+                const label = getVipTierLabel(record);
+                return (
+                    <div className="flex flex-col gap-1 items-start py-1">
+                        <span className={`font-semibold ${isVip ? 'text-amber-700' : 'text-gray-900'} leading-snug`}>{record.title}</span>
+                        {isVip && (
+                            <div className="flex items-center gap-1 border border-amber-300 bg-amber-50 px-1.5 py-0.5 rounded text-[10px] font-bold text-amber-600 w-max mt-0.5 shadow-sm">
+                                <svg className="w-3 h-3 text-amber-500" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                </svg>
+                                {label}
+                            </div>
+                        )}
+                    </div>
+                );
+            },
         },
         {
             title: 'Mô tả',
@@ -260,19 +274,24 @@ const PostManagementPage: React.FC = () => {
         {
             title: 'Gói VIP',
             key: 'vipTier',
-            width: 110,
+            width: 130,
             render: (_, record) => {
                 const label = getVipTierLabel(record);
-                if (label === '—') return '—';
-                const color =
-                    label === 'VIP 3' ? 'bg-amber-100 text-amber-800 border-amber-200'
-                        : label === 'VIP 2' ? 'bg-purple-100 text-purple-800 border-purple-200'
-                            : label === 'VIP 1' ? 'bg-blue-100 text-blue-800 border-blue-200'
-                                : 'bg-gray-100 text-gray-700 border-gray-200';
+                if (label === '—') return <span className="text-gray-400 font-medium">—</span>;
+                const styleClass =
+                    label === 'VIP 3' ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-white shadow-md shadow-amber-200 border border-amber-600'
+                        : label === 'VIP 2' ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-md shadow-purple-200 border border-purple-600'
+                            : label === 'VIP 1' ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-md shadow-blue-200 border border-blue-600'
+                                : 'bg-gradient-to-r from-gray-500 to-gray-400 text-white shadow-md shadow-gray-200 border border-gray-600';
                 return (
-                    <span className={`inline-flex items-center justify-center rounded-full border px-2 py-1 text-xs font-bold whitespace-nowrap ${color}`}>
-                        {label}
-                    </span>
+                    <div className="flex justify-start">
+                        <span className={`inline-flex items-center justify-center rounded px-2.5 py-1 text-[11px] font-black uppercase tracking-wider whitespace-nowrap ${styleClass}`}>
+                            <svg className="w-3.5 h-3.5 mr-1 drop-shadow-sm" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
+                            </svg>
+                            {label}
+                        </span>
+                    </div>
                 );
             },
         },

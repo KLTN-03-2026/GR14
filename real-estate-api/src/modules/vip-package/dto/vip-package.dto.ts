@@ -16,6 +16,10 @@ export class CreateVipPackageDto {
   @IsString()
   description?: string;
 
+  @IsOptional()
+  @IsString()
+  packageType?: string;
+
   @IsNotEmpty()
   @IsNumber()
   @Type(() => Number)
@@ -52,6 +56,10 @@ export class UpdateVipPackageDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @IsOptional()
+  @IsString()
+  packageType?: string;
 
   @IsOptional()
   @IsNumber()

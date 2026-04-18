@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import NewsMiniCard from "@/components/common/NewsMiniCard";
+import { message } from "antd";
+import { useAuthStore } from "@/stores/authStore";
 
 // ===== TYPES =====
 interface PostImage {
@@ -12,8 +14,11 @@ interface PostImage {
 
 interface User {
     id: number;
+    username?: string;
     fullName: string;
     phone?: string;
+    isVip?: boolean;
+    vipPriorityLevel?: number;
 }
 
 interface Post {
@@ -51,7 +56,8 @@ const formatPrice = (v: number | null | undefined): string | null => {
 };
 
 const maskPhone = (phone?: string, show = false) => {
-    if (!phone) return "Đang cập nhật";
+    // Loại bỏ các SĐT ảo sinh ra từ hệ thống hoặc OAuth (như U0..., G0...)
+    if (!phone || /^[a-zA-Z]/.test(phone)) return "Đang thiết lập";
     if (show) return phone;
 
     const half = Math.ceil(phone.length / 2);
@@ -61,22 +67,50 @@ const maskPhone = (phone?: string, show = false) => {
 /**
  * Hàm xử lý tên hiển thị linh hoạt
  */
-const getDisplayName = (fullName?: string) => {
-    if (!fullName) return "Người dùng";
-    // Kiểm tra nếu là System Admin thì đổi tên thương hiệu
-    if (fullName.trim() === "System Admin") {
-        return "Ban quản trị Black'S City";
+const getDisplayName = (fullName?: string, username?: string) => {
+    if (fullName && fullName.trim() !== "") {
+        // Kiểm tra nếu là System Admin thì đổi tên thương hiệu
+        if (fullName.trim() === "System Admin") {
+            return "Ban quản trị Black'S City";
+        }
+        return fullName;
     }
-    return fullName;
+    
+    if (username && username.includes('@')) {
+        return username.split('@')[0];
+    }
+    
+    return "Người dùng";
 };
 
 const NewsDetailPage = () => {
     const { id } = useParams();
+    const navigate = useNavigate();
+    const { isAuthenticated } = useAuthStore();
 
     const [post, setPost] = useState<Post | null>(null);
     const [list, setList] = useState<Post[]>([]);
     const [showPhone, setShowPhone] = useState(false);
     const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+
+    const handleShowContact = (e?: React.MouseEvent) => {
+        if (e) e.preventDefault();
+        if (!isAuthenticated) {
+            message.warning("Vui lòng đăng nhập để xem thông tin liên hệ");
+            navigate("/login");
+            return;
+        }
+        setShowPhone(true);
+    };
+
+    const handleExternalLink = (e: React.MouseEvent) => {
+        if (!isAuthenticated) {
+            e.preventDefault();
+            message.warning("Vui lòng đăng nhập để thao tác");
+            navigate("/login");
+            return;
+        }
+    };
 
     // ===== FETCH DATA =====
     const fetchData = async () => {
@@ -225,7 +259,7 @@ const NewsDetailPage = () => {
 
                                     {!showPhone ? (
                                         <button
-                                            onClick={() => setShowPhone(true)}
+                                            onClick={handleShowContact}
                                             className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition"
                                         >
                                             Hiện số
@@ -247,6 +281,7 @@ const NewsDetailPage = () => {
                                     <div className="mt-3 border-t border-blue-200 pt-3">
                                         <a
                                             href={post.contactLink}
+                                            onClick={handleExternalLink}
                                             target="_blank"
                                             rel="noreferrer"
                                             className="text-sm font-medium text-blue-600 underline"
@@ -276,7 +311,7 @@ const NewsDetailPage = () => {
                         {userPosts.length > 0 && (
                             <div className="bg-white rounded-2xl p-4 shadow border-t-4 border-blue-500">
                                 <h2 className="font-bold mb-4 text-lg">
-                                    Bài viết khác của {getDisplayName(post.user?.fullName)}
+                                    Bài viết khác của {getDisplayName(post.user?.fullName, post.user?.username)}
                                 </h2>
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
@@ -296,17 +331,40 @@ const NewsDetailPage = () => {
                             <div className="flex flex-col items-center text-center">
                                 {/* Avatar giả định */}
                                 <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-2xl font-bold mb-3">
-                                    {getDisplayName(post.user?.fullName).charAt(0)}
+                                    {getDisplayName(post.user?.fullName, post.user?.username).charAt(0).toUpperCase()}
                                 </div>
 
-                                <div className="font-bold text-lg flex items-center gap-1.5">
-                                    {getDisplayName(post.user?.fullName)}
-                                    {isAdmin && (
-                                        <span title="Tài khoản xác thực" className="text-blue-500 text-sm">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
-                                            </svg>
-                                        </span>
+                                <div className="flex flex-col items-center">
+                                    <div className="font-bold text-lg flex items-center justify-center gap-1.5 flex-wrap">
+                                        {getDisplayName(post.user?.fullName, post.user?.username)}
+                                        {isAdmin && (
+                                            <span title="Tài khoản xác thực" className="text-blue-500 text-sm">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                                                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                                                </svg>
+                                            </span>
+                                        )}
+                                    </div>
+                                    
+                                    {/* Nhãn VIP cho Người đăng */}
+                                    {post.user?.isVip && (
+                                        <div className="mt-1 flex items-center justify-center">
+                                            {post.user?.vipPriorityLevel && post.user.vipPriorityLevel >= 3 && (
+                                                <span className="bg-gradient-to-r from-[#d97706] to-[#b45309] text-white text-[11px] font-bold px-3 py-0.5 rounded-full shadow-md flex items-center gap-1 border border-[#fef3c7]">
+                                                    👑 Đối tác VIP Pro
+                                                </span>
+                                            )}
+                                            {post.user?.vipPriorityLevel === 2 && (
+                                                <span className="bg-gradient-to-r from-[#7c3aed] to-[#5b21b6] text-white text-[11px] font-bold px-3 py-0.5 rounded-full shadow-md flex items-center gap-1 border border-[#ede9fe]">
+                                                    ✨ Đối tác VIP Standard
+                                                </span>
+                                            )}
+                                            {(!post.user?.vipPriorityLevel || post.user.vipPriorityLevel <= 1) && (
+                                                <span className="bg-gradient-to-r from-[#2563eb] to-[#1e40af] text-white text-[11px] font-bold px-3 py-0.5 rounded-full shadow-md flex items-center gap-1 border border-[#dbeafe]">
+                                                    💎 Đối tác Uy tín
+                                                </span>
+                                            )}
+                                        </div>
                                     )}
                                 </div>
 
@@ -316,7 +374,7 @@ const NewsDetailPage = () => {
                                 </div>
 
                                 <button
-                                    onClick={() => setShowPhone(true)}
+                                    onClick={handleShowContact}
                                     className="w-full mt-4 bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition shadow-lg shadow-green-100"
                                 >
                                     GỬI YÊU CẦU LIÊN HỆ

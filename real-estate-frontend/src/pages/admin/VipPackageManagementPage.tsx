@@ -11,6 +11,7 @@ interface VipPackage {
     description?: string;
     durationDays: number;
     price: string | number;
+    packageType: string;
     priorityLevel: number;
     features?: string;
     status: number;
@@ -59,6 +60,7 @@ const VipPackageManagementPage: React.FC = () => {
     const [packageToDelete, setPackageToDelete] = useState<VipPackage | null>(null);
     const [page, setPage] = useState(1);
     const [total, setTotal] = useState(0);
+    const [activeTab, setActiveTab] = useState<'ALL' | 'POST_VIP' | 'ACCOUNT_VIP'>('ALL');
     const limit = 10;
 
     const loadPackages = async () => {
@@ -112,6 +114,27 @@ const VipPackageManagementPage: React.FC = () => {
                 </Button>
             </div>
 
+            <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-xl self-start w-max border border-gray-200">
+                <button
+                    onClick={() => setActiveTab('ALL')}
+                    className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${activeTab === 'ALL' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                    Tất cả
+                </button>
+                <button
+                    onClick={() => setActiveTab('POST_VIP')}
+                    className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${activeTab === 'POST_VIP' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                    Nổi bật bài đăng
+                </button>
+                <button
+                    onClick={() => setActiveTab('ACCOUNT_VIP')}
+                    className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${activeTab === 'ACCOUNT_VIP' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                    Nâng tài khoản
+                </button>
+            </div>
+
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                 {loading ? (
                     <div className="p-8 text-center text-gray-500">Đang tải...</div>
@@ -123,6 +146,7 @@ const VipPackageManagementPage: React.FC = () => {
                             <thead className="bg-gray-50 border-b border-gray-100">
                                 <tr>
                                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-900">Tên gói</th>
+                                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-900">Phân loại</th>
                                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-900">Thời hạn</th>
                                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-900">Giá (VNĐ)</th>
                                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-900">Mức độ ưu tiên</th>
@@ -132,7 +156,7 @@ const VipPackageManagementPage: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {packages.map((pkg) => {
+                                {(activeTab === 'ALL' ? packages : packages.filter(p => p.packageType === activeTab)).map((pkg) => {
                                     const features = parseFeatures(pkg.features);
                                     const featureChips = [
                                         features.highlight ? 'Nổi bật' : null,
@@ -148,6 +172,11 @@ const VipPackageManagementPage: React.FC = () => {
                                                     <p className="font-semibold text-gray-900">{pkg.name}</p>
                                                     <p className="text-xs text-gray-500">{pkg.description || 'Không có mô tả'}</p>
                                                 </div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <Badge color={pkg.packageType === 'ACCOUNT_VIP' ? 'primary' : 'warning'} className="whitespace-nowrap">
+                                                    {pkg.packageType === 'ACCOUNT_VIP' ? 'Nâng tài khoản' : 'Nổi bật bài'}
+                                                </Badge>
                                             </td>
                                             <td className="px-6 py-4 text-gray-700">
                                                 {pkg.durationDays} ngày
