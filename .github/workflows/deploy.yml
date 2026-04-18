@@ -50,7 +50,8 @@ jobs:
 
             cd ${{ secrets.VPS_PROJECT_PATH }}
 
-            echo ">>> 🔄 Pull code mới nhất từ main..."
+            echo ">>> 🔄 Reset thay đổi cục bộ và pull code mới nhất từ main..."
+            git reset --hard HEAD
             git pull origin main
 
             echo ">>> 🔑 Tiêm (Inject) cấu hình hệ thống từ Github Secrets xuống VPS..."
