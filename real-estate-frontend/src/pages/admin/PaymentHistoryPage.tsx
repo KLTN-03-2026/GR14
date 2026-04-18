@@ -96,7 +96,7 @@ const PaymentHistoryPage: React.FC = () => {
             key: 'package',
             render: (_, record: PaymentRow) =>
                 record.subscription?.package ? (
-                    <Badge color="warning">{record.subscription.package.name}</Badge>
+                    <Badge color="warning" className="whitespace-nowrap">{record.subscription.package.name}</Badge>
                 ) : (
                     '—'
                 ),
@@ -110,7 +110,7 @@ const PaymentHistoryPage: React.FC = () => {
             title: 'Phương thức',
             dataIndex: 'paymentMethod',
             render: (val: string) => (
-                <Badge color={val === 'vnpay' ? 'info' : 'primary'}>
+                <Badge color={val === 'vnpay' ? 'info' : 'primary'} className="whitespace-nowrap">
                     {val === 'vnpay' ? 'VNPay' : val === 'momo' ? 'MoMo' : val?.toUpperCase() || '—'}
                 </Badge>
             ),
@@ -120,7 +120,7 @@ const PaymentHistoryPage: React.FC = () => {
             dataIndex: 'status',
             render: (val: number) => {
                 const s = PAYMENT_STATUS_MAP[val] || { label: 'Không rõ', color: 'light' as const };
-                return <Badge color={s.color}>{s.label}</Badge>;
+                return <Badge color={s.color} className="whitespace-nowrap">{s.label}</Badge>;
             },
         },
         {

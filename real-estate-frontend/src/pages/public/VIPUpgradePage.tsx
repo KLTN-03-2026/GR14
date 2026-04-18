@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Spin, Modal, Empty, Alert } from 'antd';
 import toast from 'react-hot-toast';
@@ -183,11 +183,9 @@ const VIPUpgradePage = () => {
                 packageId: checkoutData.packageId,
                 paymentType: mode === 'post' ? 'POST_VIP' : 'ACCOUNT_VIP',
                 paymentMethod: paymentMethod as 'vnpay' | 'momo',
-               returnUrl: window.location.origin + (
-                paymentMethod === 'momo' 
-                    ? '/payment/momo-callback' 
-                    : '/payment/vnpay-callback'
-                ),
+                returnUrl: paymentMethod === 'momo'
+                    ? `${import.meta.env.VITE_API_URL}/payment/momo/callback`
+                    : window.location.origin + '/payment/vnpay-callback',
             };
             if (mode === 'post' && postId) payload.postId = postId;
 

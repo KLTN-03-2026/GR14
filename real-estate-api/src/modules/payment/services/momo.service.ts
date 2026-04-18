@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 
 @Injectable()
 export class MoMoService {
+  private readonly logger = new Logger(MoMoService.name);
   private partnerCode: string;
   private accessKey: string;
   private secretKey: string;
@@ -13,18 +14,20 @@ export class MoMoService {
   private notifyUrl: string;
 
   constructor(private configService: ConfigService) {
-    this.partnerCode = this.configService.get('MOMO_PARTNER_CODE') || '';
-    this.accessKey = this.configService.get('MOMO_ACCESS_KEY') || '';
-    this.secretKey = this.configService.get('MOMO_SECRET_KEY') || '';
+    this.partnerCode = (this.configService.get('MOMO_PARTNER_CODE') || '').trim();
+    this.accessKey = (this.configService.get('MOMO_ACCESS_KEY') || '').trim();
+    this.secretKey = (this.configService.get('MOMO_SECRET_KEY') || '').trim();
     this.endpoint =
-      this.configService.get('MOMO_ENDPOINT') ||
-      'https://test-payment.momo.vn/v2/gateway/api/create';
+      (this.configService.get('MOMO_ENDPOINT') ||
+      'https://test-payment.momo.vn/v2/gateway/api/create').trim();
     this.returnUrl =
-      this.configService.get('MOMO_RETURN_URL') ||
-      'http://localhost:3000/api/payment/momo/callback';
+      (this.configService.get('MOMO_RETURN_URL') ||
+      'http://localhost:3000/api/payment/momo/callback').trim();
     this.notifyUrl =
-      this.configService.get('MOMO_NOTIFY_URL') ||
-      'http://localhost:3000/api/payment/momo/notify';
+      (this.configService.get('MOMO_NOTIFY_URL') ||
+      'http://localhost:3000/api/payment/momo/notify').trim();
+
+    this.logger.debug(`MoMo config: partnerCode="${this.partnerCode}" accessKey="${this.accessKey}" endpoint="${this.endpoint}"`);
   }
 
   async createPaymentUrl(
@@ -40,6 +43,8 @@ export class MoMoService {
     const lang = 'vi';
 
     const rawSignature = `accessKey=${this.accessKey}&amount=${amount}&extraData=${extraData}&ipnUrl=${this.notifyUrl}&orderId=${orderId}&orderInfo=${orderInfo}&partnerCode=${this.partnerCode}&redirectUrl=${returnUrl || this.returnUrl}&requestId=${requestId}&requestType=payWithMethod`;
+
+    this.logger.debug(`MoMo rawSignature: ${rawSignature}`);
 
     const signature = this.createHmacSha256(rawSignature, this.secretKey);
 
@@ -61,12 +66,16 @@ export class MoMoService {
       signature: signature,
     };
 
+    this.logger.debug(`MoMo requestBody: ${JSON.stringify(requestBody)}`);
+
     try {
       const response = await axios.post(this.endpoint, requestBody, {
         headers: {
           'Content-Type': 'application/json',
         },
       });
+
+      this.logger.debug(`MoMo response: ${JSON.stringify(response.data)}`);
 
       if (response.data.resultCode === 0) {
         return {
@@ -78,9 +87,13 @@ export class MoMoService {
         throw new Error(`MoMo error: ${response.data.message}`);
       }
     } catch (error) {
+      if (error.response) {
+        this.logger.error(`MoMo API error: status=${error.response.status}, data=${JSON.stringify(error.response.data)}`);
+      }
       throw new Error(`Failed to create MoMo payment: ${error.message}`);
     }
   }
+
 
   verifySignature(data: any): boolean {
     const {

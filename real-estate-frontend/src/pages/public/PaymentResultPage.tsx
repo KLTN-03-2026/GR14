@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Button, Spin } from 'antd';
 import toast from 'react-hot-toast';
 import {
   CheckCircleOutlined,
+  CloseCircleOutlined,
   CalendarOutlined,
   CrownOutlined,
   HomeOutlined,
@@ -13,6 +14,7 @@ import { paymentApi } from '@/api';
 
 const PaymentSuccessPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [paymentData, setPaymentData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -96,7 +98,7 @@ const PaymentSuccessPage = () => {
     <div style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '48px 20px 64px' }}>
       <div style={{ maxWidth: 560, margin: '0 auto' }}>
 
-        {/* Thông báo thành công */}
+        {/* Thông báo thành công / thất bại */}
         <div style={{
           background: '#fff', borderRadius: 14, padding: '36px 28px',
           textAlign: 'center', border: '1px solid #e5e7eb',
@@ -104,18 +106,22 @@ const PaymentSuccessPage = () => {
         }}>
           <div style={{
             width: 72, height: 72, borderRadius: '50%',
-            background: '#f0fdf4', display: 'flex',
+            background: location.pathname.includes('/failed') || paymentData?.status === 2 ? '#fef2f2' : '#f0fdf4', display: 'flex',
             alignItems: 'center', justifyContent: 'center',
             margin: '0 auto 20px',
           }}>
-            <CheckCircleOutlined style={{ fontSize: 36, color: '#16a34a' }} />
+            {location.pathname.includes('/failed') || paymentData?.status === 2 ? (
+               <CloseCircleOutlined style={{ fontSize: 36, color: '#dc2626' }} />
+            ) : (
+               <CheckCircleOutlined style={{ fontSize: 36, color: '#16a34a' }} />
+            )}
           </div>
 
           <h1 style={{ fontSize: 24, fontWeight: 800, color: '#111827', margin: '0 0 8px' }}>
-            Thanh toán thành công!
+            {location.pathname.includes('/failed') || paymentData?.status === 2 ? 'Thanh toán thất bại!' : 'Thanh toán thành công!'}
           </h1>
           <p style={{ fontSize: 14, color: '#6b7280', margin: 0 }}>
-            Tài khoản VIP của bạn đã được kích hoạt
+            {location.pathname.includes('/failed') || paymentData?.status === 2 ? 'Giao dịch của bạn đã bị hủy hoặc gặp lỗi.' : 'Tài khoản VIP của bạn đã được kích hoạt'}
           </p>
         </div>
 
