@@ -101,7 +101,7 @@ const router = createBrowserRouter([
 
       { path: "about", element: <AboutMe /> },
       { path: "fengshui", element: <FengshuiPage /> },
-      { path: "dinh-gia", element: <ValuationPage /> },
+      { path: "valuation", element: <ValuationPage /> },
 
       {
         path: "appointment",

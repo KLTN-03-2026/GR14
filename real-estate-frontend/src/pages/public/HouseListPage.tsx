@@ -1,27 +1,44 @@
-import { useEffect, useState } from 'react';
-import { Empty } from 'antd';
+import { useEffect, useState, useRef } from 'react';
+import { Empty, Select } from 'antd';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { houseApi, propertyCategoryApi } from '@/api';
-import { PropertyCard, Loading, PropertyListingFilters } from '@/components/common';
+import { PropertyCard, Loading } from '@/components/common';
 import { DEFAULT_PAGE_SIZE } from '@/constants';
 import { useVietnamAddress } from '@/hooks/UseAddressVN';
 import { buildProvinceCanonicalLookup, getLocalizedPropertyCategoryName, normalizeProvinceName, sortProvinceOptions } from '@/utils';
 import type { House, PropertyCategory } from '@/types';
 
-interface CustomPaginationProps {
-    current: number; total: number; pageSize: number; onChange: (page: number) => void;
-}
+const { Option } = Select;
+
+/* ── Price & Area ranges ─────────────────────────────────────────────── */
+const PRICE_RANGES = [
+    { label: 'Dưới 1 tỷ', value: '0-1' },
+    { label: '1 - 3 tỷ', value: '1-3' },
+    { label: '3 - 5 tỷ', value: '3-5' },
+    { label: '5 - 10 tỷ', value: '5-10' },
+    { label: '10 - 20 tỷ', value: '10-20' },
+    { label: 'Trên 20 tỷ', value: '20-999999' },
+];
+const AREA_RANGES = [
+    { label: 'Dưới 30 m²', value: '0-30' },
+    { label: '30 - 50 m²', value: '30-50' },
+    { label: '50 - 80 m²', value: '50-80' },
+    { label: '80 - 120 m²', value: '80-120' },
+    { label: 'Trên 120 m²', value: '120-99999' },
+];
+const DIRECTIONS = ['Đông', 'Tây', 'Nam', 'Bắc', 'Đông Nam', 'Đông Bắc', 'Tây Nam', 'Tây Bắc'];
+
+/* ── Custom Pagination ────────────────────────────────────────────────── */
+interface CustomPaginationProps { current: number; total: number; pageSize: number; onChange: (page: number) => void; }
 const CustomPagination: React.FC<CustomPaginationProps> = ({ current, total, pageSize, onChange }) => {
     const totalPages = Math.ceil(total / pageSize);
     if (totalPages <= 1) return null;
-
     const pages: (number | string)[] = (() => {
         if (totalPages <= 5) return Array.from({ length: totalPages }, (_, i) => i + 1);
         if (current <= 3) return [1, 2, 3, 4, '...', totalPages];
         if (current >= totalPages - 2) return [1, '...', totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
         return [1, '...', current - 1, current, current + 1, '...', totalPages];
     })();
-
     const btnBase = 'w-9 h-9 flex items-center justify-center rounded-full transition-colors cursor-pointer';
     return (
         <div className="flex items-center justify-center gap-2 mt-12 mb-4">
@@ -45,7 +62,37 @@ const CustomPagination: React.FC<CustomPaginationProps> = ({ current, total, pag
     );
 };
 
+/* ── Checkbox Filter Item ─────────────────────────────────────────────── */
+const FilterCheckbox: React.FC<{ label: string; checked: boolean; count?: number; onChange: () => void }> = ({ label, checked, count, onChange }) => (
+    <label className="flex items-center justify-between gap-2 py-1.5 cursor-pointer group">
+        <div className="flex items-center gap-2.5">
+            <div
+                onClick={onChange}
+                className={`w-4 h-4 rounded flex items-center justify-center border transition-all flex-shrink-0 ${checked ? 'bg-[#0d9488] border-[#0d9488]' : 'border-gray-300 group-hover:border-[#0d9488]'}`}
+            >
+                {checked && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
+            </div>
+            <span className={`text-[13px] ${checked ? 'text-[#111827] font-semibold' : 'text-gray-600 group-hover:text-gray-800'}`}>{label}</span>
+        </div>
+        {count !== undefined && <span className="text-[11px] text-gray-400 font-medium">{count.toLocaleString()}</span>}
+    </label>
+);
 
+/* ── Filter Section ───────────────────────────────────────────────────── */
+const FilterSection: React.FC<{ title: string; children: React.ReactNode; defaultOpen?: boolean }> = ({ title, children, defaultOpen = true }) => {
+    const [open, setOpen] = useState(defaultOpen);
+    return (
+        <div className="border-b border-gray-100 pb-4 mb-4">
+            <button onClick={() => setOpen(!open)} className="flex items-center justify-between w-full mb-2">
+                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">{title}</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2.5" className={`transition-transform ${open ? '' : '-rotate-90'}`}><polyline points="6 9 12 15 18 9" /></svg>
+            </button>
+            {open && <div>{children}</div>}
+        </div>
+    );
+};
+
+/* ── Main Page ────────────────────────────────────────────────────────── */
 const HouseListPage: React.FC = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
@@ -59,145 +106,237 @@ const HouseListPage: React.FC = () => {
     const { provinces } = useVietnamAddress();
     const provinceOptions = sortProvinceOptions(provinces);
     const houseCategoryOptions = categories
-        .filter((category) => category.categoryType === 'HOUSE')
-        .map((category) => ({
-            label: getLocalizedPropertyCategoryName(category.code, category.name),
-            value: category.id,
-        }));
+        .filter((c) => c.categoryType === 'HOUSE')
+        .map((c) => ({ label: getLocalizedPropertyCategoryName(c.code, c.name), value: String(c.id) }));
 
     const [filters, setFilters] = useState({
         search: searchParams.get('search') || '',
-        categoryId: searchParams.get('categoryId') || undefined,
-        province: searchParams.get('province') || undefined,
-        priceRange: searchParams.get('priceRange') || undefined,
-        areaRange: searchParams.get('areaRange') || undefined,
-        direction: searchParams.get('direction') || undefined,
+        categoryIds: searchParams.get('categoryIds')?.split(',').filter(Boolean) || [] as string[],
+        province: searchParams.get('province') || undefined as string | undefined,
+        priceRanges: searchParams.get('priceRanges')?.split(',').filter(Boolean) || [] as string[],
+        areaRanges: searchParams.get('areaRanges')?.split(',').filter(Boolean) || [] as string[],
+        directions: searchParams.get('directions')?.split(',').filter(Boolean) || [] as string[],
         page: Number(searchParams.get('page')) || 1,
         limit: DEFAULT_PAGE_SIZE,
     });
 
     useEffect(() => { loadCategories(); fetchAllHouses(); }, []);
     useEffect(() => { applyFiltersAndPagination(); }, [filters, allHouses, provinceLookup]);
+    useEffect(() => {
+        const provinceValues = allHouses.flatMap((h: any) =>
+            [h.city, h.province].filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+        );
+        if (!provinceValues.length) { setProvinceLookup({}); return; }
+        let cancelled = false;
+        buildProvinceCanonicalLookup(provinceValues).then((lookup) => { if (!cancelled) setProvinceLookup(lookup); });
+        return () => { cancelled = true; };
+    }, [allHouses]);
 
     const loadCategories = async () => {
-        try {
-            const res = await propertyCategoryApi.getAll();
-            setCategories(res.data.data || res.data);
-        } catch (e) { console.error(e); }
+        try { const res = await propertyCategoryApi.getAll(); setCategories(res.data.data || res.data); } catch (e) { console.error(e); }
     };
-
     const fetchAllHouses = async () => {
         setLoading(true);
-        try {
-            const res = await houseApi.getAll({ page: 1, limit: 9999 });
-            setAllHouses(res.data.data || res.data);
-        } catch (e) { console.error(e); }
-        finally { setLoading(false); }
+        try { const res = await houseApi.getAll({ page: 1, limit: 9999 }); setAllHouses(res.data.data || res.data); }
+        catch (e) { console.error(e); } finally { setLoading(false); }
     };
 
-
-    useEffect(() => {
-        const provinceValues = allHouses.flatMap((house: any) =>
-            [house.city, house.province].filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-        );
-
-        if (provinceValues.length === 0) {
-            setProvinceLookup({});
-            return;
-        }
-
-        let cancelled = false;
-        buildProvinceCanonicalLookup(provinceValues).then((lookup: Record<string, string>) => {
-            if (!cancelled) {
-                setProvinceLookup(lookup);
-            }
-        });
-
-        return () => {
-            cancelled = true;
-        };
-    }, [allHouses]);
     const applyFiltersAndPagination = () => {
         let list = [...allHouses];
         if (filters.search) {
             const kw = filters.search.toLowerCase();
             list = list.filter((h: any) =>
                 h.title?.toLowerCase().includes(kw) || h.city?.toLowerCase().includes(kw) ||
-                h.district?.toLowerCase().includes(kw) || h.ward?.toLowerCase().includes(kw) ||
-                h.description?.toLowerCase().includes(kw)
+                h.district?.toLowerCase().includes(kw) || h.description?.toLowerCase().includes(kw)
             );
         }
-        if (filters.categoryId) list = list.filter(h => h.categoryId === Number(filters.categoryId));
+        if (filters.categoryIds.length) list = list.filter(h => filters.categoryIds.includes(String(h.categoryId)));
         if (filters.province) {
-            const selectedProvince = normalizeProvinceName(filters.province as string);
+            const sel = normalizeProvinceName(filters.province);
             list = list.filter((h: any) =>
-                (h.city ? (provinceLookup[h.city] || normalizeProvinceName(h.city)) === selectedProvince : false) ||
-                (h.province ? (provinceLookup[h.province] || normalizeProvinceName(h.province)) === selectedProvince : false)
+                (h.city ? (provinceLookup[h.city] || normalizeProvinceName(h.city)) === sel : false) ||
+                (h.province ? (provinceLookup[h.province] || normalizeProvinceName(h.province)) === sel : false)
             );
         }
-        if (filters.direction) list = list.filter(h => h.direction === filters.direction);
-        if (filters.priceRange) {
-            const [min, max] = filters.priceRange.split('-').map(Number);
-            list = list.filter(h => { const p = Number(h.price) || 0; return p >= min * 1e9 && p <= max * 1e9; });
+        if (filters.directions.length) list = list.filter(h => filters.directions.includes((h as any).direction || ''));
+        if (filters.priceRanges.length) {
+            list = list.filter(h => filters.priceRanges.some(r => {
+                const [min, max] = r.split('-').map(Number);
+                const p = Number((h as any).price) || 0;
+                return p >= min * 1e9 && p <= max * 1e9;
+            }));
         }
-        if (filters.areaRange) {
-            const [min, max] = filters.areaRange.split('-').map(Number);
-            list = list.filter(h => { const a = Number(h.area) || 0; return a >= min && a <= max; });
+        if (filters.areaRanges.length) {
+            list = list.filter(h => filters.areaRanges.some(r => {
+                const [min, max] = r.split('-').map(Number);
+                const a = Number((h as any).area) || 0;
+                return a >= min && a <= max;
+            }));
         }
         setTotal(list.length);
         const start = (filters.page - 1) * filters.limit;
         setHouses(list.slice(start, start + filters.limit));
     };
 
-    const handleFilterChange = (key: string, value: unknown) => {
+    const updateFilter = (key: string, value: unknown) => {
         const next = { ...filters, [key]: value, page: key === 'page' ? (value as number) : 1 };
         setFilters(next);
         const params = new URLSearchParams();
-        Object.entries(next).forEach(([k, v]) => { if (v !== undefined && v !== '') params.set(k, String(v)); });
+        Object.entries(next).forEach(([k, v]) => {
+            if (Array.isArray(v) && v.length) params.set(k, v.join(','));
+            else if (!Array.isArray(v) && v !== undefined && v !== '') params.set(k, String(v));
+        });
         setSearchParams(params);
     };
 
+    const toggleMulti = (key: 'priceRanges' | 'areaRanges' | 'directions' | 'categoryIds', val: string) => {
+        const current = filters[key] as string[];
+        const next = current.includes(val) ? current.filter(x => x !== val) : [...current, val];
+        updateFilter(key, next);
+    };
+
+    const hasFilters = filters.categoryIds.length || filters.province || filters.priceRanges.length || filters.areaRanges.length || filters.directions.length || filters.search;
+    const resetFilters = () => {
+        setFilters({ search: '', categoryIds: [], province: undefined, priceRanges: [], areaRanges: [], directions: [], page: 1, limit: DEFAULT_PAGE_SIZE });
+        setSearchParams(new URLSearchParams());
+    };
+
     return (
-        <div className="w-full bg-white pb-16">
+        <div className="w-full pb-16" style={{ background: '#f6f7f9' }}>
             {/* Breadcrumb */}
-            <div className="w-full bg-[#f4f5f7] py-3 mb-8">
-                <div className="max-w-[1250px] mx-auto px-4 sm:px-6 lg:px-0 flex items-center gap-1.5 text-[13px]">
-                    <button onClick={() => navigate('/')} className="text-gray-700 font-medium hover:text-[#254b86] transition-colors">Trang Chủ</button>
-                    <span className="text-gray-400">›</span>
-                    <span className="text-gray-500">Danh Sách Nhà Ở</span>
+            <div className="w-full bg-white border-b border-gray-100 py-3 mb-0">
+                <div className="max-w-[1300px] mx-auto px-4 lg:px-6 flex items-center gap-1.5 text-[13px]">
+                    <button onClick={() => navigate('/')} className="text-gray-500 hover:text-[#254b86] transition-colors">Trang Chủ</button>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6" /></svg>
+                    <span className="text-gray-800 font-medium">Danh Sách Nhà Ở</span>
                 </div>
             </div>
 
-            <div className="max-w-[1250px] mx-auto px-4 sm:px-6 lg:px-0">
-                <h1 className="text-[32px] font-bold text-[#1a1a1a] mb-8 tracking-tight">Danh Sách Nhà Ở</h1>
+            <div className="max-w-[1300px] mx-auto px-4 lg:px-6 pt-6">
+                {/* Page title + count */}
+                <div className="mb-5">
+                    <h1 className="text-[26px] font-bold text-[#1a1a1a] tracking-tight">Mua bán nhà toàn quốc</h1>
+                    <p className="text-[13px] text-gray-500 mt-1">Hiển thị <span className="font-semibold text-gray-700">{total.toLocaleString()}</span> tin — cập nhật trong 24 giờ qua</p>
+                </div>
 
-                {/* Filter bar */}
-                <PropertyListingFilters
-                    values={filters}
-                    provinceOptions={provinceOptions}
-                    categoryOptions={houseCategoryOptions}
-                    onChange={handleFilterChange}
-                    searchPlaceholder="Tìm kiếm bất động sản"
-                    categoryPlaceholder="Loại"
-                />
+                {/* Two-column layout */}
+                <div className="flex gap-6 items-start">
 
-                {/* Danh sách */}
-                {loading ? (
-                    <div className="flex justify-center items-center py-20 min-h-[400px]"><Loading /></div>
-                ) : houses.length === 0 ? (
-                    <div className="flex justify-center items-center py-20 min-h-[400px]"><Empty description="Không có kết quả phù hợp" /></div>
-                ) : (
-                    <>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                            {houses.map((house) => (
-                                <PropertyCard key={house.id} property={house} type="house" />
-                            ))}
+                    {/* ── LEFT SIDEBAR ─────────────────────────────────── */}
+                    <aside className="w-[240px] flex-shrink-0 bg-white rounded-2xl border border-gray-200 shadow-sm p-4 sticky top-5">
+                        <div className="flex items-center justify-between mb-3">
+                            <span className="text-[15px] font-bold text-gray-800">Bộ lọc</span>
+                            {hasFilters ? (
+                                <button onClick={resetFilters} className="text-[12px] text-[#0d9488] hover:underline font-semibold flex items-center gap-1">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 .49-3.5" /></svg>
+                                    Reset
+                                </button>
+                            ) : null}
                         </div>
-                        <CustomPagination current={filters.page} total={total} pageSize={filters.limit} onChange={(page) => handleFilterChange('page', page)} />
-                    </>
-                )}
-            </div>
 
+                        {/* Search inside sidebar */}
+                        <div className="relative mb-4">
+                            <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+                            <input
+                                type="text"
+                                value={filters.search}
+                                onChange={e => updateFilter('search', e.target.value)}
+                                placeholder="Tìm theo từ khoá"
+                                className="w-full pl-8 pr-3 py-2 bg-[#f6f7f9] border border-gray-200 rounded-lg text-[13px] text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#0d9488] focus:ring-1 focus:ring-[#0d9488] transition-all"
+                            />
+                        </div>
+
+                        {/* Location (dropdown) */}
+                        <FilterSection title="Địa điểm">
+                            <Select
+                                allowClear
+                                showSearch
+                                placeholder="Chọn tỉnh / thành phố"
+                                value={filters.province || undefined}
+                                onChange={v => updateFilter('province', v)}
+                                filterOption={(input, option) => (option?.label as string)?.toLowerCase().includes(input.toLowerCase())}
+                                className="w-full"
+                                size="small"
+                                style={{ width: '100%', fontSize: 13 }}
+                            >
+                                {provinceOptions.map((p: any) => (
+                                    <Option key={p.value || p.label} value={p.value || p.label} label={p.label}>{p.label}</Option>
+                                ))}
+                            </Select>
+                        </FilterSection>
+
+                        {/* Category */}
+                        {houseCategoryOptions.length > 0 && (
+                            <FilterSection title="Loại nhà">
+                                {houseCategoryOptions.map(opt => (
+                                    <FilterCheckbox
+                                        key={opt.value}
+                                        label={opt.label}
+                                        checked={filters.categoryIds.includes(opt.value)}
+                                        onChange={() => toggleMulti('categoryIds', opt.value)}
+                                    />
+                                ))}
+                            </FilterSection>
+                        )}
+
+                        {/* Price */}
+                        <FilterSection title="Khoảng giá">
+                            {PRICE_RANGES.map(r => (
+                                <FilterCheckbox
+                                    key={r.value}
+                                    label={r.label}
+                                    checked={filters.priceRanges.includes(r.value)}
+                                    onChange={() => toggleMulti('priceRanges', r.value)}
+                                />
+                            ))}
+                        </FilterSection>
+
+                        {/* Area */}
+                        <FilterSection title="Diện tích">
+                            {AREA_RANGES.map(r => (
+                                <FilterCheckbox
+                                    key={r.value}
+                                    label={r.label}
+                                    checked={filters.areaRanges.includes(r.value)}
+                                    onChange={() => toggleMulti('areaRanges', r.value)}
+                                />
+                            ))}
+                        </FilterSection>
+
+                        {/* Direction */}
+                        <FilterSection title="Hướng" defaultOpen={false}>
+                            {DIRECTIONS.map(d => (
+                                <FilterCheckbox
+                                    key={d}
+                                    label={d}
+                                    checked={filters.directions.includes(d)}
+                                    onChange={() => toggleMulti('directions', d)}
+                                />
+                            ))}
+                        </FilterSection>
+                    </aside>
+
+                    {/* ── RIGHT: Results ───────────────────────────────── */}
+                    <div className="flex-1 min-w-0">
+                        {loading ? (
+                            <div className="flex justify-center items-center py-32"><Loading /></div>
+                        ) : houses.length === 0 ? (
+                            <div className="flex justify-center items-center py-32 bg-white rounded-2xl border border-gray-200">
+                                <Empty description="Không có kết quả phù hợp" />
+                            </div>
+                        ) : (
+                            <>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                                    {houses.map((house) => (
+                                        <PropertyCard key={house.id} property={house} type="house" />
+                                    ))}
+                                </div>
+                                <CustomPagination current={filters.page} total={total} pageSize={filters.limit} onChange={(page) => updateFilter('page', page)} />
+                            </>
+                        )}
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };

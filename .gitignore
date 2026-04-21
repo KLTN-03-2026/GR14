@@ -7,3 +7,6 @@ node_modules
 # Python cache
 __pycache__/
 *.pyc
+
+# V0 design files (local only)
+v0-design/

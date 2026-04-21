@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -97,6 +97,66 @@ body {
   --variable-collection-primary-800: rgba(37, 75, 134, 1);
 
   --animate-spin: spin 1s linear infinite;
+}
+
+/* =====================================================================
+   V0 Design Tokens — scoped to PUBLIC USER pages only
+   (Does NOT affect admin/employee layouts)
+   ===================================================================== */
+.public-layout {
+  /* --- Color palette --- */
+  --pl-background: #f9fafb;
+  --pl-foreground: #111827;
+  --pl-card: #ffffff;
+  --pl-card-foreground: #111827;
+  --pl-primary: #1e3a5f;        /* Deep navy blue */
+  --pl-primary-light: #254b86;
+  --pl-primary-fg: #ffffff;
+  --pl-accent: #0d9488;         /* Teal */
+  --pl-accent-light: #14b8a6;
+  --pl-accent-fg: #ffffff;
+  --pl-vip: #d97706;            /* Amber gold */
+  --pl-vip-light: #f59e0b;
+  --pl-vip-fg: #7c2d12;
+  --pl-muted: #f3f4f6;
+  --pl-muted-fg: #6b7280;
+  --pl-border: #e5e7eb;
+  --pl-success: #16a34a;
+  --pl-destructive: #dc2626;
+  --pl-radius: 0.75rem;
+}
+
+/* VIP shimmer animation for premium cards */
+@keyframes vip-shine {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+.pl-vip-border {
+  position: relative;
+  background: linear-gradient(90deg, #d97706, #f59e0b, #d97706);
+  background-size: 200% 100%;
+  animation: vip-shine 3s linear infinite;
+}
+
+/* Slide-up reveal utility used on Home page */
+@keyframes pl-slideUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.pl-slide-up {
+  animation: pl-slideUp 0.5s ease forwards;
+}
+
+/* ── Scroll Reveal (HomePage sections) ── */
+.sr-reveal {
+  opacity: 0;
+  transform: translateY(36px);
+  transition: opacity 0.65s ease, transform 0.65s cubic-bezier(0.22, 0.68, 0, 1.05);
+  transition-delay: var(--sr-delay, 0ms);
+}
+.sr-reveal.sr-visible {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .animate-fade-in {

@@ -1,6 +1,5 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Link } from "react-router-dom";
 import toast from 'react-hot-toast';
 import { HeartOutlined, HeartFilled, EnvironmentOutlined } from '@ant-design/icons';
 import { useAuthStore } from '@/stores/authStore';
@@ -178,18 +177,11 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ property, type = 'house' })
                     )}
                 </div>
 
-                {/* Giá + nút xem chi tiết */}
-                <div className="flex items-center justify-between mt-auto pt-3 border-t border-gray-100">
+                {/* Giá */}
+                <div className="flex items-center mt-auto pt-3 border-t border-gray-100">
                     <span className="text-[14px] font-bold text-[#254b86]">
                         {formatPrice((property as any).price)}
                     </span>
-                    <Link
-                        to={`/${isHouse ? 'houses' : 'lands'}/${property.id}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="px-4 py-1.5 bg-[#254b86] text-white border border-[#254b86] text-[13px] font-semibold rounded-lg hover:bg-white hover:text-[#254b86] transition-all duration-200 whitespace-nowrap shadow-sm hover:shadow"
-                    >
-                        Xem chi tiết
-                    </Link>
                 </div>
             </div>
         </div>
