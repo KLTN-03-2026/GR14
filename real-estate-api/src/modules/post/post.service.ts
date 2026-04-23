@@ -326,6 +326,7 @@ export class PostService {
               orderBy: { position: 'asc' },
             },
             vipSubscriptions: {
+              where: { status: 1, endDate: { gte: new Date() } },
               include: {
                 package: { select: { name: true, priorityLevel: true } },
               },
@@ -340,13 +341,18 @@ export class PostService {
         this.prisma.post.count({ where }),
       ]);
 
+      const now = new Date();
       const formattedPosts = posts.map((post) => {
         const vip = (post as any).vipSubscriptions?.[0];
+        // Tính isVip runtime: phải có vipExpiry còn hạn HOẶC subscription còn hạn
+        const vipStillActive =
+          (post.isVip && post.vipExpiry && post.vipExpiry > now) ||
+          (vip?.endDate && new Date(vip.endDate) > now);
         return {
           ...post,
-          isVip: Boolean(post.isVip || vip),
-          vipPackageName: vip?.package?.name || null,
-          vipPriorityLevel: vip?.package?.priorityLevel || null,
+          isVip: Boolean(vipStillActive),
+          vipPackageName: vipStillActive ? (vip?.package?.name || null) : null,
+          vipPriorityLevel: vipStillActive ? (vip?.package?.priorityLevel ?? post.vipPriorityLevel ?? null) : 0,
           vipSubscriptions: undefined,
         };
       });
@@ -540,13 +546,51 @@ export class PostService {
   async approve(id: number) {
     const post = await this.prisma.post.findUnique({
       where: { id },
-      include: { user: { select: { fullName: true, email: true } } },
+      include: {
+        user: { select: { fullName: true, email: true } },
+        vipSubscriptions: {
+          where: { status: 1 },
+          include: { package: { select: { durationDays: true, priorityLevel: true } } },
+          orderBy: { endDate: 'desc' },
+          take: 1,
+        },
+      },
     });
     if (!post) throw new NotFoundException('Bài đăng không tồn tại');
 
-    const updated = await this.prisma.post.update({
-      where: { id },
-      data: { status: 2, approvedAt: new Date() },
+    const now = new Date();
+
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Duyệt bài
+      await tx.post.update({
+        where: { id },
+        data: { status: 2, approvedAt: now },
+      });
+
+      // 2. Nếu bài có VIP subscription đang active, reset thời gian bắt đầu từ lúc duyệt
+      //    (tránh mất thời gian VIP khi bài chờ duyệt lâu)
+      const vipSub = (post as any).vipSubscriptions?.[0];
+      if (vipSub && vipSub.package?.durationDays) {
+        const newEndDate = new Date(
+          now.getTime() + vipSub.package.durationDays * 24 * 60 * 60 * 1000,
+        );
+        // Chỉ reset nếu startDate cũ sớm hơn now (thời gian VIP đang chạy lúc chờ duyệt)
+        const startedBeforeApproval = !vipSub.startDate || vipSub.startDate < now;
+        if (startedBeforeApproval) {
+          await tx.vipSubscription.update({
+            where: { id: vipSub.id },
+            data: { startDate: now, endDate: newEndDate },
+          });
+          await tx.post.update({
+            where: { id },
+            data: {
+              vipExpiry: newEndDate,
+              isVip: true,
+              vipPriorityLevel: vipSub.package.priorityLevel ?? 0,
+            },
+          });
+        }
+      }
     });
 
     const shouldSendEmail = await this.shouldSendStatusEmail(post.userId);
@@ -562,7 +606,7 @@ export class PostService {
       );
     }
 
-    return { message: 'Đã duyệt bài đăng', data: updated };
+    return { message: 'Đã duyệt bài đăng' };
   }
 
   async reject(id: number) {

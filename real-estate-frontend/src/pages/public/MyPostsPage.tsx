@@ -11,6 +11,13 @@ import PostDetailPanel from '@/components/common/PostDetailPanel';
 const fmtPrice = (price: number | null | undefined) =>
     price ? price.toLocaleString('vi-VN') + ' đ' : null;
 
+/** Trả true chỉ khi VIP còn hiệu lực (vipExpiry > now) */
+const isVipActive = (post: any): boolean => {
+    if (!post?.isVip && !post?.vipExpiry) return false;
+    if (post.vipExpiry && new Date(post.vipExpiry) <= new Date()) return false;
+    return Boolean(post.isVip || post.vipExpiry);
+};
+
 const STATUS_CFG: Record<number, { label: string; dot: string; text: string; bg: string }> = {
     1: { label: 'Chờ duyệt', dot: 'bg-amber-400', text: 'text-amber-700', bg: 'bg-amber-50  border-amber-200' },
     2: { label: 'Đã duyệt', dot: 'bg-emerald-400', text: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
@@ -206,9 +213,9 @@ const PostCard: React.FC<PostCardProps> = ({ post, onEdit, onDelete, onVipUpgrad
     const thumb = post.images?.[0]?.url;
 
     return (
-        <div className={`group relative flex gap-4 rounded-2xl border bg-white p-4 shadow-sm transition-all hover:shadow-md ${post.isVip ? 'border-amber-200 bg-gradient-to-r from-amber-50/40 to-white' : 'border-gray-100'}`}>
-            {/* VIP badge */}
-            {post.isVip && (
+        <div className={`group relative flex gap-4 rounded-2xl border bg-white p-4 shadow-sm transition-all hover:shadow-md ${isVipActive(post) ? 'border-amber-200 bg-gradient-to-r from-amber-50/40 to-white' : 'border-gray-100'}`}>
+            {/* VIP badge — chỉ hiện khi còn hạn */}
+            {isVipActive(post) && (
                 <span className="absolute right-3 top-3 flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700">
                     <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><path d="M2.5 19L5 10l4.5 4 2.5-6 2.5 6L19 10l2.5 9H2.5z" /></svg>
                     VIP
@@ -262,8 +269,8 @@ const PostCard: React.FC<PostCardProps> = ({ post, onEdit, onDelete, onVipUpgrad
                 <button onClick={onEdit} title="Chỉnh sửa" className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600">
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                 </button>
-                {/* VIP upgrade */}
-                {!post.isVip && (
+                {/* VIP upgrade — hiện khi chưa VIP hoặc VIP đã hết hạn */}
+                {!isVipActive(post) && (
                     <button onClick={onVipUpgrade} title="Nâng lên VIP" className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-200 text-amber-500 transition hover:bg-amber-50 hover:text-amber-600">
                         <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M2.5 19L5 10l4.5 4 2.5-6 2.5 6L19 10l2.5 9H2.5z" /></svg>
                     </button>
@@ -374,14 +381,14 @@ const MyPostsPage: React.FC = () => {
         }
     };
 
-    const vipCount = posts.filter((p) => p.isVip).length;
+    const vipCount = posts.filter(isVipActive).length;
 
     // ── Filtered + paged ────────────────────────────────────────────────────
     const filteredPosts = useMemo(() => {
         let result = [...posts];
         if (statusFilter !== 'all') result = result.filter((p) => p.status === statusFilter);
         if (typeFilter !== 'all') result = result.filter((p) => p.postType === typeFilter);
-        if (vipOnly) result = result.filter((p) => p.isVip);
+        if (vipOnly) result = result.filter(isVipActive);
         if (search.trim()) result = result.filter((p) =>
             p.title?.toLowerCase().includes(search.toLowerCase())
         );

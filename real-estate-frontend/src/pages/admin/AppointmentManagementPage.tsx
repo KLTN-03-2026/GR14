@@ -349,62 +349,67 @@ const AppointmentManagementPage: React.FC = () => {
                 const actualUpdated = record.actualStatus !== undefined && record.actualStatus !== null;
 
                 return (
-                    <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                        {record.status === 0 && (
-                            <>
-                                <Button size="sm" variant="primary" iconOnly ariaLabel="Duyệt" onClick={() => openApproveModal(record)} startIcon={(
+                    <div className="flex flex-col gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        {/* Workflow: Duyệt / Từ chối / Phân công / Auto */}
+                        <div className="flex items-center gap-1.5 flex-nowrap">
+                            {record.status === 0 && (
+                                <>
+                                    <Button size="sm" variant="primary" iconOnly ariaLabel="Duyệt" onClick={() => openApproveModal(record)} startIcon={(
+                                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                        </svg>
+                                    )}>Duyệt</Button>
+                                    <Button size="sm" variant="danger" iconOnly ariaLabel="Từ chối" onClick={() => openCancelModal(record.id)} startIcon={(
+                                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                    )}>Từ chối</Button>
+                                </>
+                            )}
+                            {record.status === 1 && !actualUpdated && (
+                                <Button size="sm" variant="outline" iconOnly ariaLabel="Phân công" onClick={() => openAssignModal(record)} startIcon={(
                                     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5V4H2v16h5m10 0v-5a3 3 0 00-6 0v5m6 0H11" />
                                     </svg>
-                                )}>Duyệt</Button>
-                                <Button size="sm" variant="danger" iconOnly ariaLabel="Từ chối" onClick={() => openCancelModal(record.id)} startIcon={(
+                                )}>Phân công</Button>
+                            )}
+                            {!actualUpdated && record.status !== APPOINTMENT_STATUS.REJECTED && !record.employeeId && (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleAutoAssign(record.id)}
+                                >
+                                    Auto assign
+                                </Button>
+                            )}
+                        </div>
+
+                        {/* Utility: Sửa + Xóa */}
+                        <div className="flex items-center gap-1.5 flex-nowrap">
+                            {!actualUpdated && record.status !== APPOINTMENT_STATUS.REJECTED && (
+                                <Button size="sm" variant="outline" iconOnly ariaLabel="Sửa" onClick={() => navigate(`/admin/appointments/${record.id}/edit`)} startIcon={(
                                     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                     </svg>
-                                )}>Từ chối</Button>
-                            </>
-                        )}
-                        {record.status === 1 && !actualUpdated && (
-                            <Button size="sm" variant="outline" iconOnly ariaLabel="Phân công" onClick={() => openAssignModal(record)} startIcon={(
-                                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5V4H2v16h5m10 0v-5a3 3 0 00-6 0v5m6 0H11" />
-                                </svg>
-                            )}>Phân công</Button>
-                        )}
-                        {!actualUpdated && record.status !== APPOINTMENT_STATUS.REJECTED && !record.employeeId && (
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleAutoAssign(record.id)}
-                            >
-                                Auto assign
-                            </Button>
-                        )}
-                        {!actualUpdated && record.status !== APPOINTMENT_STATUS.REJECTED && (
-                            <Button size="sm" variant="outline" iconOnly ariaLabel="Sửa" onClick={() => navigate(`/admin/appointments/${record.id}/edit`)} startIcon={(
-                                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                            )}>Sửa</Button>
-                        )}
-                        {!actualUpdated && (
-                            <Button
-                                size="sm"
-                                variant="danger"
-                                iconOnly
-                                ariaLabel="Xóa"
-                                startIcon={(
-                                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                    </svg>
-                                )}
-                                onClick={() => {
-                                    setDeleteTarget(record);
-                                }}
-                            >
-                                Xóa
-                            </Button>
-                        )}
+                                )}>Sửa</Button>
+                            )}
+                            {!actualUpdated && (
+                                <Button
+                                    size="sm"
+                                    variant="danger"
+                                    iconOnly
+                                    ariaLabel="Xóa"
+                                    startIcon={(
+                                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                    )}
+                                    onClick={() => setDeleteTarget(record)}
+                                >
+                                    Xóa
+                                </Button>
+                            )}
+                        </div>
                     </div>
                 );
             },

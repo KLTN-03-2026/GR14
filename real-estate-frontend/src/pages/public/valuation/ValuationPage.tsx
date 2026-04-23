@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
@@ -7,6 +7,7 @@ import {
 } from 'recharts';
 import apiClient from '@/api/client';
 import toast from 'react-hot-toast';
+import { useAuthStore } from '@/stores/authStore';
 
 /* ─── Constants ─────────────────────────────────────────────────────── */
 const CACHE_KEY = 'valuation_cache';
@@ -58,8 +59,15 @@ const SectionTitle = ({ icon, title }: { icon: string; title: string }) => (
 /* ─── Main Page ─────────────────────────────────────────────────────── */
 const ValuationPage: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
+
+  // Check VIP còn hạn
+  const isVipActive = () => {
+    if (!user?.isVip || !user?.vipExpiry) return false;
+    return new Date(user.vipExpiry) > new Date();
+  };
 
   // Form state
   const [address, setAddress] = useState('');
@@ -171,8 +179,9 @@ const ValuationPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Right form card */}
+          {/* Right form card — chỉ VIP mới dùng được */}
           <div className="w-full max-w-md flex-shrink-0">
+            {isVipActive() ? (
             <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-7 shadow-2xl">
               <h2 className="mb-5 flex items-center gap-2.5 text-lg font-bold text-white">
                 <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-cyan-400 text-base">🔍</span>
@@ -264,6 +273,46 @@ const ValuationPage: React.FC = () => {
                 ℹ️ Kết quả chỉ mang tính tham khảo, dựa trên dữ liệu thị trường thực tế.
               </p>
             </div>
+            ) : (
+              /* ── VIP Gate Card ── */
+              <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 backdrop-blur-xl p-7 shadow-2xl flex flex-col items-center text-center gap-5">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg shadow-amber-500/30 text-3xl">
+                  👑
+                </div>
+                <div>
+                  <h2 className="text-xl font-extrabold text-white mb-2">Tính năng dành riêng cho VIP</h2>
+                  <p className="text-sm text-white/60 leading-relaxed">
+                    Định giá bất động sản bằng AI là quyền lợi độc quyền của thành viên VIP.
+                    Nâng cấp ngay để trải nghiệm phân tích chính xác từ 3.5 triệu giao dịch thực tế.
+                  </p>
+                </div>
+                <ul className="w-full text-left space-y-2">
+                  {['Định giá chính xác theo AI', 'Biến động giá 12 tháng', 'Tiện ích xung quanh', 'Phân tích thị trường 2026', 'BĐS tham khảo tương đồng'].map((f) => (
+                    <li key={f} className="flex items-center gap-2.5 text-sm text-white/70">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-400/20 text-amber-400 text-xs">✓</span>
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  onClick={() => navigate('/vip-upgrade?type=account')}
+                  className="w-full rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 py-3.5 text-sm font-bold text-white shadow-lg shadow-amber-500/30 transition hover:from-amber-300 hover:to-orange-400 active:scale-[.98]"
+                >
+                  👑 Nâng cấp VIP ngay
+                </button>
+                {!user && (
+                  <p className="text-xs text-white/40">
+                    Chưa có tài khoản?{' '}
+                    <span
+                      className="cursor-pointer text-amber-400 underline"
+                      onClick={() => navigate('/login')}
+                    >
+                      Đăng nhập
+                    </span>
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </section>

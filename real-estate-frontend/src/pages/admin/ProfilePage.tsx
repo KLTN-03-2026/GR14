@@ -13,10 +13,6 @@ const ProfilePage: React.FC = () => {
     address: '',
   });
 
-  const [vipData, setVipData] = useState({
-    isVip: false,
-    vipExpiry: null as string | null,
-  });
 
   const [passwordData, setPasswordData] = useState({
     oldPassword: '',
@@ -46,18 +42,6 @@ const ProfilePage: React.FC = () => {
         address: user.address || '',
       });
 
-      const expiryDate = user.vipExpiry
-        ? new Date(user.vipExpiry).toLocaleDateString('vi-VN', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-          })
-        : null;
-
-      setVipData({
-        isVip: !!user.isVip,
-        vipExpiry: expiryDate,
-      });
     } catch {
       toast.error('Lỗi tải thông tin hồ sơ');
     }
@@ -118,19 +102,6 @@ const ProfilePage: React.FC = () => {
     }
   };
 
-// Xử lý nâng cấp VIP tài khoản
-const handleUpgradeAccountVIP = async () => {
-  try {
-    toast('Đang chuyển đến trang chọn gói VIP tài khoản...', {
-      icon: 'ℹ️',
-      duration: 2000,
-    });
-    
-    window.location.href = '/vip-upgrade?type=account';   // ← Sửa thành vip-upgrade
-  } catch {
-    toast.error('Không thể khởi tạo nâng cấp VIP. Vui lòng thử lại sau.');
-  }
-};
 
   const inputClass = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none';
   const errorInputClass = 'w-full rounded-lg border border-error-500 px-3 py-2 text-sm focus:border-error-500 focus:ring-1 focus:ring-error-500 outline-none';
@@ -241,71 +212,7 @@ const handleUpgradeAccountVIP = async () => {
         </div>
       </div>
 
-      {/* ==================== NÂNG CẤP TÀI KHOẢN VIP ==================== */}
-      <div className="rounded-xl border border-gray-200 bg-white">
-        <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-          <h4 className="text-base font-semibold text-gray-900">Nâng cấp tài khoản VIP</h4>
-          {vipData.isVip && (
-            <span className="px-4 py-1 text-xs font-medium bg-green-100 text-green-700 rounded-full">
-              Đang là thành viên VIP
-            </span>
-          )}
-        </div>
 
-        <div className="p-6">
-          {vipData.isVip ? (
-            <div className="flex flex-col gap-3">
-              <p className="text-green-600 font-semibold text-lg">
-                Chúc mừng! Tài khoản của bạn đang là VIP
-              </p>
-              <p className="text-gray-600">
-                Hạn sử dụng: <span className="font-medium text-gray-900">{vipData.vipExpiry}</span>
-              </p>
-              <p className="text-sm text-gray-500">
-                Tất cả bài viết của bạn đã được tự động nâng cấp thành VIP và sẽ duy trì đến ngày hết hạn.
-              </p>
-              <Button variant="outline" disabled className="w-fit">
-                Đã kích hoạt VIP
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div>
-                <p className="text-gray-700 leading-relaxed">
-                  Nâng cấp lên <span className="font-semibold text-brand-600">tài khoản VIP</span> để:
-                </p>
-                <ul className="mt-3 space-y-2 text-sm text-gray-600">
-                  <li className="flex items-start gap-2">
-                    <span className="text-green-500 mt-0.5">✓</span>
-                    Tất cả bài viết (kể cả bài đang thường) sẽ tự động thành VIP
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-green-500 mt-0.5">✓</span>
-                    Ưu tiên hiển thị bài viết trên trang chủ và tìm kiếm
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-green-500 mt-0.5">✓</span>
-                    Nhiều quyền lợi đặc biệt khác
-                  </li>
-                </ul>
-              </div>
-
-              {/* Button đã sửa: bỏ size="lg" */}
-              <Button
-                variant="primary"
-                onClick={handleUpgradeAccountVIP}
-                className="w-full md:w-auto"
-              >
-                Nâng cấp tài khoản VIP ngay
-              </Button>
-
-              <p className="text-xs text-gray-500 italic">
-                💡 Sau khi thanh toán thành công, hệ thống sẽ tự động cập nhật tất cả bài viết của bạn thành VIP.
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 };

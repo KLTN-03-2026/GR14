@@ -7,6 +7,9 @@ import { APPOINTMENT_STATUS_LABELS } from '@/constants';
 import type { Customer, Employee, House, Land } from '@/types';
 import { Button } from '@/components/ui';
 
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+const MINUTE_OPTIONS = ['00', '15', '30', '45'];
+
 type AppointmentFormData = {
     customerId?: number;
     employeeId?: number;
@@ -47,6 +50,9 @@ const AppointmentFormPage: React.FC = () => {
     const [customerMode, setCustomerMode] = useState<'existing' | 'new'>('existing');
     const [phoneCheckStatus, setPhoneCheckStatus] = useState<'idle' | 'exists' | 'new'>('idle');
     const phoneCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Custom 24h time state
+    const [appointmentHour, setAppointmentHour] = useState('09');
+    const [appointmentMinute, setAppointmentMinute] = useState('00');
 
     const isEdit = !!id;
 
@@ -79,13 +85,16 @@ const AppointmentFormPage: React.FC = () => {
             const data = res.data;
             const type = data.landId ? 'land' : 'house';
             setPropertyType(type);
+            const dt = data.appointmentDate ? dayjs(data.appointmentDate) : null;
+            setAppointmentHour(dt ? dt.format('HH') : '09');
+            setAppointmentMinute(dt ? ((['00', '15', '30', '45'].includes(dt.format('mm')) ? dt.format('mm') : '00')) : '00');
             setFormData({
                 customerId: data.customerId,
                 employeeId: data.employeeId,
                 propertyType: type,
                 houseId: data.houseId,
                 landId: data.landId,
-                appointmentDate: data.appointmentDate ? dayjs(data.appointmentDate).format('YYYY-MM-DDTHH:mm') : '',
+                appointmentDate: data.appointmentDate ? dayjs(data.appointmentDate).format('YYYY-MM-DD') : '',
                 status: data.status,
             });
         } catch {
@@ -147,7 +156,7 @@ const AppointmentFormPage: React.FC = () => {
         try {
             const payload: Record<string, unknown> = {
                 employeeId: values.employeeId || null,
-                appointmentDate: new Date(values.appointmentDate).toISOString(),
+                appointmentDate: new Date(`${values.appointmentDate}T${appointmentHour}:${appointmentMinute}`).toISOString(),
                 houseId: propertyType === 'house' ? values.houseId : null,
                 landId: propertyType === 'land' ? values.landId : null,
             };
@@ -395,20 +404,56 @@ const AppointmentFormPage: React.FC = () => {
                                 </select>
                             </div>
 
-                            {/* 3. Date time */}
+                            {/* 3. Date + Time (24h custom) */}
                             <div>
-                                <label className={labelClass}>Ngày & giờ hẹn</label>
+                                <label className={labelClass}>Ngày hẹn</label>
                                 <input
-                                    type="datetime-local"
+                                    type="date"
                                     className={inputClass}
                                     value={formData.appointmentDate || ''}
-                                    min={dayjs().format('YYYY-MM-DDTHH:mm')}
+                                    min={dayjs().format('YYYY-MM-DD')}
                                     onChange={(e) =>
                                         setFormData((prev) => ({ ...prev, appointmentDate: e.target.value }))
                                     }
                                 />
                             </div>
-
+                            <div>
+                                <label className={labelClass}>Giờ hẹn (24h)</label>
+                                <div className="flex items-center gap-2">
+                                    <select
+                                        value={appointmentHour}
+                                        onChange={(e) => setAppointmentHour(e.target.value)}
+                                        className={selectClass}
+                                    >
+                                        {HOUR_OPTIONS.map((h) => (
+                                            <option key={h} value={h}>{h} gio</option>
+                                        ))}
+                                    </select>
+                                    <span className="text-gray-400 font-bold text-lg">:</span>
+                                    <select
+                                        value={appointmentMinute}
+                                        onChange={(e) => setAppointmentMinute(e.target.value)}
+                                        className={selectClass}
+                                    >
+                                        {MINUTE_OPTIONS.map((m) => (
+                                            <option key={m} value={m}>{m} phut</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                            {/* Working hours notice */}
+                            <div className="md:col-span-2 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                                <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+                                </svg>
+                                <div className="text-sm">
+                                    <p className="font-semibold text-amber-700">Khung giờ làm việc</p>
+                                    <p className="mt-0.5 text-amber-600">
+                                        <span className="font-medium">Sáng:</span> 07:30 - 11:30 &nbsp;|&nbsp; <span className="font-medium">Chiều:</span> 13:30 - 17:30
+                                    </p>
+                                    <p className="mt-0.5 text-amber-500 text-xs">Thứ Hai - Thứ Bảy (trừ ngày lễ)</p>
+                                </div>
+                            </div>
                             {/* Status (edit only) */}
                             {isEdit && (
                                 <div>

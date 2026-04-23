@@ -9,8 +9,24 @@ export class ValuationService {
   private readonly mlServiceUrl = process.env.ML_SERVICE_URL || 'http://localhost:8000';
   private readonly ollamaUrl = process.env.OLLAMA_URL || 'http://localhost:11434';
   private readonly chatModel = process.env.CHAT_MODEL || 'qwen2.5:7b';
+  // Default 120s — đủ xử lý cold start khi model chưa load vào RAM
+  private readonly ollamaTimeout = parseInt(process.env.VALUATION_OLLAMA_TIMEOUT_MS || '120000', 10);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  /** Warm-up Ollama ngay khi service khởi động — tránh cold start timeout ở lần gọi đầu tiên */
+  async onModuleInit() {
+    try {
+      await axios.post(
+        `${this.ollamaUrl}/api/generate`,
+        { model: this.chatModel, prompt: 'hi', stream: false, keep_alive: '10m' },
+        { timeout: 60000 },
+      );
+      this.logger.log(`Ollama warm-up OK — model "${this.chatModel}" đã load vào RAM.`);
+    } catch (e) {
+      this.logger.warn(`Ollama warm-up failed: ${e.message}. Sẽ thử lại khi có request.`);
+    }
+  }
 
   async estimatePrice(dto: EstimateValuationDto) {
     let mlResult: any = null;
@@ -87,31 +103,25 @@ export class ValuationService {
     let nearbyUtilities: any[] = [];
 
     try {
-      const prompt = `Bạn là chuyên gia bất động sản Việt Nam. Phân tích khu vực "${dto.districtName}", "${dto.provinceName}" cho loại hình "${dto.propertyTypeName}", diện tích ${dto.area}m².
-Trả về JSON đúng format, KHÔNG kèm text:
-{
-  "radar": [
-    {"subject": "Vị trí", "score": <1-10>},
-    {"subject": "Giá cả", "score": <1-10>},
-    {"subject": "Tiềm năng", "score": <1-10>},
-    {"subject": "Pháp lý", "score": <1-10>},
-    {"subject": "Tiện ích", "score": <1-10>}
-  ],
-  "analysisText": "<3-4 câu phân tích thị trường BĐS khu vực, dựa trên kiến thức thực tế>",
-  "growthRate": "<ví dụ +8.2%>",
-  "liquidity": "<Cao/Trung bình/Thấp>",
-  "nearbyUtilities": [
-    {"name": "<tên tiện ích THỰC TẾ có thật tại khu vực đó>", "type": "school", "distance": "<khoảng cách ước tính>"},
-    {"name": "<tên tiện ích THỰC TẾ>", "type": "market", "distance": "<khoảng cách>"},
-    {"name": "<tên tiện ích THỰC TẾ>", "type": "hospital", "distance": "<khoảng cách>"},
-    {"name": "<tên tiện ích THỰC TẾ>", "type": "park", "distance": "<khoảng cách>"}
-  ]
-}`;
+      // Prompt ngắn gọn hơn để model generate nhanh hơn, tránh timeout
+      const prompt = `Bạn là chuyên gia BĐS Việt Nam. Phân tích: khu vực "${dto.districtName}", "${dto.provinceName}", loại "${dto.propertyTypeName}", ${dto.area}m².
+Chỉ trả về JSON (không text thêm):
+{"radar":[{"subject":"Vị trí","score":0},{"subject":"Giá cả","score":0},{"subject":"Tiềm năng","score":0},{"subject":"Pháp lý","score":0},{"subject":"Tiện ích","score":0}],"analysisText":"...","growthRate":"+0%","liquidity":"Trung bình","nearbyUtilities":[{"name":"...","type":"school","distance":"..."},{"name":"...","type":"market","distance":"..."},{"name":"...","type":"hospital","distance":"..."},{"name":"...","type":"park","distance":"..."}]}`;
 
       const genResp = await axios.post(
         `${this.ollamaUrl}/api/generate`,
-        { model: this.chatModel, prompt, stream: false, format: "json", options: { temperature: 0.4 } },
-        { timeout: 60000 },
+        {
+          model: this.chatModel,
+          prompt,
+          stream: false,
+          format: 'json',
+          keep_alive: '10m',           // Giữ model trong RAM 10 phút, tránh cold start
+          options: {
+            temperature: 0.3,
+            num_predict: 512,          // Giới hạn output để generate nhanh hơn
+          },
+        },
+        { timeout: this.ollamaTimeout },           // Tăng lên 120s để xử lý cold start
       );
 
       if (genResp.data?.response) {
