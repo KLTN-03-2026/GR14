@@ -3,14 +3,30 @@ import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import type { Post } from "@/types/post";
 
+// ── Local slide images (bundled by Vite, safe for VPS deploy) ──
+import imgBinhDuong from "@/assets/binh-duong-industrial-park-modern-city.jpg";
+import imgVilla from "@/assets/luxury-vietnamese-villa-with-garden-pool-thao-dien.jpg";
+import imgDaNang from "@/assets/da-nang-dragon-bridge-coastal-city.jpg";
+import imgHanoi from "@/assets/hanoi-skyline-with-west-lake-modern-buildings.jpg";
+import imgHCMC from "@/assets/cityscape-of-ho-chi-minh-city-skyline-at-dusk.jpg";
+
 
 interface PostImage { url: string; position: number; }
 
 const API_URL = "http://localhost:5000/api/posts/approved";
 
+// ── Cố định 5 ảnh đẹp cho Hero Slider — luôn hiển thị bất kể bài viết có ảnh hay không ──
+const HERO_SLIDE_IMAGES = [
+  imgHCMC,      // TP. Hồ Chí Minh skyline
+  imgVilla,     // Luxury villa with pool
+  imgHanoi,     // Hà Nội skyline West Lake
+  imgDaNang,    // Đà Nẵng Dragon Bridge
+  imgBinhDuong, // Bình Dương modern city
+];
+
 const getThumbnail = (images?: PostImage[]) => {
-  if (!images?.length) return "https://placehold.co/800x500?text=No+Image";
-  return [...images].sort((a, b) => a.position - b.position)[0]?.url;
+  if (!images?.length) return "";
+  return [...images].sort((a, b) => a.position - b.position)[0]?.url ?? "";
 };
 
 const formatDate = (raw?: string | null) => {
@@ -160,7 +176,7 @@ const HeroSlider = ({
   return (
     <div className="relative w-full overflow-hidden" style={{ height: 480 }}>
       {posts.map((post, i) => {
-        const img = getThumbnail(post.images as any);
+        const img = HERO_SLIDE_IMAGES[i % HERO_SLIDE_IMAGES.length];
         const time = formatTime(post.postedAt ?? post.createdAt);
         const date = formatDate(post.postedAt ?? post.createdAt);
         return (
@@ -240,7 +256,7 @@ const ListCard = ({ post }: { post: Post }) => {
   const img = getThumbnail(post.images as any);
   const date = formatDate(post.postedAt ?? post.createdAt);
   const time = formatTime(post.postedAt ?? post.createdAt);
-  const cat = CATEGORY_TABS.find(c => c.value === ((post as any).type ?? (post as any).postType ?? (post as any).post_type))?.label ?? "BÀI VIẾT";
+  const cat = CATEGORY_TABS.find(c => c.value === (post.postType ?? (post as any).type ?? (post as any).postType ?? (post as any).post_type))?.label ?? "BÀI VIẾT";
   const isVip = !!post.isVip;
   const desc = toPlainText((post as any).description);
 
@@ -401,9 +417,9 @@ const SidebarFeatured = ({ posts }: { posts: Post[] }) => {
       </div>
 
       {/* List */}
-      <div className="overflow-y-auto" style={{ maxHeight: 133 }}>
+      <div>
         {posts.map((p, i) => {
-          const cat = CATEGORY_TABS.find(c => c.value === (p as any).type)?.label ?? "Bài viết";
+          const cat = CATEGORY_TABS.find(c => c.value === (p.postType ?? (p as any).type))?.label ?? "Bài viết";
           const rs = RANK_STYLE[i] ?? RANK_STYLE[4];
           return (
             <div
@@ -743,7 +759,7 @@ const NewsPage = () => {
     const kw = keyword.toLowerCase().trim();
     let list = allPosts.filter(p => {
       if (kw && !p.title?.toLowerCase().includes(kw) && !(p as any).description?.toLowerCase().includes(kw)) return false;
-      if (category !== "all" && (p as any).type !== category) return false;
+      if (category !== "all" && (p.postType ?? (p as any).type) !== category) return false;
       if (sortBy === "popular" && !p.isVip) return false;
       return true;
     });
@@ -894,7 +910,7 @@ const NewsPage = () => {
                   >
                     {tag.label}
                     <span className="ml-1 opacity-60">
-                      {allPosts.filter(p => (p as any).type === tag.value).length}
+                      {allPosts.filter(p => (p.postType ?? (p as any).type) === tag.value).length}
                     </span>
                   </button>
                 ))}

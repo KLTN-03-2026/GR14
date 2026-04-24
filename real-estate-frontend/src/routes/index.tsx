@@ -25,6 +25,7 @@ import AppointmentBookingPage from "@/pages/public/AppointmentBookingPage";
 import PaymentResultPage from "@/pages/public/PaymentResultPage";
 import MoMoCallbackPage from "@/pages/public/MomoPayCallbackPage";
 import FengshuiPage from "@/pages/public/FengShui";
+import ValuationPage from "@/pages/public/valuation/ValuationPage";
 
 // Auth pages
 import LoginPage from "@/pages/auth/LoginPage";
@@ -100,6 +101,7 @@ const router = createBrowserRouter([
 
       { path: "about", element: <AboutMe /> },
       { path: "fengshui", element: <FengshuiPage /> },
+      { path: "valuation", element: <ValuationPage /> },
 
       {
         path: "appointment",

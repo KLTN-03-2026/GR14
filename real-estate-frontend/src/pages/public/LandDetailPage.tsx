@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { HeartOutlined, HeartFilled, CalendarOutlined } from '@ant-design/icons';
@@ -386,7 +386,7 @@ const LandDetailPage: React.FC = () => {
 
     const handleFavorite = async () => {
         if (!isAuthenticated) {
-            toast('Vui lòng đăng nhập để yêu thích');
+            toast.error('Vui lòng đăng nhập để yêu thích');
             navigate('/login');
             return;
         }
@@ -414,53 +414,54 @@ const LandDetailPage: React.FC = () => {
     const landStatusTagClass = getPropertyStatusTagClass(land.status);
 
     return (
-        <div className="w-full bg-white pb-20">
+        <div className="w-full pb-20" style={{ background: 'var(--pl-background, #f9fafb)' }}>
 
-            {/* Breadcrumb */}
-            <div className="w-full bg-[#f4f5f7] py-3 mb-8">
-                <div className="max-w-[1250px] mx-auto px-4 sm:px-6 lg:px-0 flex items-center gap-3 text-[13px]">
+            {/* Breadcrumb — V0 border-bottom style */}
+            <div className="w-full border-b py-3 mb-8" style={{ background: 'var(--pl-card, #fff)', borderColor: 'var(--pl-border, #e5e7eb)' }}>
+                <div className="max-w-[1250px] mx-auto px-4 sm:px-6 lg:px-8 flex items-center gap-2 text-xs" style={{ color: 'var(--pl-muted-fg, #6b7280)' }}>
                     <button
                         onClick={handleBack}
-                        className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-[13px] font-semibold text-gray-600 bg-white border border-gray-200 hover:bg-[#254b86] hover:text-white hover:border-[#254b86] transition-all duration-200 shadow-sm"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[12px] font-semibold transition-all duration-200 hover:shadow-sm"
+                        style={{ borderColor: 'var(--pl-border, #e5e7eb)', color: 'var(--pl-foreground, #111827)', background: 'var(--pl-card, #fff)' }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--pl-primary-light, #254b86)'; (e.currentTarget as HTMLElement).style.color = '#fff'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--pl-primary-light, #254b86)'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'var(--pl-card, #fff)'; (e.currentTarget as HTMLElement).style.color = 'var(--pl-foreground, #111827)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--pl-border, #e5e7eb)'; }}
                     >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="15 18 9 12 15 6" />
-                        </svg>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
                         Quay lại
                     </button>
-                    <div className="flex items-center gap-1.5">
-                        <button
-                            onClick={() => navigate('/')}
-                            className="text-gray-700 font-medium hover:text-[#254b86] transition-colors"
-                        >
-                            Trang Chủ
-                        </button>
-                        <span className="text-gray-400">›</span>
-                        <button
-                            onClick={() => navigate('/lands')}
-                            className="text-gray-700 font-medium hover:text-[#254b86] transition-colors"
-                        >
-                            Danh Sách Nhà Đất
-                        </button>
-                    </div>
+                    <button onClick={() => navigate('/')} className="hover:underline" style={{ color: 'var(--pl-muted-fg, #6b7280)' }}>Trang Chủ</button>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6" /></svg>
+                    <button onClick={() => navigate('/lands')} className="hover:underline" style={{ color: 'var(--pl-muted-fg, #6b7280)' }}>Danh Sách Nhà Đất</button>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6" /></svg>
+                    <span className="font-semibold truncate max-w-[300px]" style={{ color: 'var(--pl-foreground, #111827)' }}>{land.title}</span>
                 </div>
             </div>
 
-            <div className="max-w-[1250px] mx-auto px-4 sm:px-6 lg:px-0">
+            <div className="max-w-[1250px] mx-auto px-4 sm:px-6 lg:px-8">
 
-                {/* Tiêu đề + giá */}
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-6">
-                    <h1 className="text-[28px] font-bold text-[#1a1a1a] leading-tight">
-                        {land.title}
-                    </h1>
-                    <span className="text-[26px] font-bold text-[#254b86] whitespace-nowrap">
-                        {formatCurrency(land.price)}
-                    </span>
+                {/* Title block — V0 style */}
+                <div className="flex flex-wrap items-start justify-between gap-4 mb-3">
+                    <div className="flex-1">
+                        <div className="flex flex-wrap items-center gap-2 mb-2">
+                            <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${landStatusTagClass}`}>
+                                {landStatusLabel}
+                            </span>
+                            <span className="text-xs" style={{ color: 'var(--pl-muted-fg, #6b7280)' }}>Mã: {land.code}</span>
+                        </div>
+                        <h1 className="text-[26px] md:text-[30px] font-bold leading-tight" style={{ color: 'var(--pl-foreground, #111827)' }}>
+                            {land.title}
+                        </h1>
+                    </div>
+                    <div className="text-right">
+                        <div className="text-[28px] font-bold" style={{ color: 'var(--pl-primary-light, #254b86)' }}>
+                            {formatCurrency(land.price)}
+                        </div>
+                    </div>
                 </div>
 
-                {/* Địa chỉ */}
-                <div className="flex items-center gap-1.5 text-[15px] text-gray-500 mb-6">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#254b86" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                {/* Address */}
+                <div className="flex items-center gap-1.5 text-sm mb-6" style={{ color: 'var(--pl-muted-fg, #6b7280)' }}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--pl-accent, #0d9488)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 1 1 18 0z" />
                         <circle cx="12" cy="10" r="3" />
                     </svg>
@@ -470,13 +471,13 @@ const LandDetailPage: React.FC = () => {
                 {/* ── Gallery ───────────────────────────────────────────── */}
                 <Gallery images={images} title={land.title} />
 
+                {/* Thông tin chi tiết + Sidebar + Bản đồ */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10 items-start">
                     <div className="lg:col-span-2">
                         <h2 className="text-[18px] font-bold text-[#1a1a1a] mb-4">Thông Tin Chi Tiết</h2>
                         <div className="border border-gray-200 rounded-xl overflow-hidden">
                             <table className="w-full text-[13px]">
                                 <tbody>
-                                    {/* ── Các field riêng của Land ── */}
                                     <tr className="border-b border-gray-100">
                                         <td className="px-4 py-3 text-gray-500 bg-[#fafafa] w-1/4 font-medium">Giá</td>
                                         <td className="px-4 py-3 text-[#1a1a1a] font-semibold w-1/4">{formatCurrency(land.price)}</td>
@@ -531,75 +532,119 @@ const LandDetailPage: React.FC = () => {
                     </div>
 
                     <div className="lg:col-span-1">
+                        {/* Invisible spacer to align sidebar with table */}
                         <div className="text-[18px] font-bold mb-4 invisible select-none">Thông Tin Chi Tiết</div>
-                        <div className="border border-gray-200 rounded-xl p-5 shadow-sm sticky top-6">
+                        <div
+                            className="rounded-2xl overflow-hidden border shadow-sm sticky top-6"
+                            style={{ borderColor: 'var(--pl-border, #e5e7eb)' }}
+                        >
+                            {/* Price header */}
+                            <div className="p-5" style={{ background: 'linear-gradient(135deg, var(--pl-primary, #1e3a5f), var(--pl-primary-light, #254b86))' }}>
+                                <div className="text-xs font-medium uppercase tracking-wider mb-1" style={{ color: 'rgba(255,255,255,0.7)' }}>Giá bán</div>
+                                <div className="text-2xl font-bold text-white">{formatCurrency(land.price)}</div>
+                                <div className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.6)' }}>Thương lượng</div>
+                            </div>
 
-                            {/* Tên + địa chỉ */}
-                            <div className="flex items-start gap-2 mb-4 pb-4 border-b border-gray-100">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="#f5a623" stroke="#f5a623" strokeWidth="1" className="shrink-0 mt-0.5">
-                                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                                </svg>
-                                <div>
-                                    <p className="text-[14px] font-bold text-[#1a1a1a] leading-snug">{land.title}</p>
-                                    <div className="flex items-start gap-1 mt-1">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#254b86" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
-                                            <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 1 1 18 0z" />
-                                            <circle cx="12" cy="10" r="3" />
-                                        </svg>
-                                        <span className="text-[12px] text-gray-500">{fullAddress}</span>
+                            <div className="p-5">
+                                {/* Property title mini */}
+                                <div className="flex items-start gap-2 mb-4 pb-4 border-b" style={{ borderColor: 'var(--pl-border, #e5e7eb)' }}>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="#f5a623" stroke="#f5a623" strokeWidth="1" className="shrink-0 mt-0.5">
+                                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                                    </svg>
+                                    <div>
+                                        <p className="text-[13px] font-semibold leading-snug" style={{ color: 'var(--pl-foreground, #111827)' }}>{land.title}</p>
+                                        <div className="flex items-start gap-1 mt-1">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--pl-accent, #0d9488)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
+                                                <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 1 1 18 0z" />
+                                                <circle cx="12" cy="10" r="3" />
+                                            </svg>
+                                            <span className="text-[11px]" style={{ color: 'var(--pl-muted-fg, #6b7280)' }}>{fullAddress}</span>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            {/* Giá */}
-                            <p className="text-[22px] font-bold text-[#254b86] mb-5 text-center">
-                                {formatCurrency(land.price)}
-                            </p>
+                                {/* Status badge */}
+                                <div className="mb-4 flex justify-center">
+                                    <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold ${landStatusTagClass}`}>
+                                        Trạng thái: {landStatusLabel}
+                                    </span>
+                                </div>
 
-                            <div className="mb-5 flex justify-center">
-                                <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold ${landStatusTagClass}`}>
-                                    Trạng thái: {landStatusLabel}
-                                </span>
-                            </div>
-
-                            {/* Nút Yêu thích */}
-                            <button
-                                onClick={handleFavorite}
-                                className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border text-[14px] font-semibold mb-3 transition-all duration-200 ${isFavoritedLand(land.id)
-                                    ? 'bg-red-500 border-red-500 text-white hover:bg-red-600'
-                                    : 'bg-white border-gray-300 text-gray-700 hover:border-[#254b86] hover:text-[#254b86]'
+                                {/* Favorite button */}
+                                <button
+                                    onClick={handleFavorite}
+                                    className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-full border text-[13px] font-semibold mb-3 transition-all duration-200 ${
+                                        isFavoritedLand(land.id)
+                                            ? 'text-white'
+                                            : ''
                                     }`}
-                            >
-                                {isFavoritedLand(land.id) ? <HeartFilled className="text-[15px]" /> : <HeartOutlined className="text-[15px]" />}
-                                {isFavoritedLand(land.id) ? 'Đã yêu thích' : 'Yêu thích'}
-                            </button>
+                                    style={isFavoritedLand(land.id)
+                                        ? { background: '#ef4444', borderColor: '#ef4444', color: '#fff' }
+                                        : { background: 'var(--pl-card, #fff)', borderColor: 'var(--pl-border, #e5e7eb)', color: 'var(--pl-foreground, #111827)' }
+                                    }
+                                    onMouseEnter={e => {
+                                        if (!isFavoritedLand(land.id)) {
+                                            (e.currentTarget as HTMLElement).style.borderColor = 'var(--pl-accent, #0d9488)';
+                                            (e.currentTarget as HTMLElement).style.color = 'var(--pl-accent, #0d9488)';
+                                        }
+                                    }}
+                                    onMouseLeave={e => {
+                                        if (!isFavoritedLand(land.id)) {
+                                            (e.currentTarget as HTMLElement).style.borderColor = 'var(--pl-border, #e5e7eb)';
+                                            (e.currentTarget as HTMLElement).style.color = 'var(--pl-foreground, #111827)';
+                                        }
+                                    }}
+                                >
+                                    {isFavoritedLand(land.id) ? <HeartFilled className="text-[15px]" /> : <HeartOutlined className="text-[15px]" />}
+                                    {isFavoritedLand(land.id) ? 'Đã yêu thích' : 'Yêu thích'}
+                                </button>
 
-                            {/* Nút Đặt lịch hẹn — dùng landId (logic riêng của Land) */}
-                            <button
-                                onClick={() => navigate(`/appointment?landId=${land.id}`)}
-                                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-[#254b86] text-white text-[14px] font-semibold hover:bg-[#1a3660] transition-colors duration-200"
-                            >
-                                <CalendarOutlined className="text-[15px]" />
-                                Đặt Lịch Hẹn
-                            </button>
+                                {/* Appointment button */}
+                                {land.status === PROPERTY_STATUS.SOLD ? (
+                                    <div className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full bg-gray-100 text-gray-400 text-[13px] font-semibold border border-gray-200 cursor-not-allowed select-none">
+                                        <CalendarOutlined className="text-[15px]" />
+                                        Đất đã được bán
+                                    </div>
+                                ) : (
+                                    <button
+                                        onClick={() => navigate(`/appointment?landId=${land.id}`)}
+                                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full text-white text-[13px] font-semibold hover:opacity-90 transition-opacity duration-200"
+                                        style={{ background: 'linear-gradient(135deg, var(--pl-primary, #1e3a5f), var(--pl-accent, #0d9488))' }}
+                                    >
+                                        <CalendarOutlined className="text-[15px]" />
+                                        Đặt Lịch Hẹn
+                                    </button>
+                                )}
+
+                                {/* Trust points */}
+                                <div className="mt-5 space-y-2 border-t pt-4 text-xs" style={{ borderColor: 'var(--pl-border, #e5e7eb)', color: 'var(--pl-muted-fg, #6b7280)' }}>
+                                    {['Tin thật, đã kiểm duyệt', 'Hỗ trợ vay ngân hàng tới 70%', 'Miễn phí tư vấn pháp lý'].map((t, i) => (
+                                        <div key={i} className="flex items-center gap-2">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--pl-success, #16a34a)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                                            {t}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                {/* ── Bản đồ — giữ nguyên URL riêng của Land (hl=vi&z=15) ── */}
+                {/* ── Bản đồ ── */}
                 <div className="mb-10">
                     <div className="flex items-center justify-between mb-3">
-                        <h2 className="text-[18px] font-bold text-[#1a1a1a]">Vị Trí</h2>
+                        <h2 className="text-[18px] font-bold" style={{ color: 'var(--pl-foreground, #111827)' }}>Vị Trí</h2>
                         <a
                             href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="px-4 py-1.5 bg-[#254b86] text-white text-[13px] font-semibold rounded-lg hover:bg-[#1a3660] transition-colors"
+                            className="px-4 py-1.5 rounded-full text-white text-[13px] font-semibold hover:opacity-90 transition-opacity"
+                            style={{ background: 'var(--pl-accent, #0d9488)' }}
                         >
                             Mở Google Map
                         </a>
                     </div>
-                    <div className="rounded-xl overflow-hidden border border-gray-200" style={{ height: 320 }}>
+                    <div className="rounded-2xl overflow-hidden border" style={{ height: 320, borderColor: 'var(--pl-border, #e5e7eb)' }}>
                         <iframe
                             title="map"
                             width="100%"

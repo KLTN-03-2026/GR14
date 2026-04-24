@@ -6,7 +6,7 @@ import { Toaster } from 'react-hot-toast';
 
 const PublicLayout: React.FC = () => {
     return (
-        <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+        <div className="public-layout" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
             <Toaster
                 position="top-right"
                 toastOptions={{

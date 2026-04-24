@@ -107,27 +107,101 @@ const HomePage: React.FC = () => {
     };
 
     return (
-        <div>
+        <div style={{ fontFamily: "'Inter', 'Segoe UI', sans-serif" }}>
 
-            {/* ================= SLIDER ================= */}
-            <div className="relative w-full h-[580px] overflow-hidden mb-16">
+            {/* ================= HERO SECTION (V0 design) ================= */}
+            <section
+                className="relative overflow-hidden"
+                style={{ background: 'linear-gradient(135deg, #0f1f3d 0%, #1e3a5f 50%, #0d4d4a 100%)', minHeight: 540 }}
+            >
+                {/* Background slide image */}
                 {slides.map((slide, index) => (
                     <div
                         key={index}
-                        className={`absolute inset-0 transition-all duration-1000 ease-in-out ${index === currentSlide ? 'opacity-100 scale-100 z-10' : 'opacity-0 scale-105 z-0'
-                            }`}
+                        className={`absolute inset-0 transition-all duration-1000 ease-in-out ${index === currentSlide ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}
                     >
-                        <img src={slide.img} className="w-full h-full object-cover brightness-110" />
-                        <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/30 to-transparent" />
-                        {index === currentSlide && (
-                            <div className="absolute bottom-12 left-10 text-white max-w-[500px] animate-fadeIn">
-                                <h1 className="text-3xl md:text-4xl font-bold mb-3 leading-tight">{slide.title}</h1>
-                                <p className="text-sm md:text-lg text-gray-200">{slide.desc}</p>
-                            </div>
-                        )}
+                        <img src={slide.img} className="w-full h-full object-cover" style={{ opacity: 0.25 }} alt="" />
+                        <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, #0f1f3d 0%, rgba(15,31,61,0.7) 50%, rgba(15,31,61,0.4) 100%)' }} />
                     </div>
                 ))}
-            </div>
+
+                {/* Glow blobs */}
+                <div className="absolute top-0 right-0 w-96 h-96 rounded-full blur-3xl pointer-events-none" style={{ background: 'rgba(13,148,136,0.15)' }} />
+                <div className="absolute bottom-0 left-0 w-64 h-64 rounded-full blur-3xl pointer-events-none" style={{ background: 'rgba(37,75,134,0.2)' }} />
+
+                <div className="relative z-20 max-w-[1200px] mx-auto px-6 py-20 md:py-28">
+                    {/* Badge */}
+                    <div
+                        className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium mb-5"
+                        style={{ borderColor: 'rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.08)', color: '#a7f3d0', backdropFilter: 'blur(8px)' }}
+                    >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L13.5 8.5L20 7L15.5 12L20 17L13.5 15.5L12 22L10.5 15.5L4 17L8.5 12L4 7L10.5 8.5L12 2Z" /></svg>
+                        Nền tảng bất động sản thông minh hàng đầu
+                    </div>
+
+                    {/* Headline — animated on slide change */}
+                    {slides.map((slide, index) => index === currentSlide && (
+                        <div key={index} className="max-w-[600px]">
+                            <h1 className="font-bold leading-tight text-white mb-4" style={{ fontSize: 'clamp(28px, 4vw, 52px)', fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif" }}>
+                                {slide.title}
+                            </h1>
+                            <p className="text-base text-gray-300 mb-8" style={{ maxWidth: 480 }}>{slide.desc}</p>
+                        </div>
+                    ))}
+
+                    {/* CTA buttons */}
+                    <div className="flex flex-wrap gap-3">
+                        <button
+                            onClick={() => navigate('/houses')}
+                            className="inline-flex items-center gap-2 rounded-full font-semibold text-sm px-6 py-3 text-white transition-opacity hover:opacity-90"
+                            style={{ background: 'var(--pl-accent, #0d9488)' }}
+                        >
+                            Xem nhà bán
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6" /></svg>
+                        </button>
+                        <button
+                            onClick={() => navigate('/valuation')}
+                            className="inline-flex items-center gap-2 rounded-full font-semibold text-sm px-6 py-3 transition-all"
+                            style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)', backdropFilter: 'blur(8px)' }}
+                        >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L13.5 8.5L20 7L15.5 12L20 17L13.5 15.5L12 22L10.5 15.5L4 17L8.5 12L4 7L10.5 8.5L12 2Z" /></svg>
+                            Định giá AI
+                        </button>
+                    </div>
+
+                    {/* Stats row */}
+                    <div className="mt-10 flex flex-wrap gap-8">
+                        {[
+                            { v: '60K+', l: 'Tin đăng' },
+                            { v: '150K+', l: 'Khách hàng' },
+                            { v: 'Toàn quốc', l: 'Khu vực phủ sóng' },
+                            { v: '99%', l: 'Pháp lý minh bạch' },
+                        ].map((s, i) => (
+                            <div key={i}>
+                                <div className="font-bold text-2xl text-white" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{s.v}</div>
+                                <div className="text-xs text-gray-400 mt-0.5">{s.l}</div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Slide dots */}
+                    <div className="flex gap-2 mt-8">
+                        {slides.map((_, i) => (
+                            <button
+                                key={i}
+                                onClick={() => setCurrentSlide(i)}
+                                className="rounded-full transition-all duration-300"
+                                style={{
+                                    width: i === currentSlide ? 24 : 8,
+                                    height: 8,
+                                    background: i === currentSlide ? 'var(--pl-accent, #0d9488)' : 'rgba(255,255,255,0.35)',
+                                }}
+                                aria-label={`Slide ${i + 1}`}
+                            />
+                        ))}
+                    </div>
+                </div>
+            </section>
 
             {/* ================= AI HYBRID RECOMMENDATIONS ================= */}
             {isAuthenticated && aiRecs.length > 0 && (
@@ -268,17 +342,6 @@ const HomePage: React.FC = () => {
                                                 <span className="text-[13px] font-extrabold text-[#254b86]">
                                                     {formatCurrency(rec.price)}
                                                 </span>
-                                                <a
-                                                    href={`/${isHouse ? 'houses' : 'lands'}/${rec.id}`}
-                                                    onClick={e => {
-                                                        e.preventDefault();
-                                                        e.stopPropagation();
-                                                        handleRecommendationNavigate(rec);
-                                                    }}
-                                                    className="px-3.5 py-[5px] bg-[#254b86] text-white border-[1.5px] border-[#254b86] text-[12px] font-semibold rounded-lg hover:bg-white hover:text-[#254b86] transition-all duration-200 whitespace-nowrap no-underline"
-                                                >
-                                                    Xem chi tiết
-                                                </a>
                                             </div>
                                         </div>
                                     </div>
@@ -289,202 +352,97 @@ const HomePage: React.FC = () => {
                 </div>
             )}
 
-            {/* ================= CATEGORIES ================= */}
-            <style>{`
-                .qc-card {
-                    position: relative;
-                    overflow: hidden;
-                    border-radius: 20px;
-                    border: 1.5px solid var(--qc-border);
-                    padding: 44px 28px 36px;
-                    text-align: center;
-                    cursor: pointer;
-                    background: var(--qc-light);
-                    transition: transform 0.35s cubic-bezier(.22,.68,0,1.2), box-shadow 0.35s ease, border-color 0.3s ease, background 0.35s ease;
-                }
-                .qc-card:hover {
-                    transform: translateY(-8px) scale(1.02);
-                    box-shadow: 0 20px 50px var(--qc-glow);
-                    background: var(--qc-hover);
-                    border-color: var(--qc-color);
-                }
-                .qc-deco {
-                    position: absolute;
-                    top: -40px; right: -40px;
-                    width: 140px; height: 140px;
-                    border-radius: 50%;
-                    background: var(--qc-deco-bg);
-                    transition: transform 0.5s ease;
-                    z-index: 0;
-                }
-                .qc-deco2 {
-                    position: absolute;
-                    bottom: -50px; left: -30px;
-                    width: 100px; height: 100px;
-                    border-radius: 50%;
-                    background: var(--qc-deco-bg);
-                    transition: transform 0.5s ease;
-                    z-index: 0;
-                    opacity: 0.5;
-                }
-                .qc-card:hover .qc-deco  { transform: scale(2); }
-                .qc-card:hover .qc-deco2 { transform: scale(2.2); }
-                .qc-icon-wrap {
-                    position: relative;
-                    z-index: 1;
-                    width: 84px; height: 84px;
-                    border-radius: 22px;
-                    margin: 0 auto 22px;
-                    display: flex; align-items: center; justify-content: center;
-                    background: var(--qc-gradient);
-                    box-shadow: 0 10px 28px var(--qc-glow);
-                    transition: transform 0.35s cubic-bezier(.22,.68,0,1.2), box-shadow 0.3s ease;
-                }
-                .qc-card:hover .qc-icon-wrap {
-                    transform: scale(1.1) translateY(-4px);
-                    box-shadow: 0 16px 36px var(--qc-glow);
-                }
-                .qc-label {
-                    position: relative; z-index: 1;
-                    font-weight: 800;
-                    font-size: 15px;
-                    letter-spacing: 2px;
-                    color: #1a1a1a;
-                    margin-bottom: 8px;
-                    transition: color 0.3s ease;
-                }
-                .qc-sub {
-                    position: relative; z-index: 1;
-                    font-size: 13px;
-                    color: #888;
-                    margin-bottom: 18px;
-                    transition: color 0.3s ease;
-                }
-                .qc-arrow {
-                    position: relative; z-index: 1;
-                    display: inline-flex; align-items: center; justify-content: center;
-                    width: 34px; height: 34px;
-                    border-radius: 50%;
-                    border: 1.5px solid var(--qc-color);
-                    color: var(--qc-color);
-                    transition: all 0.3s ease;
-                    line-height: 1;
-                }
-                .qc-card:hover .qc-label { color: var(--qc-color); }
-                .qc-card:hover .qc-sub   { color: #555; }
-                .qc-card:hover .qc-arrow {
-                    background: var(--qc-color);
-                    color: white;
-                    border-color: var(--qc-color);
-                    transform: translateX(4px);
-                }
-                .qc-card:hover .qc-arrow svg { stroke: white; }
-                .qc-topline {
-                    position: absolute;
-                    top: 0; left: 0; right: 0;
-                    height: 4px;
-                    background: var(--qc-gradient);
-                    border-radius: 20px 20px 0 0;
-                    z-index: 1;
-                    transform: scaleX(0);
-                    transform-origin: left;
-                    transition: transform 0.4s ease;
-                }
-                .qc-card:hover .qc-topline { transform: scaleX(1); }
+            {/* ================= "Bạn muốn tìm gì?" SECTION ================= */}
+            <div style={{ maxWidth: 1200, margin: '72px auto 56px', padding: '0 24px' }}>
+                <div style={{ marginBottom: 28 }}>
+                    <h2 style={{ fontSize: 26, fontWeight: 800, color: '#111827', margin: 0 }}>Bạn muốn tìm gì?</h2>
+                    <p style={{ fontSize: 14, color: '#6b7280', marginTop: 4 }}>Truy cập nhanh vào các danh mục chính</p>
+                </div>
 
-                /* ===== SCROLL REVEAL ===== */
-                .sr-reveal {
-                    opacity: 0;
-                    transform: translateY(36px);
-                    transition: opacity 0.65s ease, transform 0.65s cubic-bezier(0.22, 0.68, 0, 1.05);
-                    transition-delay: var(--sr-delay, 0ms);
-                }
-                .sr-reveal.sr-visible {
-                    opacity: 1;
-                    transform: translateY(0);
-                }
-            `}</style>
-
-            <div style={{ maxWidth: 1200, margin: '80px auto 56px', padding: '0 24px' }}>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
                     {[
                         {
-                            icon: (
-                                <svg width="38" height="38" viewBox="0 0 24 24" fill="white">
-                                    <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
-                                </svg>
-                            ),
-                            label: 'MUA BÁN NHÀ',
-                            sub: 'Hàng nghìn căn nhà đang chờ bạn',
+                            label: 'Mua bán nhà',
+                            sub: 'Hơn 42,000 tin nhà riêng, biệt thự, nhà phố trên toàn quốc',
+                            count: '42,180 TIN',
                             route: '/houses',
-                            light: '#f0f5ff',
-                            hover: '#dbeafe',
-                            gradient: 'linear-gradient(135deg, #2563eb, #60a5fa)',
-                            glow: 'rgba(59,130,246,0.22)',
-                            color: '#2563eb',
-                            border: 'rgba(37,99,235,0.15)',
-                            deco: 'rgba(59,130,246,0.10)',
+                            bg: 'https://images.unsplash.com/photo-1570129477492-45c003edd2be?w=900&q=80',
+                            accent: '#0d9488',
                         },
                         {
-                            icon: (
-                                <svg width="38" height="38" viewBox="0 0 24 24" fill="white">
-                                    <path d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z" />
-                                </svg>
-                            ),
-                            label: 'MUA BÁN ĐẤT',
-                            sub: 'Đất nền tiềm năng, giá cạnh tranh',
+                            label: 'Mua bán đất',
+                            sub: 'Đất nền, đất thổ cư, đất dự án với pháp lý minh bạch',
+                            count: '18,640 TIN',
                             route: '/lands',
-                            light: '#f0fdf4',
-                            hover: '#dcfce7',
-                            gradient: 'linear-gradient(135deg, #16a34a, #4ade80)',
-                            glow: 'rgba(34,197,94,0.22)',
-                            color: '#16a34a',
-                            border: 'rgba(22,163,74,0.15)',
-                            deco: 'rgba(34,197,94,0.10)',
+                            bg: 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=900&q=80',
+                            accent: '#0d9488',
                         },
                         {
-                            icon: (
-                                <svg width="38" height="38" viewBox="0 0 24 24" fill="white">
-                                    <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z" />
-                                </svg>
-                            ),
-                            label: 'BÀI VIẾT',
-                            sub: 'Kiến thức & xu hướng thị trường',
+                            label: 'Bài viết & Tin tức',
+                            sub: 'Phân tích thị trường, hướng dẫn pháp lý, tư vấn phong thủy',
+                            count: '2,810 BÀI VIẾT',
                             route: '/posts',
-                            light: '#ecfeff',
-                            hover: '#cffafe',
-                            gradient: 'linear-gradient(135deg, #0891b2, #22d3ee)',
-                            glow: 'rgba(6,182,212,0.22)',
-                            color: '#0891b2',
-                            border: 'rgba(8,145,178,0.15)',
-                            deco: 'rgba(6,182,212,0.10)',
+                            bg: 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=900&q=80',
+                            accent: '#0d9488',
                         },
                     ].map((item, i) => (
                         <div
                             key={i}
-                            className="qc-card sr-reveal"
                             onClick={() => navigate(item.route)}
+                            className="sr-reveal group"
                             style={{
-                                '--qc-light': item.light,
-                                '--qc-hover': item.hover,
-                                '--qc-gradient': item.gradient,
-                                '--qc-glow': item.glow,
-                                '--qc-color': item.color,
-                                '--qc-border': item.border,
-                                '--qc-deco-bg': item.deco,
-                                '--sr-delay': `${i * 130}ms`,
+                                position: 'relative',
+                                height: 320,
+                                borderRadius: 20,
+                                overflow: 'hidden',
+                                cursor: 'pointer',
+                                '--sr-delay': `${i * 120}ms`,
                             } as React.CSSProperties}
                         >
-                            <div className="qc-topline" />
-                            <div className="qc-deco" />
-                            <div className="qc-deco2" />
-                            <div className="qc-icon-wrap">{item.icon}</div>
-                            <div className="qc-label">{item.label}</div>
-                            <div className="qc-sub">{item.sub}</div>
-                            <div className="qc-arrow">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                    <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
-                                </svg>
+                            {/* Background image */}
+                            <img
+                                src={item.bg}
+                                alt={item.label}
+                                className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                            />
+                            {/* Gradient overlay */}
+                            <div
+                                className="absolute inset-0"
+                                style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.35) 50%, rgba(0,0,0,0.10) 100%)' }}
+                            />
+                            {/* Count badge */}
+                            <div
+                                style={{
+                                    position: 'absolute', top: 16, left: 16,
+                                    background: item.accent,
+                                    color: '#fff',
+                                    fontSize: 10, fontWeight: 800,
+                                    letterSpacing: '0.8px',
+                                    padding: '3px 10px',
+                                    borderRadius: 100,
+                                }}
+                            >
+                                {item.count}
+                            </div>
+                            {/* Text content */}
+                            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '20px 20px 24px' }}>
+                                <h3 style={{ color: '#fff', fontSize: 22, fontWeight: 800, margin: '0 0 6px', lineHeight: 1.25 }}>
+                                    {item.label}
+                                </h3>
+                                <p style={{ color: 'rgba(255,255,255,0.80)', fontSize: 13, margin: '0 0 14px', lineHeight: 1.5 }}>
+                                    {item.sub}
+                                </p>
+                                <span
+                                    style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: 5,
+                                        color: item.accent, fontWeight: 700, fontSize: 13,
+                                        background: 'rgba(255,255,255,0.92)',
+                                        borderRadius: 100, padding: '5px 14px',
+                                    }}
+                                >
+                                    Khám phá ngay
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" /></svg>
+                                </span>
                             </div>
                         </div>
                     ))}
@@ -561,105 +519,130 @@ const HomePage: React.FC = () => {
                 </Row>
             </div>
 
-            {/* ================= FEATURED POSTS ================= */}
-            <div className="sr-reveal" style={{ maxWidth: 1200, margin: '0 auto 48px', padding: '0 24px' }}>
-                {/* Header */}
-                <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2.5">
-                        <div className="w-9 h-9 rounded-[10px] flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #f97316, #eab308)' }}>
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
-                                <path d="M12 2L13.5 8.5L20 7L15.5 12L20 17L13.5 15.5L12 22L10.5 15.5L4 17L8.5 12L4 7L10.5 8.5L12 2Z" />
+            {/* ================= FEATURED POSTS (V0 style) ================= */}
+            <div className="sr-reveal" style={{ maxWidth: 1200, margin: '0 auto 56px', padding: '0 24px' }}>
+
+                {/* Section header */}
+                <div className="flex items-start justify-between mb-6">
+                    <div>
+                        {/* "BÀI VIẾT VIP" label pill */}
+                        <div className="inline-flex items-center gap-1.5 mb-3"
+                            style={{ background: 'rgba(217,119,6,0.10)', border: '1px solid rgba(217,119,6,0.25)', borderRadius: 100, padding: '3px 10px' }}>
+                            {/* Crown icon */}
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="#d97706">
+                                <path d="M2 19h20v2H2v-2zm2-7l5 5 5-8 5 5 3-5v9H2v-9l2 3z" />
                             </svg>
+                            <span style={{ fontSize: 10, fontWeight: 800, color: '#d97706', letterSpacing: '1px', textTransform: 'uppercase' }}>
+                                Bài viết VIP
+                            </span>
                         </div>
-                        <h2 className="text-[22px] font-bold text-[#1a1a1a] m-0 leading-none">Bài viết nổi bật</h2>
-                        <span className="text-[10px] font-bold tracking-wide uppercase text-orange-600 bg-orange-50 border border-orange-200 rounded-full px-2.5 py-[3px]">
-                            {featuredPosts.length} bài
-                        </span>
+                        <h2 style={{ fontSize: 26, fontWeight: 800, color: '#111827', margin: 0, lineHeight: 1.2 }}>
+                            Tin tức nổi bật
+                        </h2>
                     </div>
                     <button
                         onClick={() => navigate('/posts')}
-                        className="text-[13px] font-semibold text-[#254b86] hover:underline bg-transparent border-none cursor-pointer"
+                        style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 600, color: '#0d9488', background: 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', marginTop: 4 }}
+                        onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
+                        onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}
                     >
-                        Xem tất cả →
+                        Tất cả bài viết
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" /></svg>
                     </button>
                 </div>
-                <div className="h-[3px] rounded-sm mb-6" style={{ background: 'linear-gradient(90deg, #f97316 0%, #eab308 40%, transparent 100%)' }} />
 
                 {featuredPosts.length === 0 ? (
-                    <div className="text-center py-10 text-gray-400 text-sm">Chưa có bài viết VIP nổi bật.</div>
+                    <div className="text-center py-10 text-gray-400 text-sm">Chưa có bài viết nổi bật.</div>
                 ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
                         {featuredPosts.map((post, idx) => {
-                            const imgSrc = post.images?.[0]?.url || 'https://placehold.co/600x400?text=No+Image';
-                            const location = [post.district, post.city].filter(Boolean).join(', ');
-                            const formatPostPrice = (v?: number) => {
-                                if (!v) return 'Liên hệ';
-                                if (v >= 1e9) return (v / 1e9).toFixed(1).replace(/\.0$/, '') + ' tỷ';
-                                if (v >= 1e6) return (v / 1e6).toFixed(0) + ' triệu';
-                                return v.toLocaleString('vi-VN') + ' đ';
+                            const imgSrc = post.images?.[0]?.url || 'https://placehold.co/600x400/e5e7eb/9ca3af?text=No+Image';
+                            const isVip = post.isVip === true;
+
+                            // Loại bài → label teal
+                            const POST_TYPE_LABEL_MAP: Record<string, string> = {
+                                SELL_HOUSE: 'Bán nhà',
+                                SELL_LAND: 'Bán đất',
+                                RENT_HOUSE: 'Cho thuê nhà',
+                                RENT_LAND: 'Cho thuê đất',
+                                NEED_BUY: 'Cần mua',
+                                NEED_RENT: 'Cần thuê',
+                                NEWS: 'Tin tức',
+                                PROMOTION: 'Khuyến mãi',
                             };
+                            const postTypeLabel = POST_TYPE_LABEL_MAP[(post as any).postType] || 'Tin tức';
+
+                            // Ngày đăng — format "d Tháng M, yyyy"
+                            const dateStr = post.createdAt || post.postedAt || '';
+                            let formattedDate = '';
+                            if (dateStr) {
+                                const d = new Date(dateStr);
+                                if (!isNaN(d.getTime())) {
+                                    formattedDate = `${d.getDate()} Tháng ${d.getMonth() + 1}, ${d.getFullYear()}`;
+                                }
+                            }
+
+                            // Phút đọc — ước tính từ description (~200 từ/phút)
+                            const words = (post.description || '').trim().split(/\s+/).filter(Boolean).length;
+                            const readMin = Math.max(1, Math.round(words / 200));
+
                             return (
                                 <div
                                     key={post.id}
-                                    className="sr-reveal"
-                                    style={{ padding: '2px', borderRadius: '24px 0 24px 0', background: 'linear-gradient(135deg, #f97316, #eab308)', '--sr-delay': `${idx * 80}ms` } as React.CSSProperties}
+                                    className="sr-reveal bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 flex flex-col cursor-pointer group"
+                                    style={{ '--sr-delay': `${idx * 80}ms` } as React.CSSProperties}
+                                    onClick={() => navigate(`/posts/${post.id}`)}
                                 >
-                                    <div
-                                        className="bg-white flex flex-col cursor-pointer group hover:shadow-lg transition-shadow duration-300 overflow-hidden"
-                                        style={{ borderRadius: '22px 0 22px 0' }}
-                                        onClick={() => navigate(`/posts/${post.id}`)}
-                                    >
-                                        {/* Image */}
-                                        <div className="relative overflow-hidden" style={{ height: 200, borderRadius: '22px 0 0 0' }}>
-                                            <img
-                                                src={imgSrc}
-                                                alt={post.title}
-                                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                                style={{ borderRadius: '22px 0 0 0' }}
-                                            />
-                                            {/* VIP badge */}
-                                            <div className="absolute top-3 right-3">
-                                                <span className="text-white text-[11px] font-extrabold px-2.5 py-1 rounded shadow-md tracking-wide" style={{ background: 'linear-gradient(135deg, #f97316, #eab308)' }}>
-                                                    ⭐ VIP
-                                                </span>
+                                    {/* Image */}
+                                    <div className="relative overflow-hidden" style={{ height: 200, flexShrink: 0 }}>
+                                        <img
+                                            src={imgSrc}
+                                            alt={post.title}
+                                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                        />
+                                        {/* VIP badge — only for VIP posts */}
+                                        {isVip && (
+                                            <div
+                                                className="absolute top-3 left-3 flex items-center gap-1 px-2.5 py-1 rounded-full"
+                                                style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', boxShadow: '0 2px 8px rgba(217,119,6,0.4)' }}
+                                            >
+                                                {/* Crown */}
+                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="white">
+                                                    <path d="M2 19h20v2H2v-2zm2-7l5 5 5-8 5 5 3-5v9H2v-9l2 3z" />
+                                                </svg>
+                                                <span style={{ fontSize: 10, fontWeight: 800, color: '#fff', letterSpacing: '0.5px' }}>VIP</span>
                                             </div>
-                                            {/* Price overlay */}
-                                            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-3 py-2.5">
-                                                <span className="text-white font-bold text-sm">{formatPostPrice(post.price)}</span>
-                                            </div>
-                                        </div>
+                                        )}
+                                        {/* VIP top-accent border */}
+                                        {isVip && (
+                                            <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: 'linear-gradient(90deg, #f59e0b, #d97706)' }} />
+                                        )}
+                                    </div>
 
-                                        {/* Body */}
-                                        <div className="p-4 flex flex-col gap-2.5 flex-1">
-                                            <h3 className="text-[14px] font-bold text-[#1a1a1a] leading-snug line-clamp-2 min-h-[40px] m-0 group-hover:text-orange-600 transition-colors">
-                                                {post.title}
-                                            </h3>
+                                    {/* Body */}
+                                    <div className="p-4 flex flex-col flex-1 gap-2">
+                                        {/* Category label */}
+                                        <span style={{ fontSize: 10, fontWeight: 800, color: '#0d9488', letterSpacing: '1px', textTransform: 'uppercase' }}>
+                                            {postTypeLabel}
+                                        </span>
 
-                                            {location && (
-                                                <div className="flex items-center gap-1.5 text-[12px] text-gray-500">
-                                                    <svg className="shrink-0" width="12" height="12" viewBox="0 0 20 20" fill="#254b86">
-                                                        <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
-                                                    </svg>
-                                                    <span className="line-clamp-1">{location}</span>
-                                                </div>
+                                        {/* Title — large & bold */}
+                                        <h3
+                                            className="m-0 line-clamp-2 group-hover:text-[#0d9488] transition-colors"
+                                            style={{ fontSize: 15, fontWeight: 700, color: '#111827', lineHeight: 1.4, minHeight: 42 }}
+                                        >
+                                            {post.title}
+                                        </h3>
+
+                                        {/* Spacer */}
+                                        <div className="flex-1" />
+
+                                        {/* Footer — date left, read time right */}
+                                        <div className="flex items-center justify-between pt-3 border-t border-gray-100" style={{ marginTop: 8 }}>
+                                            <span style={{ fontSize: 12, color: '#6b7280' }}>{formattedDate}</span>
+                                            {words > 0 && (
+                                                <span style={{ fontSize: 12, color: '#9ca3af' }}>{readMin} phút đọc</span>
                                             )}
-
-                                            {(post as any).area && (
-                                                <div className="text-[12px] text-gray-600">
-                                                    Diện tích: <span className="font-semibold text-[#1a1a1a]">{(post as any).area} m²</span>
-                                                </div>
-                                            )}
-
-                                            {/* Footer */}
-                                            <div className="flex items-center justify-between mt-auto pt-3 border-t border-gray-100">
-                                                <span className="text-[13px] font-bold text-[#254b86]">{formatPostPrice(post.price)}</span>
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); navigate(`/posts/${post.id}`); }}
-                                                    className="px-3.5 py-1.5 bg-[#254b86] text-white border border-[#254b86] text-[12px] font-semibold rounded-lg hover:bg-white hover:text-[#254b86] transition-all duration-200 whitespace-nowrap"
-                                                >
-                                                    Xem chi tiết
-                                                </button>
-                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -671,26 +654,73 @@ const HomePage: React.FC = () => {
 
             {/* ================= INFO SECTION ================= */}
             <div className="bg-gray-50 py-20 px-4">
-                <div className="max-w-[1200px] mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-                    {[
-                        { img: bdsBan, title: 'Bất động sản bán', desc: 'Bạn có thể tìm thấy ngôi nhà mơ ước hoặc cơ hội đầu tư hấp dẫn thông qua lượng tin rao lớn, uy tín.' },
-                        { img: bdsThue, title: 'Bất động sản cho thuê', desc: 'Cập nhật thường xuyên các loại hình bất động sản cho thuê như nhà riêng, chung cư, văn phòng.' },
-                        { img: duan, title: 'Đánh giá dự án', desc: 'Các video và bài viết đánh giá giúp bạn có góc nhìn khách quan trước khi đầu tư.' },
-                        { img: wikibds, title: 'Wiki BĐS', desc: 'Cung cấp kiến thức, kinh nghiệm mua bán, đầu tư bất động sản và thông tin hữu ích.' },
-                    ].map((item, index) => (
-                        <div key={index} className="bg-white rounded-2xl p-6 shadow-sm hover:shadow-xl transition-all duration-300 text-center group">
-                            <div className="w-[150px] h-[150px] mx-auto mb-5 flex items-center justify-center bg-blue-50 rounded-xl group-hover:bg-blue-100 transition">
-                                <img src={item.img} className="w-[65%] h-[65%] object-contain group-hover:scale-110 transition" />
+                <div className="max-w-[1200px] mx-auto">
+                    <div className="text-center mb-10">
+                        <h2 className="text-2xl md:text-3xl font-bold text-gray-900">Thông tin hữu ích</h2>
+                        <p className="text-gray-500 mt-2">Công cụ và kiến thức dành cho nhà đầu tư thông minh</p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        {[
+                            { img: bdsBan, title: 'Bất động sản bán', desc: 'Bạn có thể tìm thấy ngôi nhà mơ ước hoặc cơ hội đầu tư hấp dẫn thông qua lượng tin rao lớn, uy tín.', href: '/houses' },
+                            { img: bdsThue, title: 'Bất động sản cho thuê', desc: 'Cập nhật thường xuyên các loại hình bất động sản cho thuê như nhà riêng, chung cư, văn phòng.', href: '/houses' },
+                            { img: duan, title: 'Đánh giá dự án', desc: 'Các video và bài viết đánh giá giúp bạn có góc nhìn khách quan trước khi đầu tư.', href: '/posts' },
+                            { img: wikibds, title: 'Wiki BĐS', desc: 'Cung cấp kiến thức, kinh nghiệm mua bán, đầu tư bất động sản và thông tin hữu ích.', href: '/posts' },
+                        ].map((item, index) => (
+                            <div
+                                key={index}
+                                onClick={() => navigate(item.href)}
+                                className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:-translate-y-1 hover:shadow-lg transition-all duration-300 text-center group cursor-pointer"
+                            >
+                                <div className="w-[130px] h-[130px] mx-auto mb-5 flex items-center justify-center bg-blue-50 rounded-xl group-hover:bg-teal-50 transition-colors duration-300">
+                                    <img src={item.img} className="w-[65%] h-[65%] object-contain group-hover:scale-110 transition-transform duration-300" alt={item.title} />
+                                </div>
+                                <h3 className="font-bold text-[17px] mb-2 text-gray-900 group-hover:text-[#0d9488] transition-colors">{item.title}</h3>
+                                <p className="text-gray-500 text-sm leading-6 mb-4">{item.desc}</p>
+                                <span className="inline-flex items-center gap-1 text-sm font-semibold" style={{ color: 'var(--pl-accent, #0d9488)' }}>
+                                    Tìm hiểu
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="group-hover:translate-x-1 transition-transform"><polyline points="9 18 15 12 9 6" /></svg>
+                                </span>
                             </div>
-                            <h3 className="font-semibold text-lg mb-2 group-hover:text-blue-600 transition">{item.title}</h3>
-                            <p className="text-gray-500 text-sm leading-6">{item.desc}</p>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            {/* ================= AI VALUATION CTA BAND ================= */}
+            <div
+                className="mx-4 mb-10 overflow-hidden rounded-3xl p-8 md:p-12 text-white"
+                style={{ background: 'linear-gradient(135deg, #1e3a5f 0%, #0d4d4a 100%)' }}
+            >
+                <div className="max-w-[1200px] mx-auto flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+                    <div className="max-w-2xl">
+                        <div
+                            className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-wider mb-3"
+                            style={{ borderColor: 'rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.1)', color: '#a7f3d0' }}
+                        >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L13.5 8.5L20 7L15.5 12L20 17L13.5 15.5L12 22L10.5 15.5L4 17L8.5 12L4 7L10.5 8.5L12 2Z" /></svg>
+                            Công nghệ AI
                         </div>
-                    ))}
+                        <h2 className="text-3xl md:text-4xl font-bold leading-tight mb-3">
+                            Định giá bất động sản chính xác trong 30 giây
+                        </h2>
+                        <p className="text-white/70 text-base">
+                            AI được huấn luyện trên hàng triệu giao dịch thực tế, cho bạn mức giá hợp lý, biên độ dao động và phân tích thị trường chi tiết.
+                        </p>
+                    </div>
+                    <button
+                        onClick={() => navigate('/valuation')}
+                        className="inline-flex items-center gap-2 rounded-full font-bold px-8 py-3.5 text-[#1e3a5f] whitespace-nowrap hover:opacity-90 transition-opacity flex-shrink-0"
+                        style={{ background: '#a7f3d0' }}
+                    >
+                        Định giá ngay
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+                    </button>
                 </div>
             </div>
 
         </div>
     );
+
 };
 
 export default HomePage;

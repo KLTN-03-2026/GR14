@@ -30,7 +30,14 @@ const TAB_STATUS: Record<ActiveTab, number | undefined> = {
     vip: undefined, // không có filter VIP ở backend → lọc client-side
 };
 
-const isVipPost = (post: Post) => Boolean(post.isVip || post.vipPackageName || post.vipExpiry);
+const isVipPost = (post: Post) => {
+    // Không có VIP flag nào → chắc chắn không phải VIP
+    if (!post.isVip && !post.vipPackageName && !post.vipExpiry) return false;
+    // Nếu có vipExpiry → phải còn hạn
+    if (post.vipExpiry) return new Date(post.vipExpiry) > new Date();
+    // isVip=true nhưng không có vipExpiry → dữ liệu chưa nhất quán, coi là không VIP
+    return false;
+};
 
 const PostManagementPage: React.FC = () => {
     // Server-side pagination state

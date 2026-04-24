@@ -98,8 +98,9 @@ services:
       RABBITMQ_RECONNECT_SECONDS: ${RABBITMQ_RECONNECT_SECONDS:-5}
       RABBITMQ_CONNECTION_TIMEOUT_MS: ${RABBITMQ_CONNECTION_TIMEOUT_MS:-30000}
       REDIS_URL: redis://redis:6379
-      OLLAMA_URL: ${OLLAMA_URL:-http://real-estate-ollama:11434}
-      OLLAMA_TIMEOUT_MS: ${OLLAMA_TIMEOUT_MS:-9000}
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      OLLAMA_TIMEOUT_MS: ${OLLAMA_TIMEOUT_MS:-60000}
+      VALUATION_OLLAMA_TIMEOUT_MS: ${VALUATION_OLLAMA_TIMEOUT_MS:-120000}
       LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
       GEMINI_MODEL_PRIMARY: ${GEMINI_MODEL_PRIMARY:-gemini-2.5-flash}
       GEMINI_MODEL_FALLBACK_1: ${GEMINI_MODEL_FALLBACK_1:-gemini-flash-latest}
@@ -119,6 +120,7 @@ services:
       RAG_FAST_MODE: ${RAG_FAST_MODE:-false}
       RAG_LOG_TIMINGS: ${RAG_LOG_TIMINGS:-true}
       RAG_RESPONSE_CACHE_TTL: ${RAG_RESPONSE_CACHE_TTL:-120}
+      ML_SERVICE_URL: http://ai-valuation:8000
     volumes:
       - ./real-estate-api/src:/app/src
       - ./real-estate-api/prisma:/app/prisma
@@ -129,6 +131,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      ai-valuation:
+        condition: service_started
 
   # ============ React Frontend ============
   # Volume frontend_node_modules có thể lệch package-lock sau khi pull → thiếu gói.
@@ -158,6 +162,18 @@ services:
       - "8080:8080"
     networks:
       - default
+
+  # ============ Python AI Valuation ============
+  ai-valuation:
+    build:
+      context: ./real-estate-ai-valuation
+      dockerfile: Dockerfile
+    container_name: real-estate-ai-valuation
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./real-estate-ai-valuation:/app
 
 volumes:
   mysql_data:

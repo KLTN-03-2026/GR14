@@ -15,6 +15,9 @@ type PropertySummary = {
 
 const DURATION_OPTIONS = [30, 60, 90];
 
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+const MINUTE_OPTIONS = ['00', '15', '30', '45'];
+
 /** Lấy URL ảnh đầu tiên từ mảng images (giống HouseDetailPage / LandDetailPage) */
 const getFirstImage = (images: any[]): string | undefined => {
     if (!images || images.length === 0) return undefined;
@@ -43,7 +46,8 @@ const AppointmentBookingPage: React.FC = () => {
     const [submitting, setSubmitting] = useState(false);
 
     const [appointmentDate, setAppointmentDate] = useState('');
-    const [appointmentTime, setAppointmentTime] = useState('09:00');
+    const [appointmentHour, setAppointmentHour] = useState('09');
+    const [appointmentMinute, setAppointmentMinute] = useState('00');
     const [durationMinutes, setDurationMinutes] = useState(30);
     const [notes, setNotes] = useState('');
 
@@ -107,10 +111,6 @@ const AppointmentBookingPage: React.FC = () => {
             toast.error('Vui lòng chọn ngày xem');
             return;
         }
-        if (!appointmentTime) {
-            toast.error('Vui lòng chọn giờ bắt đầu');
-            return;
-        }
         if (durationMinutes <= 0) {
             toast.error('Thời lượng hẹn không hợp lệ');
             return;
@@ -118,6 +118,7 @@ const AppointmentBookingPage: React.FC = () => {
 
         setSubmitting(true);
         try {
+            const appointmentTime = `${appointmentHour}:${appointmentMinute}`;
             const payload: Record<string, any> = {
                 appointmentDate: toIsoFromLocal(appointmentDate, appointmentTime),
                 durationMinutes,
@@ -250,14 +251,43 @@ const AppointmentBookingPage: React.FC = () => {
 
                                     <div>
                                         <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-gray-500">
-                                            Giờ bắt đầu
+                                            Giờ bắt đầu (24h)
                                         </label>
-                                        <input
-                                            type="time"
-                                            value={appointmentTime}
-                                            onChange={(e) => setAppointmentTime(e.target.value)}
-                                            className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-800 outline-none transition focus:border-[#254b86] focus:bg-white focus:ring-2 focus:ring-[#254b86]/10"
-                                        />
+                                        <div className="flex items-center gap-2">
+                                            <select
+                                                value={appointmentHour}
+                                                onChange={(e) => setAppointmentHour(e.target.value)}
+                                                className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-800 outline-none transition focus:border-[#254b86] focus:bg-white focus:ring-2 focus:ring-[#254b86]/10"
+                                            >
+                                                {HOUR_OPTIONS.map((h) => (
+                                                    <option key={h} value={h}>{h} giờ</option>
+                                                ))}
+                                            </select>
+                                            <span className="text-gray-400 font-bold">:</span>
+                                            <select
+                                                value={appointmentMinute}
+                                                onChange={(e) => setAppointmentMinute(e.target.value)}
+                                                className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-800 outline-none transition focus:border-[#254b86] focus:bg-white focus:ring-2 focus:ring-[#254b86]/10"
+                                            >
+                                                {MINUTE_OPTIONS.map((m) => (
+                                                    <option key={m} value={m}>{m} phút</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Working hours notice */}
+                                <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                                    <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+                                    </svg>
+                                    <div className="text-sm">
+                                        <p className="font-semibold text-amber-700">Khung giờ làm việc</p>
+                                        <p className="mt-0.5 text-amber-600">
+                                            <span className="font-medium">Sáng:</span> 07:30 – 11:30 &nbsp;|&nbsp; <span className="font-medium">Chiều:</span> 13:30 – 17:30
+                                        </p>
+                                        <p className="mt-0.5 text-amber-500 text-xs">Thứ Hai – Thứ Bảy (trừ ngày lễ)</p>
                                     </div>
                                 </div>
 

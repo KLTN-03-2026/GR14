@@ -228,11 +228,11 @@ export class DescriptionGeneratorService {
 
     const needPerspectiveRules = isNeedPost
       ? [
-          '- BẮT BUỘC viết theo góc nhìn NGƯỜI CẦN TÌM (người mua/người thuê), không phải người đang có tài sản để rao.',
-          '- Ưu tiên cấu trúc câu thể hiện nhu cầu: "Tôi đang cần...", "Mình tìm...", "Tiêu chí mong muốn...".',
-          '- TUYỆT ĐỐI KHÔNG dùng các cụm mang nghĩa đang rao tài sản: "cho thuê", "bán nhanh", "sở hữu ngay", "chốt sale", "căn này đang", "chính chủ cần cho thuê".',
-          '- Không mô tả tài sản như đã sở hữu sẵn (ví dụ: "nhà này", "căn hộ của tôi", "bất động sản này").',
-        ].join('\n')
+        '- BẮT BUỘC viết theo góc nhìn NGƯỜI CẦN TÌM (người mua/người thuê), không phải người đang có tài sản để rao.',
+        '- Ưu tiên cấu trúc câu thể hiện nhu cầu: "Tôi đang cần...", "Mình tìm...", "Tiêu chí mong muốn...".',
+        '- TUYỆT ĐỐI KHÔNG dùng các cụm mang nghĩa đang rao tài sản: "cho thuê", "bán nhanh", "sở hữu ngay", "chốt sale", "căn này đang", "chính chủ cần cho thuê".',
+        '- Không mô tả tài sản như đã sở hữu sẵn (ví dụ: "nhà này", "căn hộ của tôi", "bất động sản này").',
+      ].join('\n')
       : '- Không áp dụng.';
 
     const prompt = `

@@ -25,6 +25,8 @@ import { CloudinaryModule } from './common/cloudinary/cloudinary.module';
 import { MailModule } from './common/mail/mail.module';
 import { FengshuiModule } from './modules/fengshui/fengshui.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { ValuationModule } from './modules/valuation/valuation.module';
+import { TasksModule } from './tasks/tasks.module';
 
 @Module({
   imports: [
@@ -58,6 +60,8 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
     RecommendationModule,
     FengshuiModule,
     AnalyticsModule,
+    ValuationModule,
+    TasksModule,
   ],
   providers: [
     {
