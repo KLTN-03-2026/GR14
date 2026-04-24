@@ -163,4 +163,8 @@ export class AnalyticsController {
   getEmployeeProperties() {
     return this.analyticsService.getEmployeeProperties();
   }
+  @Get('appointments/performance-trend')
+  getPerformanceTrend(@Query('type') type: string) {
+    return this.analyticsService.getEmployeePerformanceTrend(type || 'month');
+  }
 }

@@ -1,3 +1,4 @@
+import type { TimeType } from "@/types/analytics";
 import apiClient from "./client";
 
 export const analyticsApi = {
@@ -82,7 +83,14 @@ export const analyticsApi = {
     apiClient
       .get<EmployeeProperty[]>("/admin/analytics/employees/properties")
       .then((res) => res.data),
+  getEmployeePerformanceTrend: (type: TimeType) =>
+    apiClient
+      .get(`/admin/analytics/appointments/performance-trend?type=${type}`)
+      .then((r) => r.data),
 };
+
+// ─── Existing interface (unchanged) ──────────────────────────────────────────
+
 export interface EmployeePerformance {
   employeeId: number;
   employeeCode: string;
@@ -90,7 +98,29 @@ export interface EmployeePerformance {
   totalAppointments: number;
   completed: number;
   completionRate: number;
+  // ── NEW FEATURE: enriched fields returned by updated getEmployeePerformance ──
+  /** Normalised performance score 0–100 */
+  score: number;
+  /** Based on last appointment date: active ≤3d, idle 4–7d, inactive >7d */
+  activityStatus: "active" | "idle" | "inactive";
+  /** % change vs previous period (null if no data in either period) */
+  trend: number | null;
+  /** Property specialisation: house | land | neutral */
+  strength: "house" | "land" | "neutral";
+  /** Alert codes: 'no_activity' | 'low_performance' | 'no_completion' */
+  alerts: string[];
+  /** Rule-based recommendation text */
+  recommendation: string;
+  /** Houses count from enrichment */
+  houses: number;
+  /** Lands count from enrichment */
+  lands: number;
+  /** Total properties (houses + lands) */
+  totalProperties: number;
 }
+
+// ─── Existing interface (unchanged) ──────────────────────────────────────────
+
 export interface EmployeeProperty {
   employeeId: number;
   employeeCode: string;

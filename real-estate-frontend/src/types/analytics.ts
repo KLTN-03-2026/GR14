@@ -3,7 +3,6 @@
 
 // ─── Time ────────────────────────────────────────────
 export type TimeType = "day" | "month" | "year";
-
 // ─── Common chart shapes ──────────────────────────────
 export interface TimeSeriesPoint {
   time: string;
@@ -139,3 +138,22 @@ export interface MonthlyComparison {
 export interface AnalyticsContextValue {
   timeType: TimeType;
 }
+export interface EmployeePerformance {
+  employeeId: number;
+  employeeCode: string;
+  fullName: string;
+  totalAppointments: number;
+  completed: number;
+  completionRate: number;
+  score?: number;
+  activityStatus?: "active" | "idle" | "inactive";
+  trend?: number | null;
+  strength?: "house" | "land" | "neutral";
+  alerts?: string[];
+  recommendation?: string;
+  houses?: number;
+  lands?: number;
+  totalProperties?: number;
+}
+
+export type SortBy = "appointments" | "score";

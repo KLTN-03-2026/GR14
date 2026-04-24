@@ -376,16 +376,195 @@ export class AnalyticsService {
   }
 
   /**
-   * Employee performance: appointments assigned, completed, and completion rate.
-   * FIX: null guard on completedMap — employeeId can be null from groupBy.
-   *
-   * EXTENDED: optional `type` param ("day" | "month" | "year").
-   * When omitted → original groupBy logic runs unchanged (backward compatible).
-   * When provided → fetches raw appointments, buckets by createdAt using getKey(),
-   *                 and aggregates per employee for the selected time granularity.
+   * Employee performance: appointments assigned, completed, completion rate.
+   * NEW FEATURE: Extended with score, activityStatus, trend, strength, alerts,
+   * recommendation — all computed in a single parallel batch (no N+1).
    */
   async getEmployeePerformance(type?: string) {
+    const now = new Date();
+
+    // ─────────────────────────────────────────────────────────────────────
+    // NEW FEATURE: Batch-fetch enrichment data ONCE for both code paths.
+    // Three queries, all run in parallel → zero N+1, minimal added latency.
+    // ─────────────────────────────────────────────────────────────────────
+    const [houseGroups, landGroups, enrichAppts] = await Promise.all([
+      this.prisma.house.groupBy({
+        by: ['employeeId'],
+        _count: { id: true },
+      }),
+      this.prisma.land.groupBy({
+        by: ['employeeId'],
+        _count: { id: true },
+      }),
+      this.prisma.appointment.findMany({
+        select: {
+          employeeId: true,
+          actualStatus: true,
+          createdAt: true,
+          appointmentDate: true,
+        },
+        where: { employeeId: { not: null } },
+      }),
+    ]);
+
+    // NEW FEATURE: O(1) lookup maps — no nested loops
+    const houseMap = new Map<number, number>(
+      houseGroups
+        .filter(
+          (h): h is typeof h & { employeeId: number } => h.employeeId !== null,
+        )
+        .map((h) => [h.employeeId, h._count.id]),
+    );
+    const landMap = new Map<number, number>(
+      landGroups
+        .filter(
+          (l): l is typeof l & { employeeId: number } => l.employeeId !== null,
+        )
+        .map((l) => [l.employeeId, l._count.id]),
+    );
+
+    // NEW FEATURE: Most recent appointmentDate per employee (for activity status)
+    const lastApptMap = new Map<number, Date>();
+    for (const a of enrichAppts) {
+      if (a.employeeId === null) continue;
+      const d = new Date(a.appointmentDate);
+      const existing = lastApptMap.get(a.employeeId);
+      if (!existing || d > existing) lastApptMap.set(a.employeeId, d);
+    }
+
+    // NEW FEATURE: Period-start helper for trend computation
+    const getPeriodStart = (t: string, offsetPeriods: number): Date => {
+      if (t === 'day') {
+        const d = new Date(now);
+        d.setDate(d.getDate() - offsetPeriods);
+        d.setHours(0, 0, 0, 0);
+        return d;
+      }
+      if (t === 'year') {
+        return new Date(now.getFullYear() - offsetPeriods, 0, 1);
+      }
+      // default: month
+      return new Date(now.getFullYear(), now.getMonth() - offsetPeriods, 1);
+    };
+
+    const effectiveType = type || 'month';
+    const curStart = getPeriodStart(effectiveType, 0);
+    const prevStart = getPeriodStart(effectiveType, 1);
+
+    // NEW FEATURE: Current-period and previous-period appointment counts per employee
+    const curPeriodMap = new Map<number, number>();
+    const prevPeriodMap = new Map<number, number>();
+    for (const a of enrichAppts) {
+      if (a.employeeId === null) continue;
+      const d = new Date(a.createdAt);
+      if (d >= curStart) {
+        curPeriodMap.set(
+          a.employeeId,
+          (curPeriodMap.get(a.employeeId) ?? 0) + 1,
+        );
+      } else if (d >= prevStart && d < curStart) {
+        prevPeriodMap.set(
+          a.employeeId,
+          (prevPeriodMap.get(a.employeeId) ?? 0) + 1,
+        );
+      }
+    }
+
+    // NEW FEATURE: Per-employee enrichment builder
+    // Accepts pre-computed maxTotal & maxProps to keep normalization accurate.
+    const buildEnrichment = (
+      empId: number,
+      total: number,
+      done: number,
+      completionRate: number,
+      maxTotal: number,
+      maxProps: number,
+    ) => {
+      const houses = houseMap.get(empId) ?? 0;
+      const lands = landMap.get(empId) ?? 0;
+      const totalProperties = houses + lands;
+
+      // NEW FEATURE: Performance score (0–100)
+      // Formula: 0.4 * completionRate + 0.3 * norm(appointments) + 0.3 * norm(properties)
+      const nTotal = maxTotal > 0 ? total / maxTotal : 0;
+      const nProps = maxProps > 0 ? totalProperties / maxProps : 0;
+      const score = +(
+        (0.4 * completionRate + 0.3 * nTotal + 0.3 * nProps) *
+        100
+      ).toFixed(1);
+
+      // NEW FEATURE: Activity status from most recent appointment date
+      const lastAppt = lastApptMap.get(empId);
+      const daysSince = lastAppt
+        ? (now.getTime() - lastAppt.getTime()) / 86_400_000
+        : Infinity;
+      const activityStatus: 'active' | 'idle' | 'inactive' =
+        daysSince <= 3 ? 'active' : daysSince <= 7 ? 'idle' : 'inactive';
+
+      // NEW FEATURE: Trend — % change current period vs previous period
+      const cur = curPeriodMap.get(empId) ?? 0;
+      const prev = prevPeriodMap.get(empId) ?? 0;
+      const trend: number | null =
+        cur === 0 && prev === 0
+          ? null
+          : prev === 0
+            ? cur > 0
+              ? 100
+              : 0
+            : +(((cur - prev) / prev) * 100).toFixed(1);
+
+      // NEW FEATURE: Property specialization strength
+      const strength: 'house' | 'land' | 'neutral' =
+        houses > lands ? 'house' : lands > houses ? 'land' : 'neutral';
+
+      // NEW FEATURE: Alert codes
+      const alerts: string[] = [];
+
+      if (total === 0) {
+        alerts.push('no_activity');
+      }
+
+      if (completionRate < 0.3) {
+        alerts.push('low_performance');
+      }
+
+      if (total > 5 && done === 0) {
+        alerts.push('no_completion');
+      }
+
+      // NEW FEATURE: Rule-based recommendation text
+      let recommendation: string;
+      if (activityStatus === 'inactive') {
+        recommendation = 'Không hoạt động, cần theo dõi';
+      } else if (total === 0) {
+        recommendation = 'Chưa có lịch hẹn, cần phân công';
+      } else if (completionRate >= 0.7 && activityStatus === 'active') {
+        recommendation = 'Hiệu suất tốt, duy trì nhịp độ';
+      } else if (total > 5 && done === 0) {
+        recommendation = 'Tập trung chốt giao dịch';
+      } else if (completionRate < 0.3) {
+        recommendation = 'Cần cải thiện tỷ lệ chốt hẹn';
+      } else if (activityStatus === 'idle') {
+        recommendation = 'Tăng cường theo dõi khách hàng';
+      } else {
+        recommendation = 'Hiệu suất ổn định, tiếp tục duy trì';
+      }
+
+      return {
+        houses,
+        lands,
+        totalProperties,
+        score,
+        activityStatus,
+        trend,
+        strength,
+        alerts,
+        recommendation,
+      };
+    };
+
     // ── Original path (no type) ───────────────────────────────────────────────
+    // Existing groupBy queries for efficiency — fully preserved.
     if (!type) {
       const employees = await this.prisma.employee.findMany({
         include: {
@@ -406,26 +585,46 @@ export class AnalyticsService {
       ]);
 
       const totalMap = new Map(data.map((d) => [d.employeeId, d._count.id]));
-
       const completedMap = new Map(
         completed.map((d) => [d.employeeId, d._count.id]),
       );
+
+      // NEW FEATURE: Pre-compute normalisation denominators in a single pass
+      let maxTotal = 1;
+      let maxProps = 1;
+      for (const e of employees) {
+        const t = totalMap.get(e.id) ?? 0;
+        const p = (houseMap.get(e.id) ?? 0) + (landMap.get(e.id) ?? 0);
+        if (t > maxTotal) maxTotal = t;
+        if (p > maxProps) maxProps = p;
+      }
 
       return employees
         .map((e) => {
           const total = totalMap.get(e.id) || 0;
           const done = completedMap.get(e.id) || 0;
+          const completionRate = total > 0 ? done / total : 0;
 
           return {
+            // ── Existing fields (unchanged) ──
             employeeId: e.id,
             employeeCode: e.user?.username || `NV${e.id}`,
             fullName: e.user?.fullName || 'N/A',
             totalAppointments: total,
             completed: done,
-            completionRate: total > 0 ? done / total : 0,
+            completionRate,
+            // ── NEW FEATURE: enriched fields ──
+            ...buildEnrichment(
+              e.id,
+              total,
+              done,
+              completionRate,
+              maxTotal,
+              maxProps,
+            ),
           };
         })
-        .sort((a, b) => b.totalAppointments - a.totalAppointments);
+        .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
     }
 
     // ── Extended path (with type) ─────────────────────────────────────────────
@@ -446,7 +645,6 @@ export class AnalyticsService {
     // We aggregate ALL appointments grouped by employee (time key is used for filtering
     // context but the returned structure is per-employee totals, consistent with original).
     // validate key format (no-op side-effect)
-    const now = new Date();
 
     appointments.forEach((a) => {
       if (a.employeeId === null) return;
@@ -472,6 +670,8 @@ export class AnalyticsService {
         isValid = date.getFullYear() === now.getFullYear();
       }
 
+      if (!isValid) return;
+
       totalMap.set(a.employeeId, (totalMap.get(a.employeeId) ?? 0) + 1);
 
       if (a.actualStatus === 1) {
@@ -482,20 +682,142 @@ export class AnalyticsService {
       }
     });
 
+    // NEW FEATURE: Pre-compute normalisation denominators in a single pass
+    let maxTotal = 1;
+    let maxProps = 1;
+    for (const e of employees) {
+      const t = totalMap.get(e.id) ?? 0;
+      const p = (houseMap.get(e.id) ?? 0) + (landMap.get(e.id) ?? 0);
+      if (t > maxTotal) maxTotal = t;
+      if (p > maxProps) maxProps = p;
+    }
+
     return employees
       .map((e) => {
         const total = totalMap.get(e.id) ?? 0;
         const done = completedMap.get(e.id) ?? 0;
+        const completionRate = total > 0 ? +(done / total).toFixed(4) : 0;
+
         return {
+          // ── Existing fields (unchanged) ──
           employeeId: e.id,
           employeeCode: e.user?.username || `NV${e.id}`,
           fullName: e.user?.fullName || 'N/A',
           totalAppointments: total,
           completed: done,
-          completionRate: total > 0 ? +(done / total).toFixed(4) : 0,
+          completionRate,
+          // ── NEW FEATURE: enriched fields ──
+          ...buildEnrichment(
+            e.id,
+            total,
+            done,
+            completionRate,
+            maxTotal,
+            maxProps,
+          ),
         };
       })
-      .sort((a, b) => b.totalAppointments - a.totalAppointments);
+      .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+  }
+  async getEmployeePerformanceTrend(type: string) {
+    const now = new Date();
+
+    // ── 1. Build pre-filled bucket map and derive startDate ─────────────────
+    //
+    // We pre-fill every bucket with zero so that periods with no data still
+    // appear in the chart (avoids gaps in the x-axis).
+
+    type Bucket = {
+      time: string;
+      totalAppointments: number;
+      completed: number;
+    };
+    const buckets = new Map<string, Bucket>();
+
+    let startDate: Date;
+    const endDate = new Date(now);
+    endDate.setHours(23, 59, 59, 999);
+
+    if (type === 'day') {
+      // Last 7 days inclusive (today = offset 0, oldest = offset 6)
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(d.getDate() - i);
+        const key = d.toISOString().slice(0, 10); // "YYYY-MM-DD"
+        buckets.set(key, { time: key, totalAppointments: 0, completed: 0 });
+      }
+      startDate = new Date(now);
+      startDate.setDate(startDate.getDate() - 6);
+      startDate.setHours(0, 0, 0, 0);
+    } else if (type === 'year') {
+      // Last 5 calendar years inclusive
+      for (let i = 4; i >= 0; i--) {
+        const key = String(now.getFullYear() - i); // "YYYY"
+        buckets.set(key, { time: key, totalAppointments: 0, completed: 0 });
+      }
+      startDate = new Date(now.getFullYear() - 4, 0, 1);
+    } else {
+      // Default: month — last 12 calendar months inclusive
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const key = d.toISOString().slice(0, 7); // "YYYY-MM"
+        buckets.set(key, { time: key, totalAppointments: 0, completed: 0 });
+      }
+      startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    }
+
+    // ── 2. Fetch appointments within the date range ──────────────────────────
+    //
+    // IMPORTANT: We use explicit date >= startDate && date <= endDate filtering
+    // here — intentionally NOT reusing the isValid logic from
+    // getEmployeePerformance() as required by the spec.
+
+    const appointments = await this.prisma.appointment.findMany({
+      select: {
+        actualStatus: true,
+        createdAt: true,
+      },
+      where: {
+        createdAt: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+    });
+
+    // ── 3. Accumulate into buckets ───────────────────────────────────────────
+
+    appointments.forEach((a) => {
+      let key: string;
+
+      if (type === 'day') {
+        key = a.createdAt.toISOString().slice(0, 10);
+      } else if (type === 'year') {
+        key = String(a.createdAt.getFullYear());
+      } else {
+        key = a.createdAt.toISOString().slice(0, 7);
+      }
+
+      const bucket = buckets.get(key);
+      if (!bucket) return; // outside our pre-defined range (shouldn't happen)
+
+      bucket.totalAppointments += 1;
+      if (a.actualStatus === 1) {
+        bucket.completed += 1;
+      }
+    });
+
+    // ── 4. Serialize — order is guaranteed by insertion order of the Map ─────
+
+    return [...buckets.values()].map((b) => ({
+      time: b.time,
+      totalAppointments: b.totalAppointments,
+      completed: b.completed,
+      completionRate:
+        b.totalAppointments > 0
+          ? +(b.completed / b.totalAppointments).toFixed(4)
+          : 0,
+    }));
   }
 
   /** Appointment heatmap by hour of day (0–23). */
@@ -682,6 +1004,7 @@ export class AnalyticsService {
       appointmentsThisMonth,
     };
   }
+
   async getEmployeeProperties() {
     const [houses, lands] = await Promise.all([
       this.prisma.house.groupBy({
