@@ -6,14 +6,15 @@ on:
     workflows: ["CI — Lint & Build"]
     types: [completed]
     branches: [main]
+  workflow_dispatch: # Cho phép chạy thủ công từ Github Actions UI
 
 jobs:
   deploy:
     name: 🚀 Deploy to VPS via SSH
     runs-on: ubuntu-latest
 
-    # Chỉ deploy nếu CI thành công
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    # Chạy khi CI thành công HOẶC khi trigger thủ công
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
 
     steps:
       - name: Deploy lên VPS qua SSH
