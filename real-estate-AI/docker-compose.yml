@@ -26,7 +26,6 @@ services:
       - qdrant
     networks:
       - ai-network
-      - real-estate-shared
 
   ollama:
     image: ollama/ollama:latest
@@ -38,7 +37,6 @@ services:
       - ollama_data:/root/.ollama
     networks:
       - ai-network
-      - real-estate-shared
 
   qdrant:
     image: qdrant/qdrant:v1.13.4
@@ -51,7 +49,6 @@ services:
       - qdrant_data:/qdrant/storage
     networks:
       - ai-network
-      - real-estate-shared
 
 volumes:
   n8n_data:
