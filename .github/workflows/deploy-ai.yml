@@ -1,0 +1,72 @@
+name: CD — Deploy to AI VPS (SSH)
+
+# Có thể chạy bằng tay (workflow_dispatch) hoặc khi CI pass nhánh main mà có thay đổi file ở thư mục real-estate-AI/
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["CI — Lint & Build"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy-ai:
+    name: 🤖 Deploy to AI VPS via SSH
+    runs-on: ubuntu-latest
+
+    # Chỉ chạy nếu CI pass hoặc kích hoạt bằng tay
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+
+    steps:
+      - name: Deploy lên AI VPS qua SSH
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          ENV_AI: ${{ secrets.ENV_AI }}
+        with:
+          host: ${{ secrets.VPS_AI_HOST }}
+          username: ${{ secrets.VPS_AI_USER }}
+          password: ${{ secrets.VPS_AI_PASSWORD }}
+          port: ${{ secrets.VPS_AI_PORT || 22 }}
+          command_timeout: 45m
+          envs: ENV_AI
+          script: |
+            set -e  # Dừng ngay nếu có lệnh lỗi
+
+            echo ">>> 🐳 Kiểm tra cài đặt Docker..."
+            if ! [ -x "$(command -v docker)" ]; then
+              echo ">>> Docker chưa được cài đặt. Tiến hành cài đặt tự động..."
+              curl -fsSL https://get.docker.com -o get-docker.sh
+              sh get-docker.sh
+              rm get-docker.sh
+            fi
+
+            echo ">>> 📁 Kiểm tra thư mục dự án..."
+            if [ ! -d "${{ secrets.VPS_PROJECT_PATH }}" ]; then
+              echo ">>> Thư mục chưa tồn tại, đang tiến hành git clone lần đầu..."
+              git clone https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git ${{ secrets.VPS_PROJECT_PATH }}
+            fi
+
+            cd ${{ secrets.VPS_PROJECT_PATH }}
+
+            echo ">>> 🔄 Reset thay đổi cục bộ và pull code mới nhất từ main..."
+            git reset --hard HEAD
+            git pull origin main
+
+            echo ">>> 🔑 Tiêm (Inject) cấu hình hệ thống từ Github Secrets xuống VPS..."
+            echo "$ENV_AI" > real-estate-AI/.env
+
+            cd real-estate-AI
+
+            echo ">>> 🐳 Rebuild và restart các containers cho AI..."
+            docker compose down
+            docker compose up -d
+
+            echo ">>> 🤖 Kích hoạt pull models cho Ollama (chạy ngầm)..."
+            echo "Pulling nomic-embed-text..."
+            docker exec real-estate-ollama ollama pull nomic-embed-text
+            echo "Pulling qwen2.5:7b..."
+            docker exec real-estate-ollama ollama pull qwen2.5:7b
+
+            echo ">>> 🧹 Dọn dẹp image cũ không còn dùng..."
+            docker image prune -f
+
+            echo ">>> ✅ Deploy AI Server thành công!"
