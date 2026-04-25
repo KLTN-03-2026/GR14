@@ -13,7 +13,7 @@ import imgHCMC from "@/assets/cityscape-of-ho-chi-minh-city-skyline-at-dusk.jpg"
 
 interface PostImage { url: string; position: number; }
 
-const API_URL = "http://localhost:5000/api/posts/approved";
+const API_URL = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'}/posts/approved`;
 
 // ── Cố định 5 ảnh đẹp cho Hero Slider — luôn hiển thị bất kể bài viết có ảnh hay không ──
 const HERO_SLIDE_IMAGES = [
