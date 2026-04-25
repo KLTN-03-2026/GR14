@@ -58,6 +58,3 @@ volumes:
 networks:
   ai-network:
     name: real-estate-ai-network
-  real-estate-shared:
-    external: true
-    name: ${REAL_ESTATE_SHARED_NETWORK:-real-estate_default}
