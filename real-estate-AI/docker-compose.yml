@@ -17,7 +17,7 @@ services:
       GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-Asia/Ho_Chi_Minh}
       OLLAMA_BASE_URL: http://ollama:11434
       QDRANT_URL: http://qdrant:6333
-      REAL_ESTATE_API_BASE_URL: ${REAL_ESTATE_API_BASE_URL:-http://real-estate-backend:5000/api}
+      REAL_ESTATE_API_BASE_URL: ${REAL_ESTATE_API_BASE_URL:-https://blackscity.app/api}
       DEFAULT_OLLAMA_MODEL: ${DEFAULT_OLLAMA_MODEL:-qwen2.5:7b}
     volumes:
       - n8n_data:/home/node/.n8n
