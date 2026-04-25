@@ -59,6 +59,9 @@ export class CreateHouseDto {
 
   @IsOptional()
   employeeId?: any;
+
+  @IsOptional()
+  status?: any;
 }
 
 export class UpdateHouseDto extends PartialType(CreateHouseDto) {

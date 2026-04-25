@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Form, Input, Button, Tabs, Spin, Tag } from 'antd';
-import toast from 'react-hot-toast';
+import toast, { Toaster } from 'react-hot-toast';
 import { UserOutlined, PhoneOutlined, HomeOutlined, LockOutlined, MailOutlined, CrownOutlined } from '@ant-design/icons';
 import { authApi } from '@/api';
 import { useAuthStore } from '@/stores/authStore';
@@ -231,6 +231,7 @@ const ProfilePage: React.FC = () => {
 
     return (
         <div className="flex flex-col min-h-screen bg-gray-50">
+            <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
             <PublicHeader />
 
             <main className="flex-1 container mx-auto px-4 py-10 max-w-5xl">

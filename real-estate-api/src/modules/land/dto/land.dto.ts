@@ -63,6 +63,9 @@ export class CreateLandDto {
 
   @IsOptional()
   employeeId?: any;
+
+  @IsOptional()
+  status?: any;
 }
 
 export class UpdateLandDto extends PartialType(CreateLandDto) {

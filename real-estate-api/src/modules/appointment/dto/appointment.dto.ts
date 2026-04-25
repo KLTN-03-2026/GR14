@@ -84,6 +84,18 @@ export class UpdateAppointmentDto {
   @IsOptional()
   @IsInt()
   durationMinutes?: number;
+
+  @IsOptional()
+  @IsInt()
+  houseId?: number;
+
+  @IsOptional()
+  @IsInt()
+  landId?: number;
+
+  @IsOptional()
+  @IsInt()
+  customerId?: number;
 }
 
 export class ApproveAppointmentDto {

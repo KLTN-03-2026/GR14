@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { toast } from 'react-hot-toast';
 import { profileApi } from '@/api';
 import { useAuthStore } from '@/stores/authStore';
-import { Button } from '@/components/ui';
 import type { User } from '@/types';
+import { Button } from '@/components/ui';
 
 const ProfilePage: React.FC = () => {
   const [profileData, setProfileData] = useState({
@@ -53,8 +53,10 @@ const ProfilePage: React.FC = () => {
     try {
       const values: Record<string, unknown> = { ...profileData };
       const res = await profileApi.updateProfile(values);
-      const updatedUser = res.data.data || res.data;
-      setUser(updatedUser);
+      const updatedFields = res.data.data || res.data;
+      // Merge with existing user to preserve roles and other fields
+      const currentUser = useAuthStore.getState().user;
+      setUser({ ...currentUser, ...updatedFields } as User);
       toast.success('Cập nhật hồ sơ thành công');
     } catch {
       toast.error('Cập nhật hồ sơ thất bại');
