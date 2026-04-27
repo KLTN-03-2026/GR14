@@ -110,7 +110,7 @@ services:
       GEMINI_MAX_RETRIES: ${GEMINI_MAX_RETRIES:-2}
       GEMINI_RETRY_BASE_MS: ${GEMINI_RETRY_BASE_MS:-1200}
       GEMINI_THINKING_BUDGET: ${GEMINI_THINKING_BUDGET:-0}
-      QDRANT_URL: ${QDRANT_URL:-http://real-estate-qdrant:6333}
+      QDRANT_URL: ${QDRANT_URL:-http://host.docker.internal:6333}
       RAG_COLLECTION: ${RAG_COLLECTION:-real_estate_rag}
       CHAT_MODEL: ${CHAT_MODEL:-qwen2.5:7b}
       EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
@@ -133,6 +133,8 @@ services:
         condition: service_healthy
       ai-valuation:
         condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Linux VPS compatibility
 
   # ============ React Frontend ============
   # Volume frontend_node_modules có thể lệch package-lock sau khi pull → thiếu gói.
@@ -180,4 +182,3 @@ volumes:
   rabbitmq_data:
   redis_data:
   frontend_node_modules:
-

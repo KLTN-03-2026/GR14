@@ -90,11 +90,16 @@ export class AiService {
   private readonly qdrantUrl =
     process.env.QDRANT_URL || 'http://real-estate-qdrant:6333';
   private readonly ollamaUrl =
-    process.env.OLLAMA_URL || 'http://real-estate-ollama:11434';
+    process.env.OLLAMA_URL || 'http://host.docker.internal:11434';
   private readonly ragCollection =
     process.env.RAG_COLLECTION || 'real_estate_rag';
-  private readonly chatModel =
-    process.env.CHAT_MODEL || process.env.DEFAULT_OLLAMA_MODEL || 'qwen2.5:7b';
+  // Gemini config (LLM chat only — embedding still uses Ollama nomic-embed-text)
+  private readonly geminiApiKey = process.env.GEMINI_API_KEY || '';
+  private readonly geminiChatModel =
+    process.env.GEMINI_MODEL_PRIMARY || 'gemini-2.5-flash';
+  private readonly geminiApiBase =
+    process.env.GEMINI_API_URL || 'https://generativelanguage.googleapis.com/v1beta';
+  // Ollama embed model (lightweight ~274MB, runs fine on VPS)
   private readonly embedModel = process.env.EMBED_MODEL || 'nomic-embed-text';
   private readonly retrievalTopK = Number(process.env.RAG_TOP_K || 4);
   private readonly contextTopK = Number(process.env.RAG_CONTEXT_K || 2);
@@ -117,7 +122,6 @@ export class AiService {
   private readonly maxPromptDescriptionChars = Number(
     process.env.RAG_DESCRIPTION_CHARS || 80,
   );
-  private readonly chatNumPredict = Number(process.env.CHAT_NUM_PREDICT || 256);
   private readonly embedCacheTtlSec = Number(
     process.env.EMBED_QUERY_CACHE_TTL || 600,
   );
@@ -128,8 +132,8 @@ export class AiService {
     String(process.env.RAG_ENABLE_LLM || 'true').toLowerCase() !== 'false';
   private readonly fastMode =
     String(process.env.RAG_FAST_MODE || 'true').toLowerCase() === 'true';
-  private readonly ollamaTimeoutMs = Number(
-    process.env.OLLAMA_TIMEOUT_MS || 9000,
+  private readonly geminiTimeoutMs = Number(
+    process.env.GEMINI_TIMEOUT_MS || 15000,
   );
   private readonly qdrantTimeoutMs = Number(
     process.env.QDRANT_TIMEOUT_MS || 2500,
@@ -532,27 +536,41 @@ export class AiService {
     let structured: Record<string, unknown> | null = null;
     try {
       const llmStartedAt = Date.now();
-      const genResp = await axios.post(
-        `${this.ollamaUrl}/api/generate`,
+      const geminiResp = await axios.post(
+        `${this.geminiApiBase}/models/${this.geminiChatModel}:generateContent?key=${this.geminiApiKey}`,
         {
-          model: this.chatModel,
-          prompt,
-          stream: false,
-          options: {
-            num_predict: this.chatNumPredict,
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: {
             temperature: 0.2,
+            maxOutputTokens: 1024,
           },
+          safetySettings: [
+            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+          ],
         },
-        { timeout: this.ollamaTimeoutMs },
+        { timeout: this.geminiTimeoutMs },
       );
       timings.llmMs = Date.now() - llmStartedAt;
 
-      const rawAnswer = String(genResp.data?.response || noDataAnswer);
-      structured = this.tryParseJson(rawAnswer);
-      answer = this.toDisplayAnswer(structured, rawAnswer);
+      const candidate = geminiResp.data?.candidates?.[0];
+      const finishReason = candidate?.finishReason;
+
+      // Handle blocked / empty response from Gemini
+      if (!candidate || finishReason === 'SAFETY' || finishReason === 'RECITATION' || !candidate.content) {
+        this.logger.warn(`Gemini response blocked (finishReason=${finishReason}), fallback to fast answer`);
+        structured = null;
+        answer = this.toFastAnswer(hits);
+      } else {
+        const rawAnswer = String(candidate.content?.parts?.[0]?.text || noDataAnswer);
+        structured = this.tryParseJson(rawAnswer);
+        answer = this.toDisplayAnswer(structured, rawAnswer);
+      }
     } catch (error) {
       this.logger.warn(
-        `LLM generate timeout/error, fallback to fast answer: ${this.stringifyError(error)}`,
+        `Gemini LLM timeout/error, fallback to fast answer: ${this.stringifyError(error)}`,
       );
       structured = null;
       answer = this.toFastAnswer(hits);
@@ -1375,6 +1393,7 @@ export class AiService {
   }
 
   private async embed(input: string): Promise<number[]> {
+    // Use Ollama nomic-embed-text for embedding (lightweight, runs on VPS)
     const resp = await axios.post(
       `${this.ollamaUrl}/api/embed`,
       {
@@ -1963,17 +1982,24 @@ export class AiService {
   }
 
   private tryParseJson(raw: string): Record<string, unknown> | null {
+    // Strip markdown code fences (Gemini often wraps JSON in ```json ... ```)
+    let cleaned = raw.trim();
+    const fenceMatch = cleaned.match(/^```(?:json)?\s*([\s\S]*?)```\s*$/);
+    if (fenceMatch) {
+      cleaned = fenceMatch[1].trim();
+    }
+
     try {
-      const parsed = JSON.parse(raw);
+      const parsed = JSON.parse(cleaned);
       if (parsed && typeof parsed === 'object')
         return parsed as Record<string, unknown>;
       return null;
     } catch {
-      const jsonStart = raw.indexOf('{');
-      const jsonEnd = raw.lastIndexOf('}');
+      const jsonStart = cleaned.indexOf('{');
+      const jsonEnd = cleaned.lastIndexOf('}');
       if (jsonStart >= 0 && jsonEnd > jsonStart) {
         try {
-          const sliced = raw.slice(jsonStart, jsonEnd + 1);
+          const sliced = cleaned.slice(jsonStart, jsonEnd + 1);
           const parsed = JSON.parse(sliced);
           if (parsed && typeof parsed === 'object')
             return parsed as Record<string, unknown>;
@@ -2157,10 +2183,11 @@ export class AiService {
     items: T[],
     concurrency: number,
     mapper: (item: T, index: number) => Promise<R>,
+    delayMs = 0,
   ): Promise<R[]> {
     const safeConcurrency = Math.max(
       1,
-      Number.isFinite(concurrency) ? Math.floor(concurrency) : 4,
+      Number.isFinite(concurrency) ? Math.floor(concurrency) : 2,
     );
     const results: R[] = new Array(items.length);
     let current = 0;
@@ -2170,6 +2197,9 @@ export class AiService {
         const index = current;
         current += 1;
         results[index] = await mapper(items[index], index);
+        if (delayMs > 0 && current < items.length) {
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
       }
     };
 
