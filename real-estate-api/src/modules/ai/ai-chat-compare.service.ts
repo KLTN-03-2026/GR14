@@ -337,7 +337,22 @@ export class AiChatCompareService {
     };
 
     const results = await Promise.all(ids.map(findById));
-    const found = results.filter((r): r is NonNullable<typeof r> => r !== null);
+    let found = results.filter((r): r is NonNullable<typeof r> => r !== null);
+
+    // Prefer comparing same-type properties for meaningful results
+    if (found.length >= 2) {
+      const houses = found.filter((f) => f.type === 'house');
+      const lands = found.filter((f) => f.type === 'land');
+      // If we have mixed types AND at least 2 of the same type, use same-type only
+      if (houses.length > 0 && lands.length > 0) {
+        if (houses.length >= 2) {
+          found = houses;
+        } else if (lands.length >= 2) {
+          found = lands;
+        }
+        // If only 1 of each type, keep both (user likely wants cross-type comparison)
+      }
+    }
 
     if (found.length < 2) {
       return {
