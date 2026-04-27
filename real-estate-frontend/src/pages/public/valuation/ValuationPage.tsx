@@ -17,11 +17,11 @@ const UTILITY_ICONS: Record<string, string> = {
 };
 
 const PROPERTY_TYPES = [
-  { value: 'Bán căn hộ chung cư', label: 'Căn hộ chung cư' },
-  { value: 'Bán nhà riêng', label: 'Nhà riêng' },
-  { value: 'Bán biệt thự, liền kề', label: 'Biệt thự / Liền kề' },
-  { value: 'Bán nhà mặt phố', label: 'Nhà mặt phố' },
-  { value: 'Bán đất', label: 'Đất nền' },
+  { value: 'Căn hộ chung cư', label: 'Căn hộ chung cư' },
+  { value: 'Nhà', label: 'Nhà riêng' },
+  { value: 'Nhà phố', label: 'Nhà mặt phố' },
+  { value: 'Biệt thự', label: 'Biệt thự / Liền kề' },
+  { value: 'Đất', label: 'Đất nền' },
 ];
 
 /* ─── Helpers ────────────────────────────────────────────────────────── */
@@ -78,7 +78,7 @@ const ValuationPage: React.FC = () => {
   const [floors, setFloors] = useState('');
   const [frontWidth, setFrontWidth] = useState('');
   const [direction, setDirection] = useState('Không rõ');
-  const [legalStatus, setLegalStatus] = useState('Không rõ');
+
 
   // Restore cache on mount
   useEffect(() => {
@@ -94,7 +94,7 @@ const ValuationPage: React.FC = () => {
         setFloors(formValues.floors || '');
         setFrontWidth(formValues.frontWidth || '');
         setDirection(formValues.direction || 'Không rõ');
-        setLegalStatus(formValues.legalStatus || 'Không rõ');
+
         setResult(resultData);
       }
     } catch { /* ignore */ }
@@ -121,12 +121,12 @@ const ValuationPage: React.FC = () => {
         floors: parseInt(floors) || 0,
         frontWidth: parseFloat(frontWidth) || 0,
         direction,
-        legalStatus,
+        legalStatus: 'Không rõ',
       });
       if (data.success) {
         setResult(data.data);
         sessionStorage.setItem(CACHE_KEY, JSON.stringify({
-          formValues: { address, propertyType, area, bedrooms, bathrooms, floors, frontWidth, direction, legalStatus },
+          formValues: { address, propertyType, area, bedrooms, bathrooms, floors, frontWidth, direction },
           resultData: data.data,
         }));
         toast.success('Định giá thành công!');
@@ -240,14 +240,6 @@ const ValuationPage: React.FC = () => {
                       <option value="Đông Bắc">Đông Bắc</option>
                       <option value="Tây Nam">Tây Nam</option>
                       <option value="Tây Bắc">Tây Bắc</option>
-                    </select>
-                  </InputField>
-                  <InputField label="Pháp lý" icon="📜">
-                    <select value={legalStatus} onChange={e=>setLegalStatus(e.target.value)} className="w-full rounded-xl border border-white/15 bg-slate-800 px-4 py-3 text-sm text-white focus:border-emerald-400/60 focus:outline-none transition">
-                      <option value="Không rõ">Không rõ</option>
-                      <option value="Sổ đỏ/ Sổ hồng">Sổ đỏ/ Sổ hồng</option>
-                      <option value="Hợp đồng mua bán">Hợp đồng mua bán</option>
-                      <option value="Đang chờ sổ">Đang chờ sổ</option>
                     </select>
                   </InputField>
                 </div>
@@ -386,7 +378,7 @@ const ValuationPage: React.FC = () => {
             {/* ── Row 2 Left: Area chart (col-span-2) ── */}
             <SectionCard className="lg:col-span-2 h-full">
               <div className="mb-4 flex items-center justify-between">
-                <SectionTitle icon="📈" title="Biến động giá (2024–2025)" />
+                <SectionTitle icon="📈" title="Biến động giá (2025–2026)" />
                 <span className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-400">Triệu VNĐ/m²</span>
               </div>
               <div className="h-64">
