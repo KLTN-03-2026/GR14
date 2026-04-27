@@ -653,11 +653,22 @@ const HomePage: React.FC = () => {
             </div>
 
             {/* ================= INFO SECTION ================= */}
-            <div className="bg-gray-50 py-20 px-4">
+            <div className="bg-gray-50 py-20 px-4 overflow-hidden">
                 <div className="max-w-[1200px] mx-auto">
-                    <div className="text-center mb-10">
+                    <div className="text-center mb-12 sr-reveal">
                         <h2 className="text-2xl md:text-3xl font-bold text-gray-900">Thông tin hữu ích</h2>
                         <p className="text-gray-500 mt-2">Công cụ và kiến thức dành cho nhà đầu tư thông minh</p>
+                        {/* Animated shimmer accent line */}
+                        <div className="mt-4 flex justify-center">
+                            <div
+                                className="h-[3px] w-16 rounded-full"
+                                style={{
+                                    background: 'linear-gradient(90deg, #0d9488, #38bdf8, #0d9488)',
+                                    backgroundSize: '200% 100%',
+                                    animation: 'shimmerLine 2.5s linear infinite',
+                                }}
+                            />
+                        </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                         {[
@@ -669,22 +680,60 @@ const HomePage: React.FC = () => {
                             <div
                                 key={index}
                                 onClick={() => navigate(item.href)}
-                                className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:-translate-y-1 hover:shadow-lg transition-all duration-300 text-center group cursor-pointer"
+                                className="sr-reveal bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:-translate-y-2 hover:shadow-xl transition-all duration-300 text-center group cursor-pointer relative overflow-hidden"
+                                style={{ '--sr-delay': `${index * 120}ms` } as React.CSSProperties}
                             >
-                                <div className="w-[130px] h-[130px] mx-auto mb-5 flex items-center justify-center bg-blue-50 rounded-xl group-hover:bg-teal-50 transition-colors duration-300">
-                                    <img src={item.img} className="w-[65%] h-[65%] object-contain group-hover:scale-110 transition-transform duration-300" alt={item.title} />
+                                {/* Top accent bar — slides in on hover */}
+                                <div
+                                    className="absolute top-0 left-0 right-0 h-[3px] rounded-t-2xl"
+                                    style={{
+                                        background: 'linear-gradient(90deg, #0d9488, #38bdf8)',
+                                        transform: 'scaleX(0)',
+                                        transformOrigin: 'left',
+                                        transition: 'transform 0.35s ease',
+                                    }}
+                                    ref={(el) => {
+                                        if (!el) return;
+                                        const card = el.parentElement;
+                                        if (!card) return;
+                                        card.addEventListener('mouseenter', () => el.style.transform = 'scaleX(1)');
+                                        card.addEventListener('mouseleave', () => el.style.transform = 'scaleX(0)');
+                                    }}
+                                />
+
+                                {/* Icon container with bounce animation */}
+                                <div className="w-[130px] h-[130px] mx-auto mb-5 flex items-center justify-center bg-blue-50 rounded-xl group-hover:bg-teal-50 group-hover:scale-105 transition-all duration-300">
+                                    <img
+                                        src={item.img}
+                                        className="w-[65%] h-[65%] object-contain group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-300"
+                                        alt={item.title}
+                                        style={{ animation: 'none' }}
+                                    />
                                 </div>
-                                <h3 className="font-bold text-[17px] mb-2 text-gray-900 group-hover:text-[#0d9488] transition-colors">{item.title}</h3>
+
+                                <h3 className="font-bold text-[17px] mb-2 text-gray-900 group-hover:text-[#0d9488] transition-colors duration-300">
+                                    {item.title}
+                                </h3>
                                 <p className="text-gray-500 text-sm leading-6 mb-4">{item.desc}</p>
+
                                 <span className="inline-flex items-center gap-1 text-sm font-semibold" style={{ color: 'var(--pl-accent, #0d9488)' }}>
                                     Tìm hiểu
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="group-hover:translate-x-1 transition-transform"><polyline points="9 18 15 12 9 6" /></svg>
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="group-hover:translate-x-1.5 transition-transform duration-300"><polyline points="9 18 15 12 9 6" /></svg>
                                 </span>
                             </div>
                         ))}
                     </div>
                 </div>
             </div>
+
+            {/* Keyframes for shimmer line */}
+            <style>{`
+                @keyframes shimmerLine {
+                    0%   { background-position: 0% 50%; }
+                    100% { background-position: 200% 50%; }
+                }
+            `}</style>
+
 
             {/* ================= AI VALUATION CTA BAND ================= */}
             <div

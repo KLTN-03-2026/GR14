@@ -90,15 +90,20 @@ export class AiService {
   private readonly qdrantUrl =
     process.env.QDRANT_URL || 'http://real-estate-qdrant:6333';
   private readonly ollamaUrl =
-    process.env.OLLAMA_URL || 'http://real-estate-ollama:11434';
+    process.env.OLLAMA_URL || 'http://host.docker.internal:11434';
   private readonly ragCollection =
     process.env.RAG_COLLECTION || 'real_estate_rag';
-  private readonly chatModel =
-    process.env.CHAT_MODEL || process.env.DEFAULT_OLLAMA_MODEL || 'qwen2.5:7b';
+  // Gemini config (LLM chat only — embedding still uses Ollama nomic-embed-text)
+  private readonly geminiApiKey = process.env.GEMINI_API_KEY || '';
+  private readonly geminiChatModel =
+    process.env.GEMINI_MODEL_PRIMARY || 'gemini-2.5-flash';
+  private readonly geminiApiBase =
+    process.env.GEMINI_API_URL || 'https://generativelanguage.googleapis.com/v1beta';
+  // Ollama embed model (lightweight ~274MB, runs fine on VPS)
   private readonly embedModel = process.env.EMBED_MODEL || 'nomic-embed-text';
-  private readonly retrievalTopK = Number(process.env.RAG_TOP_K || 4);
-  private readonly contextTopK = Number(process.env.RAG_CONTEXT_K || 2);
-  private readonly minScore = Number(process.env.RAG_MIN_SCORE || 0.2);
+  private readonly retrievalTopK = Number(process.env.RAG_TOP_K || 8);
+  private readonly contextTopK = Number(process.env.RAG_CONTEXT_K || 5);
+  private readonly minScore = Number(process.env.RAG_MIN_SCORE || 0.15);
   private readonly embedConcurrency = Number(
     process.env.EMBED_CONCURRENCY || 8,
   );
@@ -115,9 +120,8 @@ export class AiService {
     process.env.RAG_CANDIDATE_MULTIPLIER || 10,
   );
   private readonly maxPromptDescriptionChars = Number(
-    process.env.RAG_DESCRIPTION_CHARS || 80,
+    process.env.RAG_DESCRIPTION_CHARS || 120,
   );
-  private readonly chatNumPredict = Number(process.env.CHAT_NUM_PREDICT || 256);
   private readonly embedCacheTtlSec = Number(
     process.env.EMBED_QUERY_CACHE_TTL || 600,
   );
@@ -126,10 +130,11 @@ export class AiService {
   );
   private readonly enableLlm =
     String(process.env.RAG_ENABLE_LLM || 'true').toLowerCase() !== 'false';
+  // Fast mode disabled by default — Gemini needs to reason for accurate results
   private readonly fastMode =
-    String(process.env.RAG_FAST_MODE || 'true').toLowerCase() === 'true';
-  private readonly ollamaTimeoutMs = Number(
-    process.env.OLLAMA_TIMEOUT_MS || 9000,
+    String(process.env.RAG_FAST_MODE || 'false').toLowerCase() === 'true';
+  private readonly geminiTimeoutMs = Number(
+    process.env.GEMINI_TIMEOUT_MS || 15000,
   );
   private readonly qdrantTimeoutMs = Number(
     process.env.QDRANT_TIMEOUT_MS || 2500,
@@ -383,6 +388,24 @@ export class AiService {
       }
     }
 
+    // Secondary DB fallback: even without intent filter, if we still have 0 results
+    // (Ollama down, Qdrant empty, collection not indexed), grab recent active listings.
+    if (hits.length === 0) {
+      this.logger.warn(
+        `All retrieval paths returned 0 hits for "${question.slice(0, 60)}", using recent DB fallback`,
+      );
+      const dbFallbackStartedAt = Date.now();
+      const emergencyHits = await this.findDbCandidatesByIntent(
+        { type: intent.type || 'search_property', sourceType: intent.sourceType },
+        Math.max(this.retrievalTopK, 8),
+      );
+      timings.dbFallbackMs = Date.now() - dbFallbackStartedAt;
+      relatedPool.push(...emergencyHits);
+      if (emergencyHits.length > 0) {
+        hits = emergencyHits;
+      }
+    }
+
     let relatedSources = this.buildRelatedSources(relatedPool, hits, intent, 3);
     if (relatedSources.length < 3) {
       const dbRelated = await this.findRelatedFromDb(
@@ -464,47 +487,56 @@ export class AiService {
           description.length > this.maxPromptDescriptionChars
             ? `${description.slice(0, this.maxPromptDescriptionChars)}...`
             : description;
+        const bedrooms = Number(p.bedrooms ?? 0);
+        const floors = Number(p.floors ?? 0);
+        const direction = String(p.direction || '');
 
-        return [
-          `#${idx + 1} score=${hit.score.toFixed(4)}`,
-          `${String(p.title || '')}`,
-          `${String(p.district || '')}, ${String(p.city || '')}`,
-          `gia=${String(p.price || '')} dt=${String(p.area || '')}`,
-          `src=${String(p.source || '')}:${String(p.sourceId || '')}`,
-          `url=${String(p.url || '')}`,
-          `mota=${shortDescription}`,
-        ].join(' | ');
+        const details = [
+          `#${idx + 1}`,
+          `loai=${String(p.source || '')}`,
+          `id=${String(p.sourceId || '')}`,
+          `tieu_de=${String(p.title || '')}`,
+          `dia_chi=${[p.street, p.ward, p.district, p.city].filter(Boolean).join(', ')}`,
+          `gia=${String(p.price || 0)}`,
+          `dien_tich=${String(p.area || 0)}m2`,
+        ];
+        if (bedrooms > 0) details.push(`phong_ngu=${bedrooms}`);
+        if (floors > 0) details.push(`so_tang=${floors}`);
+        if (direction) details.push(`huong=${direction}`);
+        details.push(`url=${String(p.url || '')}`);
+        if (shortDescription) details.push(`mo_ta=${shortDescription}`);
+
+        return details.join(' | ');
       })
-      .join('\n\n');
+      .join('\n');
 
     const intentInstructions = this.buildIntentInstructions(intent);
 
     const promptParts = [
-      '===SYSTEM===',
-      'Ban la tro ly AI tu van bat dong san chuyen nghiep cho nen tang Real Estate Viet Nam.',
-      'LUON tra loi bang TIENG VIET. Giong dieu than thien, ro rang, chuyen nghiep.',
+      '===HE THONG===',
+      'Ban la tro ly AI tu van bat dong san CHUYEN NGHIEP va CHINH XAC cho nen tang Real Estate Viet Nam.',
+      'LUON tra loi bang TIENG VIET. Giong dieu than thien, chuyen nghiep.',
       '',
       '===NHIEM VU===',
-      `Intent hien tai: ${intent.type}`,
+      `Intent: ${intent.type}`,
       intentInstructions,
       '',
-      '===QUY TAC CHUNG===',
-      '1. Chi dung du lieu tu CONTEXT de goi y BDS. Khong duoc bịa thong tin.',
-      '2. Neu context co BDS, PHAI goi y cu the voi ly do ro rang (vi tri, gia, dien tich, tien ich).',
-      '3. Moi goi y can co sourceId de nguoi dung co the xem chi tiet hoac so sanh.',
-      '4. Neu khong du du lieu, tra loi trung thuc va huong dan nguoi dung.',
-      '5. Luon them suggestedQuestions phu hop voi nhu cau nguoi dung.',
+      '===QUY TAC BAT BUOC (DO CHINH XAC LA UU TIEN SO 1)===',
+      '1. CHI su dung du lieu tu CONTEXT ben duoi. TUYET DOI khong duoc bịa thong tin.',
+      '2. PHAI KIEM TRA GIA: neu nguoi dung yeu cau "duoi X ty" thi CHI goi y BDS co gia <= X ty. Neu BDS trong context KHONG phu hop gia, tra ve recommendations rong.',
+      '3. PHAI KIEM TRA LOAI: neu hoi "dat nen" thi chi goi y loai=land, neu hoi "nha" thi chi goi y loai=house.',
+      '4. PHAI KIEM TRA VI TRI: neu nguoi dung chi dinh khu vuc, uu tien BDS o khu vuc do.',
+      '5. Neu KHONG co BDS nao phu hop trong CONTEXT, tra ve summary "Hien tai minh chua tim thay BDS phu hop" va recommendations rong [].',
+      '6. Moi recommendation PHAI co "reason" giai thich CU THE tai sao BDS do phu hop (gia nam trong ngan sach, dien tich hop ly, vi tri tien loi...).',
+      '7. Moi recommendation PHAI copy dung sourceId va source tu CONTEXT.',
+      '8. suggestedQuestions PHAI lien quan den nhu cau hien tai cua nguoi dung.',
       '',
-      '===DINH DANG TRA LOI (JSON BAT BUOC)===',
-      'Tra ve JSON chinh xac theo schema:',
+      '===DINH DANG JSON===',
       '{"summary":"string","recommendations":[{"title":"string","location":"string","price":number,"area":number,"bedrooms":number,"floors":number,"direction":"string","reason":"string","source":"string","sourceId":number,"url":"string"}],"followUp":"string","suggestedQuestions":["string"]}',
-      'Trong do:',
-      '- summary: tom tat ngan gon ve ket qua tim kiem',
-      '- recommendations: danh sach BDS phu hop (toi da 3), PHAI co sourceId',
-      '- reason: ly do cu the tai sao BDS nay phu hop voi nhu cau nguoi dung',
-      '- followUp: goi y tiep theo hoac cau hoi lam ro nhu cau',
-      '- suggestedQuestions: 2-3 cau hoi goi y tiep theo',
-      'Neu khong tim thay BDS nao: {"summary":"Hien tai minh chua tim thay BDS phu hop. Ban co the mo ta them nhu cau?","recommendations":[],"followUp":"","suggestedQuestions":["Tim nha duoi 3 ty","Tim dat nen gia re"]}',
+      '- summary: tom tat ngan gon ket qua (vi du: "Minh tim thay 2 can nha duoi 3 ty tai Da Nang")',
+      '- recommendations: toi da 3 BDS PHU HOP NHAT. De trong [] neu khong co BDS nao dung yeu cau.',
+      '- reason: ly do CU THE (vi du: "Gia 2.5 ty nam trong ngan sach 3 ty, dien tich 80m2 phu hop gia dinh nho")',
+      '- suggestedQuestions: 2-3 goi y tiep theo lien quan',
     ];
 
     if (recentMemory.length > 0) {
@@ -532,27 +564,48 @@ export class AiService {
     let structured: Record<string, unknown> | null = null;
     try {
       const llmStartedAt = Date.now();
-      const genResp = await axios.post(
-        `${this.ollamaUrl}/api/generate`,
+      const geminiResp = await axios.post(
+        `${this.geminiApiBase}/models/${this.geminiChatModel}:generateContent?key=${this.geminiApiKey}`,
         {
-          model: this.chatModel,
-          prompt,
-          stream: false,
-          options: {
-            num_predict: this.chatNumPredict,
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: {
             temperature: 0.2,
+            maxOutputTokens: 2048,
+            responseMimeType: 'application/json',
           },
+          safetySettings: [
+            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+          ],
         },
-        { timeout: this.ollamaTimeoutMs },
+        { timeout: this.geminiTimeoutMs },
       );
       timings.llmMs = Date.now() - llmStartedAt;
 
-      const rawAnswer = String(genResp.data?.response || noDataAnswer);
-      structured = this.tryParseJson(rawAnswer);
-      answer = this.toDisplayAnswer(structured, rawAnswer);
+      const candidate = geminiResp.data?.candidates?.[0];
+      const finishReason = candidate?.finishReason;
+
+      // Handle blocked / empty response from Gemini
+      if (!candidate || finishReason === 'SAFETY' || finishReason === 'RECITATION' || !candidate.content) {
+        this.logger.warn(`Gemini response blocked (finishReason=${finishReason}), fallback to fast answer`);
+        structured = null;
+        answer = this.toFastAnswer(hits);
+      } else {
+        const rawAnswer = String(candidate.content?.parts?.[0]?.text || noDataAnswer);
+        structured = this.tryParseJson(rawAnswer);
+        if (structured) {
+          answer = this.toDisplayAnswer(structured);
+        } else {
+          // Parse failed (truncated/malformed JSON) — use clean fast answer from vector hits
+          this.logger.warn(`Gemini JSON parse failed, using fast answer. Raw (first 150 chars): ${rawAnswer.slice(0, 150)}`);
+          answer = this.toFastAnswer(hits);
+        }
+      }
     } catch (error) {
       this.logger.warn(
-        `LLM generate timeout/error, fallback to fast answer: ${this.stringifyError(error)}`,
+        `Gemini LLM timeout/error, fallback to fast answer: ${this.stringifyError(error)}`,
       );
       structured = null;
       answer = this.toFastAnswer(hits);
@@ -970,25 +1023,32 @@ export class AiService {
     switch (intent.type) {
       case 'search_property':
         return [
-          'NHIEM VU: Tim kiem BDS phu hop voi yeu cau.',
-          'Phan tich: loai BDS (nha/dat), vi tri, khoang gia, dien tich, so phong.',
-          'Giai thich ro tai sao moi BDS trong CONTEXT phu hop voi nhu cau.',
+          'NHIEM VU: Tim kiem BDS CHINH XAC theo yeu cau nguoi dung.',
+          'QUAN TRONG: Chi goi y BDS ma GIA NAM TRONG ngan sach. Neu gia > ngan sach thi LOAI BO.',
           intent.maxPrice
-            ? `Ngan sach toi da: ${this.formatVnd(intent.maxPrice)}. Chi goi y BDS trong ngan sach.`
+            ? `NGAN SACH TOI DA: ${this.formatVnd(intent.maxPrice)}. TUYET DOI khong goi y BDS co gia vuot ngan sach nay.`
             : '',
-          intent.location ? `Vi tri yeu cau: ${intent.location}.` : '',
+          intent.minPrice
+            ? `GIA TOI THIEU: ${this.formatVnd(intent.minPrice)}.`
+            : '',
+          intent.sourceType
+            ? `LOAI BDS yeu cau: ${intent.sourceType === 'house' ? 'NHA (house)' : intent.sourceType === 'land' ? 'DAT (land)' : intent.sourceType}. Chi goi y dung loai nay.`
+            : '',
+          intent.location ? `KHU VUC: ${intent.location}. Uu tien BDS o khu vuc nay.` : '',
+          'Moi goi y PHAI co reason giai thich tai sao gia phu hop, dien tich hop ly, vi tri thuan loi.',
         ]
           .filter(Boolean)
           .join('\n');
 
       case 'recommend_property':
         return [
-          'NHIEM VU: Tu van va goi y BDS phu hop nhat voi nhu cau.',
-          'Phan tich ky: ngan sach, so thanh vien gia dinh, vi tri uu tien, tien ich can thiet.',
-          'Giai thich CHI TIET ly do goi y: vi tri tien loi, gia hop ly, dien tich du rong, tien ich gan.',
-          'Neu thieu thong tin (ngan sach, vi tri), dat cau hoi lam ro trong followUp.',
+          'NHIEM VU: Tu van va goi y BDS phu hop NHAT voi nhu cau.',
+          'Phan tich ky: ngan sach, vi tri, dien tich, tien ich.',
+          'QUAN TRONG: Neu nguoi dung co ngan sach, chi goi y BDS TRONG ngan sach.',
+          'Giai thich CHI TIET ly do goi y.',
+          'Neu thieu thong tin, dat cau hoi lam ro trong followUp.',
           intent.maxPrice
-            ? `Ngan sach nguoi dung: ${this.formatVnd(intent.maxPrice)}.`
+            ? `Ngan sach: ${this.formatVnd(intent.maxPrice)}. Khong goi y BDS vuot ngan sach.`
             : '',
         ]
           .filter(Boolean)
@@ -996,17 +1056,14 @@ export class AiService {
 
       case 'compare_property':
         return [
-          'NHIEM VU: So sanh cac BDS trong CONTEXT theo tieu chi ro rang.',
-          'So sanh theo: gia, gia/m², dien tich, vi tri, so phong ngu, uu/nhuoc diem.',
-          'Ket luan: BDS nao phu hop nhat cho nhu cau gi cu the.',
-          'Trong summary neu ro BDS nao re nhat, rong nhat, gia/m² tot nhat.',
+          'NHIEM VU: So sanh cac BDS trong CONTEXT.',
+          'QUAN TRONG: Chi so sanh BDS CUNG LOAI (nha voi nha, dat voi dat) va UU TIEN cung khu vuc.',
+          'So sanh theo: gia, gia/m2, dien tich, vi tri, so phong ngu, uu/nhuoc diem.',
+          'Ket luan: BDS nao phu hop nhat va TAI SAO.',
         ].join('\n');
 
-      case 'recommend_property':
-        return 'NHIEM VU: Tu van BDS phu hop. Phan tich ngan sach, vi tri, nhu cau gia dinh. Giai thich ro ly do goi y.';
-
       default:
-        return 'NHIEM VU: Tra loi cau hoi va goi y BDS phu hop tu CONTEXT.';
+        return 'NHIEM VU: Tra loi cau hoi ve BDS. Neu co BDS phu hop trong CONTEXT, goi y kem ly do cu the.';
     }
   }
 
@@ -1375,6 +1432,7 @@ export class AiService {
   }
 
   private async embed(input: string): Promise<number[]> {
+    // Use Ollama nomic-embed-text for embedding (lightweight, runs on VPS)
     const resp = await axios.post(
       `${this.ollamaUrl}/api/embed`,
       {
@@ -1680,6 +1738,20 @@ export class AiService {
       }
     }
 
+    // "giá rẻ" / "rẻ nhất" / "giá tốt" — set a reasonable max price ceiling
+    if (
+      intent.maxPrice === undefined &&
+      intent.minPrice === undefined &&
+      /\b(gia re|re nhat|gia tot|binh dan|re|gia mem)\b/.test(normalized)
+    ) {
+      // For land: dưới 1 tỷ. For house: dưới 2 tỷ. Default: dưới 2 tỷ.
+      if (intent.sourceType === 'land') {
+        intent.maxPrice = 1_000_000_000;
+      } else {
+        intent.maxPrice = 2_000_000_000;
+      }
+    }
+
     // Bare price like "2 tỷ" or "500 triệu" without a qualifier
     if (intent.maxPrice === undefined && intent.minPrice === undefined) {
       const bareMatch = normalized.match(/\b([0-9.,]+)\s*(ty|trieu|tr)\b/);
@@ -1963,34 +2035,52 @@ export class AiService {
   }
 
   private tryParseJson(raw: string): Record<string, unknown> | null {
+    let cleaned = raw.trim();
+
+    // 1. Strip any leading/trailing markdown code fences, e.g. ```json ... ``` or ``` ... ```
+    //    Using a non-anchored match so it works even when Gemini adds preamble text.
+    const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fenceMatch) {
+      cleaned = fenceMatch[1].trim();
+    }
+
+    // 2. Try direct parse first (clean JSON path)
     try {
-      const parsed = JSON.parse(raw);
+      const parsed = JSON.parse(cleaned);
       if (parsed && typeof parsed === 'object')
         return parsed as Record<string, unknown>;
-      return null;
     } catch {
-      const jsonStart = raw.indexOf('{');
-      const jsonEnd = raw.lastIndexOf('}');
-      if (jsonStart >= 0 && jsonEnd > jsonStart) {
-        try {
-          const sliced = raw.slice(jsonStart, jsonEnd + 1);
-          const parsed = JSON.parse(sliced);
-          if (parsed && typeof parsed === 'object')
-            return parsed as Record<string, unknown>;
-        } catch {
-          return null;
-        }
-      }
-      return null;
+      // fall through to extraction
     }
+
+    // 3. Extract JSON object from anywhere in the string (handles prose + JSON)
+    const jsonStart = cleaned.indexOf('{');
+    const jsonEnd = cleaned.lastIndexOf('}');
+    if (jsonStart >= 0 && jsonEnd > jsonStart) {
+      try {
+        const sliced = cleaned.slice(jsonStart, jsonEnd + 1);
+        const parsed = JSON.parse(sliced);
+        if (parsed && typeof parsed === 'object')
+          return parsed as Record<string, unknown>;
+      } catch {
+        // fall through
+      }
+    }
+
+    this.logger.warn(
+      `tryParseJson: failed to parse Gemini response (length=${raw.length}). First 120 chars: ${raw.slice(0, 120)}`,
+    );
+    return null;
   }
 
+  /**
+   * Convert parsed Gemini JSON into user-friendly Vietnamese text.
+   * This method is ONLY called when structured parsing succeeds.
+   * When parsing fails, callers must use toFastAnswer() instead.
+   */
   private toDisplayAnswer(
-    structured: Record<string, unknown> | null,
-    raw: string,
+    structured: Record<string, unknown>,
   ): string {
-    if (!structured) return raw;
-
     const summary = String(structured.summary || '').trim();
     const recs = Array.isArray(structured.recommendations)
       ? (structured.recommendations as Array<Record<string, unknown>>)
@@ -2027,7 +2117,11 @@ export class AiService {
       lines.push(`Gợi ý tiếp: ${followUp}`);
     }
 
-    return lines.join('\n').trim() || raw;
+    const result = lines.join('\n').trim();
+    if (!result) {
+      return summary || 'Hiện tại mình chưa tìm thấy bất động sản nào phù hợp.';
+    }
+    return result;
   }
 
   private toFastAnswer(hits: VectorHit[]): string {
@@ -2157,10 +2251,11 @@ export class AiService {
     items: T[],
     concurrency: number,
     mapper: (item: T, index: number) => Promise<R>,
+    delayMs = 0,
   ): Promise<R[]> {
     const safeConcurrency = Math.max(
       1,
-      Number.isFinite(concurrency) ? Math.floor(concurrency) : 4,
+      Number.isFinite(concurrency) ? Math.floor(concurrency) : 2,
     );
     const results: R[] = new Array(items.length);
     let current = 0;
@@ -2170,6 +2265,9 @@ export class AiService {
         const index = current;
         current += 1;
         results[index] = await mapper(items[index], index);
+        if (delayMs > 0 && current < items.length) {
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
       }
     };
 

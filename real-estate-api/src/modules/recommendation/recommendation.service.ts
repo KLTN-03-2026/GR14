@@ -61,7 +61,7 @@ export class RecommendationService {
   private readonly qdrantUrl =
     process.env.QDRANT_URL || 'http://real-estate-qdrant:6333';
   private readonly ollamaUrl =
-    process.env.OLLAMA_URL || 'http://real-estate-ollama:11434';
+    process.env.OLLAMA_URL || 'http://host.docker.internal:11434';
   private readonly ragCollection =
     process.env.RAG_COLLECTION || 'real_estate_rag';
   private readonly embedModel = process.env.EMBED_MODEL || 'nomic-embed-text';

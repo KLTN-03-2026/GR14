@@ -1,32 +1,6 @@
-services:
-  n8n:
-    image: n8nio/n8n:latest
-    container_name: real-estate-n8n
-    restart: unless-stopped
-    ports:
-      - "${N8N_PORT:-5678}:5678"
-    environment:
-      N8N_HOST: ${N8N_HOST:-localhost}
-      N8N_PORT: 5678
-      N8N_PROTOCOL: http
-      WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://localhost:5678}
-      N8N_BASIC_AUTH_ACTIVE: ${N8N_BASIC_AUTH_ACTIVE:-true}
-      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-admin}
-      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:-change_me}
-      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-replace_with_a_long_random_string}
-      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-Asia/Ho_Chi_Minh}
-      OLLAMA_BASE_URL: http://ollama:11434
-      QDRANT_URL: http://qdrant:6333
-      REAL_ESTATE_API_BASE_URL: ${REAL_ESTATE_API_BASE_URL:-https://blackscity.app/api}
-      DEFAULT_OLLAMA_MODEL: ${DEFAULT_OLLAMA_MODEL:-qwen2.5:7b}
-    volumes:
-      - n8n_data:/home/node/.n8n
-    depends_on:
-      - ollama
-      - qdrant
-    networks:
-      - ai-network
+name: real-estate-ai
 
+services:
   ollama:
     image: ollama/ollama:latest
     container_name: real-estate-ollama
@@ -51,7 +25,6 @@ services:
       - ai-network
 
 volumes:
-  n8n_data:
   ollama_data:
   qdrant_data:
 
