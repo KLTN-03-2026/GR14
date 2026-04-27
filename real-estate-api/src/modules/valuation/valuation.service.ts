@@ -7,26 +7,13 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class ValuationService {
   private readonly logger = new Logger(ValuationService.name);
   private readonly mlServiceUrl = process.env.ML_SERVICE_URL || 'http://localhost:8000';
-  private readonly ollamaUrl = process.env.OLLAMA_URL || 'http://localhost:11434';
-  private readonly chatModel = process.env.CHAT_MODEL || 'qwen2.5:7b';
-  // Default 120s — đủ xử lý cold start khi model chưa load vào RAM
-  private readonly ollamaTimeout = parseInt(process.env.VALUATION_OLLAMA_TIMEOUT_MS || '120000', 10);
+  private readonly geminiApiKey = process.env.GEMINI_API_KEY || '';
+  private readonly geminiModel = process.env.GEMINI_MODEL_PRIMARY || 'gemini-2.5-flash';
+  private readonly geminiApiUrl = process.env.GEMINI_API_URL || 'https://generativelanguage.googleapis.com/v1beta';
+  private readonly geminiTimeout = parseInt(process.env.GEMINI_TIMEOUT_MS || '30000', 10);
 
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Warm-up Ollama ngay khi service khởi động — tránh cold start timeout ở lần gọi đầu tiên */
-  async onModuleInit() {
-    try {
-      await axios.post(
-        `${this.ollamaUrl}/api/generate`,
-        { model: this.chatModel, prompt: 'hi', stream: false, keep_alive: '10m' },
-        { timeout: 60000 },
-      );
-      this.logger.log(`Ollama warm-up OK — model "${this.chatModel}" đã load vào RAM.`);
-    } catch (e) {
-      this.logger.warn(`Ollama warm-up failed: ${e.message}. Sẽ thử lại khi có request.`);
-    }
-  }
 
   async estimatePrice(dto: EstimateValuationDto) {
     let mlResult: any = null;
@@ -62,70 +49,89 @@ export class ValuationService {
       };
     }
 
-    // 2. Query Similar Properties from DB (House + Land) — CHỈ lấy đúng Quận + Tỉnh
+    // 2. Query Similar Properties from DB (House + Land)
+    // Tìm ở đúng Quận trước, nếu không có → mở rộng ra toàn Tỉnh/TP
     const isLandType = dto.propertyTypeName?.toLowerCase().includes('đất');
 
-    const similarHouses = isLandType ? [] : await this.prisma.house.findMany({
-      where: {
-        status: 1, 
-        price: { not: null, gte: 100000000 },
-        city: { contains: dto.provinceName },
-        district: { contains: dto.districtName },
-      },
-      take: 4, orderBy: { createdAt: 'desc' },
-      select: {
-        id: true, title: true, price: true, area: true,
-        district: true, city: true,
-        images: { take: 1, select: { url: true } },
-      },
-    });
+    const houseWhere = {
+      status: 1,
+      price: { not: null, gt: 0 },
+      city: { contains: dto.provinceName },
+      district: { contains: dto.districtName },
+    };
+    const houseSelect = {
+      id: true, title: true, price: true, area: true,
+      district: true, city: true,
+      images: { take: 1, select: { url: true } },
+    };
 
-    const similarLands = !isLandType ? [] : await this.prisma.land.findMany({
-      where: {
-        status: 1, 
-        price: { not: null, gte: 100000000 },
-        city: { contains: dto.provinceName },
-        district: { contains: dto.districtName },
-      },
-      take: 4, orderBy: { createdAt: 'desc' },
-      select: {
-        id: true, title: true, price: true, area: true,
-        district: true, city: true,
-        images: { take: 1, select: { url: true } },
-      },
+    let similarHouses = isLandType ? [] : await this.prisma.house.findMany({
+      where: houseWhere, take: 4, orderBy: { createdAt: 'desc' }, select: houseSelect,
     });
+    // Fallback: mở rộng ra toàn TP nếu không tìm thấy ở Quận
+    if (!isLandType && similarHouses.length === 0) {
+      similarHouses = await this.prisma.house.findMany({
+        where: { ...houseWhere, district: undefined },
+        take: 4, orderBy: { createdAt: 'desc' }, select: houseSelect,
+      });
+    }
 
-    // Không có fallback — nếu DB không có BĐS ở Quận đó thì trả mảng rỗng
+    const landWhere = {
+      status: 1,
+      price: { not: null, gt: 0 },
+      city: { contains: dto.provinceName },
+      district: { contains: dto.districtName },
+    };
+    const landSelect = {
+      id: true, title: true, price: true, area: true,
+      district: true, city: true,
+      images: { take: 1, select: { url: true } },
+    };
+
+    let similarLands = !isLandType ? [] : await this.prisma.land.findMany({
+      where: landWhere, take: 4, orderBy: { createdAt: 'desc' }, select: landSelect,
+    });
+    if (isLandType && similarLands.length === 0) {
+      similarLands = await this.prisma.land.findMany({
+        where: { ...landWhere, district: undefined },
+        take: 4, orderBy: { createdAt: 'desc' }, select: landSelect,
+      });
+    }
+
     const combinedProperties = [...similarHouses, ...similarLands];
 
-    // 3. AI Insights via Ollama
+    // 3. AI Insights via Gemini (2-3s vs Ollama ~90s on 2vCPU)
     let aiInsights: any = null;
     let nearbyUtilities: any[] = [];
 
     try {
-      // Prompt ngắn gọn hơn để model generate nhanh hơn, tránh timeout
       const prompt = `Bạn là chuyên gia BĐS Việt Nam. Phân tích: khu vực "${dto.districtName}", "${dto.provinceName}", loại "${dto.propertyTypeName}", ${dto.area}m².
-Chỉ trả về JSON (không text thêm):
-{"radar":[{"subject":"Vị trí","score":0},{"subject":"Giá cả","score":0},{"subject":"Tiềm năng","score":0},{"subject":"Pháp lý","score":0},{"subject":"Tiện ích","score":0}],"analysisText":"...","growthRate":"+0%","liquidity":"Trung bình","nearbyUtilities":[{"name":"...","type":"school","distance":"..."},{"name":"...","type":"market","distance":"..."},{"name":"...","type":"hospital","distance":"..."},{"name":"...","type":"park","distance":"..."}]}`;
+Trả về COMPACT JSON một dòng (không xuống dòng, không thêm text):
+{"radar":[{"subject":"Vị trí","score":8},{"subject":"Giá cả","score":7},{"subject":"Tiềm năng","score":8},{"subject":"Pháp lý","score":9},{"subject":"Tiện ích","score":7}],"analysisText":"mô tả ngắn 1-2 câu","growthRate":"+12%","liquidity":"Cao","nearbyUtilities":[{"name":"Tên","type":"school","distance":"500m"},{"name":"Tên","type":"market","distance":"300m"},{"name":"Tên","type":"hospital","distance":"1km"},{"name":"Tên","type":"park","distance":"800m"}]}`;
+
 
       const genResp = await axios.post(
-        `${this.ollamaUrl}/api/generate`,
+        `${this.geminiApiUrl}/models/${this.geminiModel}:generateContent?key=${this.geminiApiKey}`,
         {
-          model: this.chatModel,
-          prompt,
-          stream: false,
-          format: 'json',
-          keep_alive: '10m',           // Giữ model trong RAM 10 phút, tránh cold start
-          options: {
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            maxOutputTokens: 4096,   // 1024 vẫn bị truncate do pretty-print JSON
             temperature: 0.3,
-            num_predict: 512,          // Giới hạn output để generate nhanh hơn
           },
         },
-        { timeout: this.ollamaTimeout },           // Tăng lên 120s để xử lý cold start
+        { timeout: this.geminiTimeout },
       );
 
-      if (genResp.data?.response) {
-        const parsed = JSON.parse(genResp.data.response);
+      const text = genResp.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) {
+        let parsed: any;
+        try {
+          parsed = JSON.parse(text);
+        } catch (parseErr) {
+          this.logger.warn(`Gemini JSON parse failed. Raw text: ${text?.substring(0, 200)}`);
+          throw parseErr;
+        }
         if (parsed.radar?.length > 0) {
           aiInsights = {
             radar: parsed.radar.map((r: any) => ({ subject: r.subject, A: Math.min(10, Math.max(1, r.score)), fullMark: 10 })),
@@ -137,7 +143,7 @@ Chỉ trả về JSON (không text thêm):
         if (parsed.nearbyUtilities?.length > 0) nearbyUtilities = parsed.nearbyUtilities;
       }
     } catch (error) {
-      this.logger.warn(`Ollama failed: ${error.message}. Using smart fallback.`);
+      this.logger.warn(`Gemini valuation failed: ${error.message}. Using smart fallback.`);
     }
 
     // Smart fallback — chỉ dùng khi Gemini cũng fail (mất mạng, hết quota...)
@@ -175,14 +181,14 @@ Chỉ trả về JSON (không text thêm):
     const v = (i: number) => 1 + ((sv + i) % 7 - 3) / 100;
 
     const trendData = [
-      { name: 'Q1/2024', min: basePriceM2 * 0.70, avg: basePriceM2 * 0.78, max: basePriceM2 * 0.88 },
-      { name: 'Q2/2024', min: basePriceM2 * 0.73, avg: basePriceM2 * 0.81, max: basePriceM2 * 0.91 },
-      { name: 'Q3/2024', min: basePriceM2 * 0.75, avg: basePriceM2 * 0.84, max: basePriceM2 * 0.95 },
-      { name: 'Q4/2024', min: basePriceM2 * 0.78, avg: basePriceM2 * 0.88, max: basePriceM2 * 0.99 },
-      { name: 'Q1/2025', min: basePriceM2 * 0.82, avg: basePriceM2 * 0.92, max: basePriceM2 * 1.04 },
-      { name: 'Q2/2025', min: basePriceM2 * 0.85, avg: basePriceM2 * 0.95, max: basePriceM2 * 1.08 },
-      { name: 'Q3/2025', min: basePriceM2 * 0.88, avg: basePriceM2 * 0.98, max: basePriceM2 * 1.12 },
-      { name: 'Q4/2025', min: basePriceM2 * 0.90, avg: basePriceM2 * 1.00, max: basePriceM2 * 1.15 },
+      { name: 'Q1/2025', min: basePriceM2 * 0.70, avg: basePriceM2 * 0.78, max: basePriceM2 * 0.88 },
+      { name: 'Q2/2025', min: basePriceM2 * 0.73, avg: basePriceM2 * 0.81, max: basePriceM2 * 0.91 },
+      { name: 'Q3/2025', min: basePriceM2 * 0.75, avg: basePriceM2 * 0.84, max: basePriceM2 * 0.95 },
+      { name: 'Q4/2025', min: basePriceM2 * 0.78, avg: basePriceM2 * 0.88, max: basePriceM2 * 0.99 },
+      { name: 'Q1/2026', min: basePriceM2 * 0.82, avg: basePriceM2 * 0.92, max: basePriceM2 * 1.04 },
+      { name: 'Q2/2026', min: basePriceM2 * 0.85, avg: basePriceM2 * 0.95, max: basePriceM2 * 1.08 },
+      { name: 'Q3/2026', min: basePriceM2 * 0.88, avg: basePriceM2 * 0.98, max: basePriceM2 * 1.12 },
+      { name: 'Q4/2026', min: basePriceM2 * 0.90, avg: basePriceM2 * 1.00, max: basePriceM2 * 1.15 },
     ].map((d, i) => ({
       name: d.name,
       min: parseFloat((d.min * v(i)).toFixed(2)),

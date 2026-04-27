@@ -82,15 +82,53 @@ FEATURES = [
 ]
 
 
+# ─── Property type normalization ─────────────────────────────────
+# Frontend sends display names that differ from HuggingFace training data.
+# Map them so TargetEncoder recognizes the categories correctly.
+PROPERTY_TYPE_MAP = {
+    # Exact matches from frontend (lowercase)
+    "nhà": "Nhà",
+    "nhà phố": "Nhà phố",
+    "biệt thự": "Biệt thự",
+    "căn hộ chung cư": "Căn hộ chung cư",
+    "đất": "Đất",
+    # Variant / legacy names
+    "nhà ở": "Nhà",
+    "nhà riêng": "Nhà",
+    "nhà mặt phố": "Nhà phố",
+    "nhà biệt thự": "Biệt thự",
+    "căn hộ": "Căn hộ chung cư",
+    "chung cư": "Căn hộ chung cư",
+    "đất nền": "Đất",
+    "đất thổ cư": "Đất thổ cư",
+    "đất nông nghiệp": "Đất nông nghiệp",
+    "văn phòng": "Văn phòng",
+    "mặt bằng": "Mặt bằng",
+    "shophouse": "Shophouse",
+    # Old frontend values with "Bán" prefix
+    "bán căn hộ chung cư": "Căn hộ chung cư",
+    "bán nhà riêng": "Nhà",
+    "bán biệt thự, liền kề": "Biệt thự",
+    "bán nhà mặt phố": "Nhà phố",
+    "bán đất": "Đất",
+}
+
+def normalize_property_type(raw: str) -> str:
+    """Normalize frontend property type name to training data name."""
+    return PROPERTY_TYPE_MAP.get(raw.strip().lower(), raw)
+
+
 @app.post("/predict", response_model=ValuationResponse)
 def predict_price(req: ValuationRequest):
     if "median" not in models:
         raise HTTPException(status_code=503, detail="Model is not loaded. Run train.py first.")
 
+    property_type = normalize_property_type(req.property_type_name)
+
     input_data = pd.DataFrame([{
         "province_name": req.province_name,
         "district_name": req.district_name,
-        "property_type_name": req.property_type_name,
+        "property_type_name": property_type,
         "direction": req.direction or "Không rõ",
         "legal_status": req.legal_status or "Không rõ",
         "area": req.area,
