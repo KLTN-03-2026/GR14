@@ -11,6 +11,8 @@ import { Button, Modal } from '@/components/ui';
 import { getApiErrorMessage } from '@/utils';
 import type { AppointmentCalendarEvent, Employee } from '@/types';
 
+// ── Types ──────────────────────────────────────────────────────────────────────
+
 type CalendarEvent = {
   id: string;
   title: string;
@@ -22,6 +24,7 @@ type CalendarEvent = {
     customerName?: string;
     durationMinutes?: number;
     location?: string;
+    actualStatus?: number | null; // ← thêm
   };
 };
 
@@ -29,6 +32,8 @@ type SlotSuggestion = {
   at: string;
   availableEmployees: number;
 };
+
+// ── Component ──────────────────────────────────────────────────────────────────
 
 const AppointmentCalendarPage = () => {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -40,6 +45,11 @@ const AppointmentCalendarPage = () => {
   const [editingEmployeeId, setEditingEmployeeId] = useState<number | ''>('');
   const [saving, setSaving] = useState(false);
   const [suggestions, setSuggestions] = useState<SlotSuggestion[]>([]);
+
+  // ── State mới cho actual status ───────────────────────────────────────────
+  const [savingActual, setSavingActual] = useState(false);
+
+  // ── Load data ─────────────────────────────────────────────────────────────
 
   const loadEmployees = useCallback(async () => {
     try {
@@ -67,16 +77,13 @@ const AppointmentCalendarPage = () => {
         end: end.toISOString(),
         ...(selectedEmployeeId ? { employeeId: selectedEmployeeId } : {}),
       });
-
       setEvents(mapEvents(response.data || []));
     } catch (error) {
       toast.error(getApiErrorMessage(error, 'Tải dữ liệu lịch thất bại'));
     }
   }, [selectedEmployeeId]);
 
-  useEffect(() => {
-    void loadEmployees();
-  }, [loadEmployees]);
+  useEffect(() => { void loadEmployees(); }, [loadEmployees]);
 
   useEffect(() => {
     if (!visibleRange) return;
@@ -87,6 +94,8 @@ const AppointmentCalendarPage = () => {
     if (!visibleRange) return;
     await loadEvents(visibleRange.start, visibleRange.end);
   };
+
+  // ── Event handlers ────────────────────────────────────────────────────────
 
   const openEventModal = (event: CalendarEvent) => {
     setSelectedEvent(event);
@@ -105,11 +114,9 @@ const AppointmentCalendarPage = () => {
   const extractSuggestions = (error: unknown) => {
     const maybeData = (error as { response?: { data?: { message?: string | string[] | { suggestions?: SlotSuggestion[] } } } })?.response?.data;
     const message = maybeData?.message;
-
     if (message && typeof message === 'object' && 'suggestions' in message) {
       return (message.suggestions || []) as SlotSuggestion[];
     }
-
     return [] as SlotSuggestion[];
   };
 
@@ -127,26 +134,17 @@ const AppointmentCalendarPage = () => {
   };
 
   const handleEventDrop = async (arg: any) => {
-    if (!arg.event.start) {
-      arg.revert();
-      return;
-    }
-
+    if (!arg.event.start) { arg.revert(); return; }
     await handleDropOrResize(arg.event.id, arg.event.start, arg.revert);
   };
 
   const handleEventResize = async (arg: any) => {
-    if (!arg.event.start) {
-      arg.revert();
-      return;
-    }
-
+    if (!arg.event.start) { arg.revert(); return; }
     await handleDropOrResize(arg.event.id, arg.event.start, arg.revert);
   };
 
   const handleManualReassign = async () => {
     if (!selectedEvent || !selectedEvent.start) return;
-
     setSaving(true);
     try {
       await moveEvent(selectedEvent.id, new Date(selectedEvent.start), editingEmployeeId ? Number(editingEmployeeId) : undefined);
@@ -163,9 +161,33 @@ const AppointmentCalendarPage = () => {
     }
   };
 
+  // ── ✅ Xử lý đánh dấu actual status ─────────────────────────────────────
+
+  const handleMarkActualStatus = async (status: number) => {
+    if (!selectedEvent) return;
+    setSavingActual(true);
+    try {
+      await appointmentApi.updateActualStatus(Number(selectedEvent.id), { actualStatus: status });
+      toast.success(status === 1 ? '✅ Đã đánh dấu đã gặp khách' : '❌ Đã đánh dấu chưa gặp');
+
+      // Cập nhật local state ngay lập tức
+      setSelectedEvent((prev) =>
+        prev
+          ? { ...prev, extendedProps: { ...prev.extendedProps, actualStatus: status } }
+          : prev,
+      );
+      await refreshCalendar();
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Cập nhật trạng thái thất bại'));
+    } finally {
+      setSavingActual(false);
+    }
+  };
+
+  // ── Render suggestions ────────────────────────────────────────────────────
+
   const renderSuggestions = useMemo(() => {
     if (suggestions.length === 0) return null;
-
     return (
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
         <p className="text-sm font-semibold text-amber-900">Gợi ý khung giờ thay thế</p>
@@ -195,15 +217,17 @@ const AppointmentCalendarPage = () => {
 
   const breakDisplay = 'Nghỉ trưa: 12:00 - 13:30 | Slot: 30 phút | Khung làm việc: 08:00 - 17:30';
 
+  // ── Render ────────────────────────────────────────────────────────────────
+
   return (
     <div className="space-y-4">
+      {/* Header */}
       <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">Điều phối lịch hẹn</h2>
           <p className="text-sm text-gray-500">Chỉ hiển thị lịch hẹn đã duyệt. Kéo-thả để đổi giờ và điều phối lại nhân viên.</p>
           <p className="mt-1 text-xs text-gray-500">{breakDisplay}</p>
         </div>
-
         <div className="flex items-center gap-2">
           <select
             className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
@@ -217,10 +241,10 @@ const AppointmentCalendarPage = () => {
               </option>
             ))}
           </select>
-
         </div>
       </div>
 
+      {/* Calendar */}
       <div className="rounded-xl border border-gray-200 bg-white p-3">
         <FullCalendar
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
@@ -232,12 +256,7 @@ const AppointmentCalendarPage = () => {
             center: 'title',
             right: 'dayGridMonth,timeGridWeek,timeGridDay',
           }}
-          buttonText={{
-            today: 'Hôm nay',
-            month: 'Tháng',
-            week: 'Tuần',
-            day: 'Ngày',
-          }}
+          buttonText={{ today: 'Hôm nay', month: 'Tháng', week: 'Tuần', day: 'Ngày' }}
           editable
           eventDurationEditable={false}
           selectable
@@ -262,25 +281,19 @@ const AppointmentCalendarPage = () => {
             setVisibleRange((prev) => {
               const nextStart = arg.start as Date;
               const nextEnd = arg.end as Date;
-
               if (
                 prev &&
                 prev.start.getTime() === nextStart.getTime() &&
                 prev.end.getTime() === nextEnd.getTime()
-              ) {
-                return prev;
-              }
-
-              return {
-                start: nextStart,
-                end: nextEnd,
-              };
+              ) return prev;
+              return { start: nextStart, end: nextEnd };
             });
           }}
           height="auto"
         />
       </div>
 
+      {/* Modal */}
       <Modal
         isOpen={eventModalOpen}
         onClose={() => {
@@ -288,7 +301,7 @@ const AppointmentCalendarPage = () => {
           setSelectedEvent(null);
           setSuggestions([]);
         }}
-        title="Điều phối lịch hẹn"
+        title="Chi tiết lịch hẹn"
         width="max-w-lg"
         footer={(
           <>
@@ -302,14 +315,76 @@ const AppointmentCalendarPage = () => {
         )}
       >
         <div className="space-y-3">
+
+          {/* Thông tin lịch hẹn */}
           <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
             <p><span className="font-medium">Lịch:</span> {selectedEvent?.title}</p>
-            <p><span className="font-medium">Nhân viên hiện tại:</span> {selectedEvent?.extendedProps?.employeeName || 'N/A'}</p>
+            <p><span className="font-medium">Khách hàng:</span> {selectedEvent?.extendedProps?.customerName || 'N/A'}</p>
+            <p><span className="font-medium">Nhân viên:</span> {selectedEvent?.extendedProps?.employeeName || 'N/A'}</p>
             <p><span className="font-medium">Khung giờ:</span> {selectedEvent?.start ? dayjs(selectedEvent.start).format('DD/MM/YYYY HH:mm') : 'N/A'}</p>
           </div>
 
+          {/* ── ✅ Trạng thái thực tế buổi hẹn ── */}
+          <div className="rounded-lg border border-gray-200 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-sm font-medium text-gray-700">Trạng thái thực tế</p>
+              {/* Badge trạng thái hiện tại */}
+              {selectedEvent?.extendedProps?.actualStatus === 1 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-700">
+                  <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                  Đã gặp khách
+                </span>
+              )}
+              {selectedEvent?.extendedProps?.actualStatus === 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700">
+                  <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                  Chưa gặp
+                </span>
+              )}
+              {(selectedEvent?.extendedProps?.actualStatus === null ||
+                selectedEvent?.extendedProps?.actualStatus === undefined) && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-500">
+                  <span className="h-1.5 w-1.5 rounded-full bg-gray-400" />
+                  Chưa cập nhật
+                </span>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => void handleMarkActualStatus(1)}
+                disabled={savingActual || selectedEvent?.extendedProps?.actualStatus === 1}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-semibold text-green-700 transition hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {savingActual ? (
+                  <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                ) : (
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+                Đã gặp khách
+              </button>
+
+              <button
+                onClick={() => void handleMarkActualStatus(0)}
+                disabled={savingActual || selectedEvent?.extendedProps?.actualStatus === 0}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Chưa gặp
+              </button>
+            </div>
+          </div>
+
+          {/* Nhân viên phụ trách */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Nhân viên phụ trách</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Điều phối nhân viên</label>
             <select
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
               value={editingEmployeeId}

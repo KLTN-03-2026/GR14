@@ -607,7 +607,7 @@ const LandDetailPage: React.FC = () => {
                                     </div>
                                 ) : (
                                     <button
-                                        onClick={() => navigate(`/appointment?landId=${land.id}`)}
+                                        onClick={() => navigate(`/appointment/booking?landId=${land.id}`)}
                                         className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full text-white text-[13px] font-semibold hover:opacity-90 transition-opacity duration-200"
                                         style={{ background: 'linear-gradient(135deg, var(--pl-primary, #1e3a5f), var(--pl-accent, #0d9488))' }}
                                     >

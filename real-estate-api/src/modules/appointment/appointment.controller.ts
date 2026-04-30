@@ -6,10 +6,12 @@ import {
   Delete,
   Param,
   Body,
-  Req,
   Query,
   UseGuards,
   ParseIntPipe,
+  UsePipes,
+  ValidationPipe,
+  Req,                    // ← Thêm import này
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AppointmentService } from './appointment.service';
@@ -27,44 +29,85 @@ import {
 } from './dto/appointment.dto';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/currentUser.decorator';
 
 @Controller('appointments')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 export class AppointmentController {
   constructor(private readonly appointmentService: AppointmentService) {}
 
-  // Customer creates appointment
+  // ====================== CUSTOMER ======================
+
+  /** Khách hàng tạo lịch hẹn */
   @Post()
   @Roles('CUSTOMER')
-  create(@Body() dto: CreateAppointmentDto, @Req() req: any) {
-    return this.appointmentService.create(dto, req.user.id);
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  create(
+    @Body() dto: CreateAppointmentDto,
+    @CurrentUser('id') userId: number,
+  ) {
+    return this.appointmentService.create(dto, userId);
   }
 
-  // Admin creates appointment
+  /** Khách hàng xem danh sách lịch hẹn cá nhân (có thể lọc theo status) */
+  @Get('me')
+  @Roles('CUSTOMER')
+  findMyAppointments(
+    @CurrentUser('id') userId: number,
+    @Query('status') status?: string,
+  ) {
+    const parsedStatus = status ? Number(status) : undefined;
+    return this.appointmentService.findMyAppointments(userId, parsedStatus);
+  }
+
+  /** Khách hàng xem chi tiết một lịch hẹn của mình */
+  @Get('me/:id')
+  @Roles('CUSTOMER')
+  findMyAppointmentById(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('id') userId: number,
+  ) {
+    return this.appointmentService.findMyAppointmentById(id, userId);
+  }
+
+  /** Khách hàng tự hủy lịch hẹn của mình */
+  @Put('me/:id/cancel')
+  @Roles('CUSTOMER')
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  cancelMyAppointment(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('id') userId: number,
+    @Body() dto: CancelAppointmentDto,
+  ) {
+    return this.appointmentService.cancelMyAppointment(id, userId, dto);
+  }
+
+  // ====================== ADMIN & EMPLOYEE ======================
+
   @Post('admin')
   @Roles('ADMIN')
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   adminCreate(@Body() dto: AdminCreateAppointmentDto) {
     return this.appointmentService.adminCreate(dto);
   }
 
-  // Admin get all (paginated + search)
   @Get()
   @Roles('ADMIN', 'EMPLOYEE')
   findAll(
-    @Query('page') page = 1,
-    @Query('limit') limit = 10,
+    @Query('page', new ParseIntPipe({ optional: true })) page = 1,
+    @Query('limit', new ParseIntPipe({ optional: true })) limit = 10,
     @Query('search') search?: string,
     @Query('status') status?: string,
   ) {
-    const parsedStatus =
-      status === undefined || status === '' ? undefined : Number(status);
+    const parsedStatus = status ? Number(status) : undefined;
     const safeStatus = Number.isNaN(parsedStatus) ? undefined : parsedStatus;
-    return this.appointmentService.findAll(+page, +limit, search, safeStatus);
+
+    return this.appointmentService.findAll(page, limit, search, safeStatus);
   }
 
-  // Admin update (date, employee, status)
   @Put(':id')
   @Roles('ADMIN')
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateAppointmentDto,
@@ -72,16 +115,15 @@ export class AppointmentController {
     return this.appointmentService.update(id, dto);
   }
 
-  // Admin delete
   @Delete(':id')
   @Roles('ADMIN')
   delete(@Param('id', ParseIntPipe) id: number) {
     return this.appointmentService.delete(id);
   }
 
-  // Admin approve + assign employee
   @Put(':id/approve')
   @Roles('ADMIN')
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   approve(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: ApproveAppointmentDto,
@@ -89,9 +131,9 @@ export class AppointmentController {
     return this.appointmentService.approve(id, dto);
   }
 
-  // Admin cancel with optional reason
   @Put(':id/cancel')
   @Roles('ADMIN')
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   cancel(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CancelAppointmentDto,
@@ -99,9 +141,9 @@ export class AppointmentController {
     return this.appointmentService.cancel(id, dto);
   }
 
-  // Admin assign/reassign employee
   @Put(':id/assign')
   @Roles('ADMIN')
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   assignEmployee(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: AssignEmployeeDto,
@@ -129,6 +171,7 @@ export class AppointmentController {
 
   @Put(':id/calendar-move')
   @Roles('ADMIN')
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   moveCalendarAppointment(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: MoveCalendarAppointmentDto,
@@ -136,7 +179,6 @@ export class AppointmentController {
     return this.appointmentService.moveCalendarAppointment(id, dto);
   }
 
-  // Admin get one
   @Get(':id')
   @Roles('ADMIN')
   findById(@Param('id', ParseIntPipe) id: number) {
@@ -145,6 +187,7 @@ export class AppointmentController {
 
   @Put(':id/first-contact')
   @Roles('ADMIN', 'EMPLOYEE')
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   markFirstContact(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: MarkFirstContactDto,
@@ -166,6 +209,7 @@ export class AppointmentController {
 
   @Put(':id/actual-status')
   @Roles('ADMIN', 'EMPLOYEE')
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   updateActualStatus(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateActualStatusDto,

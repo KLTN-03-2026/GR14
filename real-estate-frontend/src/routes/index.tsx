@@ -27,6 +27,7 @@ import MoMoCallbackPage from "@/pages/public/MomoPayCallbackPage";
 import FengshuiPage from "@/pages/public/FengShui";
 import ValuationPage from "@/pages/public/valuation/ValuationPage";
 import NotificationsPage from "@/pages/public/NotificationsPage";
+import MyAppointmentsPage from "@/pages/public/Myappointmentspage";
 
 // Auth pages
 import LoginPage from "@/pages/auth/LoginPage";
@@ -51,16 +52,17 @@ import EmployeeManagementPage from "@/pages/admin/EmployeeManagementPage";
 import RoleManagementPage from "@/pages/admin/RoleManagementPage";
 import CategoryManagementPage from "@/pages/admin/CategoryManagementPage";
 import FavoriteManagementPage from "@/pages/admin/FavoriteManagementPage";
-import ProfilePage from "@/pages/admin/ProfilePage";
 import PaymentHistoryPage from "@/pages/admin/PaymentHistoryPage";
 import VipPackageManagementPage from "@/pages/admin/VipPackageManagementPage";
 import VipPackageFormPage from "@/pages/admin/VipPackageFormPage";
+import AdminProfilePage from "@/pages/admin/ProfilePage";
+import RefundManagementPage from "@/pages/admin/Refundmanagementpage";
 
 // Employee pages
 import EmployeeDashboardPage from "@/pages/employee/EmployeeDashboardPage";
 import EmployeeAppointmentPage from "@/pages/employee/EmployeeAppointmentPage";
 import EmployeeCalendarPage from "@/pages/employee/EmployeeCalendarPage";
-import MoMoPayCallbackPage from "@/pages/public/MomoPayCallbackPage";
+import RevenueManagementPage from "@/pages/admin/Revenuemanagementpage";
 
 const router = createBrowserRouter([
   // AUTH
@@ -80,7 +82,6 @@ const router = createBrowserRouter([
       { path: "lands", element: <LandListPage /> },
       { path: "lands/:id", element: <LandDetailPage /> },
 
-      // Posts — static routes MUST be declared before dynamic :id routes
       { path: "posts", element: <NewsPage /> },
       {
         path: "posts/new",
@@ -104,65 +105,40 @@ const router = createBrowserRouter([
       { path: "fengshui", element: <FengshuiPage /> },
       { path: "valuation", element: <ValuationPage /> },
 
-      {
-        path: "appointment",
-        element: (
-          <ProtectedRoute requiredRoles={["CUSTOMER"]}>
-            <AppointmentBookingPage />
-          </ProtectedRoute>
-        ),
-      },
+      { path: "appointment", element: <ProtectedRoute><MyAppointmentsPage /></ProtectedRoute> },
+      { path: "appointment/booking", element: <ProtectedRoute><AppointmentBookingPage /></ProtectedRoute> },
+
       {
         path: "favorites",
-        element: (
-          <ProtectedRoute>
-            <FavoritesPage />
-          </ProtectedRoute>
-        ),
+        element: <ProtectedRoute><FavoritesPage /></ProtectedRoute>,
       },
       {
         path: "my-posts",
-        element: (
-          <ProtectedRoute>
-            <MyPostsPage />
-          </ProtectedRoute>
-        ),
+        element: <ProtectedRoute><MyPostsPage /></ProtectedRoute>,
       },
       {
         path: "vip-upgrade",
-        element: (
-          <ProtectedRoute>
-            <VIPUpgradePage />
-          </ProtectedRoute>
-        ),
+        element: <ProtectedRoute><VIPUpgradePage /></ProtectedRoute>,
       },
       {
         path: "notifications",
-        element: (
-          <ProtectedRoute>
-            <NotificationsPage />
-          </ProtectedRoute>
-        ),
+        element: <ProtectedRoute><NotificationsPage /></ProtectedRoute>,
       },
     ],
   },
 
-  // PAYMENT
+  // PAYMENT & PROFILE
   { path: "/payment/result", element: <PaymentResultPage /> },
   { path: "/payment/success", element: <PaymentSuccessPage /> },
   { path: "/payment/failed", element: <PaymentResultPage /> },
   { path: "/payment/vnpay-callback", element: <VNPayCallbackPage /> },
-  { path: "/payment/momo-callback", element: <MoMoPayCallbackPage /> },
+  { path: "/payment/momo-callback", element: <MoMoCallbackPage /> },
   {
     path: "/profile",
-    element: (
-      <ProtectedRoute>
-        <PublicProfilePage />
-      </ProtectedRoute>
-    ),
+    element: <ProtectedRoute><PublicProfilePage /></ProtectedRoute>,
   },
 
-  // ADMIN
+  // ==================== ADMIN ====================
   {
     path: "/admin",
     element: (
@@ -172,40 +148,40 @@ const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <DashboardPage /> },
-
       { path: "houses", element: <HouseManagementPage /> },
       { path: "houses/create", element: <HouseFormPage /> },
       { path: "houses/:id/edit", element: <HouseFormPage /> },
-
       { path: "lands", element: <LandManagementPage /> },
       { path: "lands/create", element: <LandFormPage /> },
       { path: "lands/:id/edit", element: <LandFormPage /> },
-
       { path: "posts", element: <PostManagementPage /> },
-
       { path: "appointments", element: <AppointmentManagementPage /> },
       { path: "appointments/calendar", element: <AppointmentCalendarPage /> },
       { path: "appointments/create", element: <AppointmentFormPage /> },
       { path: "appointments/:id/edit", element: <AppointmentFormPage /> },
-
       { path: "users", element: <UserManagementPage /> },
       { path: "customers", element: <CustomerManagementPage /> },
       { path: "employees", element: <EmployeeManagementPage /> },
-
       { path: "roles", element: <RoleManagementPage /> },
       { path: "categories", element: <CategoryManagementPage /> },
-
       { path: "favorites", element: <FavoriteManagementPage /> },
-      { path: "profile", element: <ProfilePage /> },
-
       { path: "payment-history", element: <PaymentHistoryPage /> },
       { path: "vip-packages", element: <VipPackageManagementPage /> },
       { path: "vip-packages/create", element: <VipPackageFormPage /> },
       { path: "vip-packages/:id/edit", element: <VipPackageFormPage /> },
+      { path: "refunds", element: <RefundManagementPage /> },
+      { path: "profile", element: <AdminProfilePage /> },
+      { path: "admin-profile", element: <AdminProfilePage /> },
+
+      // ==================== ROUTE MỚI: REVENUE ====================
+      {
+        path: "revenue",
+        element: <RevenueManagementPage />,
+      },
     ],
   },
 
-  // EMPLOYEE
+  // ==================== EMPLOYEE ====================
   {
     path: "/employee",
     element: (
@@ -225,7 +201,7 @@ const router = createBrowserRouter([
       { path: "posts", element: <PostManagementPage /> },
       { path: "appointments", element: <EmployeeAppointmentPage /> },
       { path: "calendar", element: <EmployeeCalendarPage /> },
-      { path: "profile", element: <ProfilePage /> },
+      { path: "profile", element: <AdminProfilePage /> },
     ],
   },
 ]);

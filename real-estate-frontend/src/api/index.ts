@@ -13,3 +13,4 @@ export { vipPackageApi } from './vip-package';
 export { fengshuiApi } from './fengshui';
 export { notificationApi } from './notification';
 export type { Notification, NotificationsResponse } from './notification';
+export { revenueApi } from './revenue';

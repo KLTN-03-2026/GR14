@@ -1,257 +1,234 @@
-import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { Button, Spin } from 'antd';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Button, Spin, Result, Card, Divider } from 'antd';
 import toast from 'react-hot-toast';
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   CalendarOutlined,
-  CrownOutlined,
   HomeOutlined,
-  FileTextOutlined,
 } from '@ant-design/icons';
-import { paymentApi } from '@/api';
 
-const PaymentSuccessPage = () => {
+import { useDeposit } from '../../hooks/useDeposit';
+import DepositStatusBadge from '../public/DepositStatusBadge';
+
+const fmtAmount = (val: string | number | null | undefined): string => {
+  if (!val) return '—';
+  return Number(val).toLocaleString('vi-VN') + ' ₫';
+};
+
+const PaymentResultPage = () => {
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const location = useLocation();
-  const [paymentData, setPaymentData] = useState<any>(null);
+
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  // Lấy thông tin từ URL (callback từ VNPay & MoMo)
+  const vnpResponseCode = searchParams.get('vnp_ResponseCode');
+  const momoResultCode = searchParams.get('resultCode');           // ← Bổ sung cho MoMo
+  const momoMessage = searchParams.get('message');                 // ← Thông báo lỗi từ MoMo (nếu có)
+
+  const depositIdFromParam = searchParams.get('depositId');
+  const depositIdFromStorage = sessionStorage.getItem('lastDepositId');
+
+  const resolvedDepositId = depositIdFromParam || depositIdFromStorage;
+  const isDepositPayment = Boolean(resolvedDepositId);
+
+  // Hook lấy chi tiết deposit
+  const { getDepositDetail } = useDeposit();
+  const { data: depositResponse, isLoading: depositLoading } = getDepositDetail(
+    resolvedDepositId ? parseInt(resolvedDepositId) : null
+  );
+
+  const deposit = (depositResponse as any)?.data || null;
 
   useEffect(() => {
-    fetchPaymentDetails();
-  }, []);
+    const initializeResult = () => {
+      // Xóa sessionStorage ngay để tránh lặp
+      if (depositIdFromStorage) {
+        sessionStorage.removeItem('lastDepositId');
+      }
 
-  const fetchPaymentDetails = async () => {
-    try {
-      setLoading(true);
-      const lastPaymentId =
-        sessionStorage.getItem('lastPaymentId') || localStorage.getItem('lastPaymentId');
+      if (isDepositPayment) {
+        // Kiểm tra thành công từ VNPay hoặc MoMo
+        const vnpSuccess = vnpResponseCode === '00';
+        const momoSuccess = momoResultCode === '0';
 
-      if (lastPaymentId) {
-        const res = await paymentApi.getPaymentById(parseInt(lastPaymentId));
-        setPaymentData(res.data?.data);
-        sessionStorage.removeItem('lastPaymentId');
-        localStorage.removeItem('lastPaymentId');
-      } else {
-        const res = await paymentApi.getMyPayments({ limit: 1 });
-        const payments = res.data?.data || [];
-        if (payments.length === 0) {
-          setError(true);
-          return;
+        // Kiểm tra trạng thái từ database (an toàn hơn)
+        const statusSuccess = deposit?.status === 1 || deposit?.status === 2;
+
+        const finalSuccess = vnpSuccess || momoSuccess || statusSuccess;
+
+        setIsSuccess(finalSuccess);
+
+        if (!finalSuccess) {
+          let msg = 'Giao dịch đặt cọc chưa được xác nhận';
+
+          if (vnpResponseCode && vnpResponseCode !== '00') {
+            msg = `VNPay - Mã lỗi: ${vnpResponseCode}`;
+          } else if (momoResultCode && momoResultCode !== '0') {
+            msg = `MoMo - Mã lỗi: ${momoResultCode}`;
+            if (momoMessage) msg += ` - ${momoMessage}`;
+          }
+
+          setErrorMsg(msg);
         }
-        setPaymentData(payments[0]);
+      } else {
+        // Thanh toán khác (VIP, nâng cấp bài viết...)
+        setIsSuccess(true);
       }
-    } catch {
-      setError(true);
-      toast.error('Không thể tải thông tin thanh toán');
-    } finally {
+
       setLoading(false);
-    }
-  };
+    };
 
-  if (loading) {
+    initializeResult();
+  }, [deposit, vnpResponseCode, momoResultCode, momoMessage, isDepositPayment, depositIdFromStorage]);
+
+  // ==================== LOADING STATE ====================
+  if (loading || (isDepositPayment && depositLoading)) {
     return (
-      <div style={{
-        display: 'flex', justifyContent: 'center', alignItems: 'center',
-        height: '100vh', gap: 12,
-      }}>
-        <Spin size="large" />
-        <span style={{ color: '#9ca3af' }}>Đang tải thông tin...</span>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div style={{
-        display: 'flex', flexDirection: 'column', justifyContent: 'center',
-        alignItems: 'center', height: '100vh', gap: 16,
-      }}>
-        <p style={{ color: '#6b7280' }}>Không thể tải thông tin thanh toán.</p>
-        <Button type="primary" onClick={() => navigate('/')}>Về trang chủ</Button>
-      </div>
-    );
-  }
-
-  const pkg = paymentData?.subscription?.package;
-  const endDate = paymentData?.subscription?.endDate
-    ? new Date(paymentData.subscription.endDate).toLocaleDateString('vi-VN')
-    : null;
-
-  const parseFeatures = (features: any): string[] => {
-    if (!features) return [];
-    if (Array.isArray(features)) return features;
-    if (typeof features === 'string') {
-      try {
-        const parsed = JSON.parse(features);
-        return Array.isArray(parsed) ? parsed : [features];
-      } catch {
-        return [features];
-      }
-    }
-    return [];
-  };
-
-  return (
-    <div style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '48px 20px 64px' }}>
-      <div style={{ maxWidth: 560, margin: '0 auto' }}>
-
-        {/* Thông báo thành công / thất bại */}
-        <div style={{
-          background: '#fff', borderRadius: 14, padding: '36px 28px',
-          textAlign: 'center', border: '1px solid #e5e7eb',
-          boxShadow: '0 1px 8px rgba(0,0,0,0.05)', marginBottom: 16,
-        }}>
-          <div style={{
-            width: 72, height: 72, borderRadius: '50%',
-            background: location.pathname.includes('/failed') || paymentData?.status === 2 ? '#fef2f2' : '#f0fdf4', display: 'flex',
-            alignItems: 'center', justifyContent: 'center',
-            margin: '0 auto 20px',
-          }}>
-            {location.pathname.includes('/failed') || paymentData?.status === 2 ? (
-               <CloseCircleOutlined style={{ fontSize: 36, color: '#dc2626' }} />
-            ) : (
-               <CheckCircleOutlined style={{ fontSize: 36, color: '#16a34a' }} />
-            )}
-          </div>
-
-          <h1 style={{ fontSize: 24, fontWeight: 800, color: '#111827', margin: '0 0 8px' }}>
-            {location.pathname.includes('/failed') || paymentData?.status === 2 ? 'Thanh toán thất bại!' : 'Thanh toán thành công!'}
-          </h1>
-          <p style={{ fontSize: 14, color: '#6b7280', margin: 0 }}>
-            {location.pathname.includes('/failed') || paymentData?.status === 2 ? 'Giao dịch của bạn đã bị hủy hoặc gặp lỗi.' : 'Tài khoản VIP của bạn đã được kích hoạt'}
-          </p>
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <Spin size="large" />
+          <p className="mt-4 text-gray-500">Đang kiểm tra kết quả thanh toán...</p>
         </div>
+      </div>
+    );
+  }
 
-        {/* Chi tiết gói */}
-        {paymentData && (
-          <div style={{
-            background: '#fff', borderRadius: 14, padding: '24px 24px',
-            border: '1px solid #e5e7eb',
-            boxShadow: '0 1px 8px rgba(0,0,0,0.05)', marginBottom: 16,
-          }}>
-            <h2 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '0 0 18px' }}>
-              Chi tiết gói VIP
-            </h2>
+  // ==================== KẾT QUẢ ĐẶT CỌC (VNPAY & MOMO) ====================
+  if (isDepositPayment) {
+    const property = deposit?.appointment?.house || deposit?.appointment?.land;
+    const isDepositSuccess = isSuccess;
 
-            {/* Gói & hạn */}
-            <div style={{
-              background: '#fffbeb', borderRadius: 10, padding: '14px 16px', marginBottom: 18,
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <CrownOutlined style={{ fontSize: 20, color: '#d97706' }} />
-                <div>
-                  <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: '#111827' }}>
-                    {pkg?.name || 'Gói VIP'}
-                  </p>
-                  <p style={{ margin: 0, fontSize: 12, color: '#9ca3af' }}>
-                    {pkg?.durationDays} ngày sử dụng
-                  </p>
+    return (
+      <div className="min-h-screen bg-gray-50 py-12 px-4">
+        <div className="mx-auto max-w-lg">
+          <Result
+            status={isDepositSuccess ? 'success' : 'error'}
+            icon={
+              isDepositSuccess ? (
+                <CheckCircleOutlined style={{ fontSize: 80, color: '#16a34a' }} />
+              ) : (
+                <CloseCircleOutlined style={{ fontSize: 80, color: '#ef4444' }} />
+              )
+            }
+            title={
+              isDepositSuccess ? 'Đặt cọc thành công!' : 'Thanh toán đặt cọc thất bại'
+            }
+            subTitle={
+              isDepositSuccess
+                ? `Giao dịch cọc #${deposit?.id || ''} đã được xác nhận thành công.`
+                : errorMsg || 'Vui lòng kiểm tra lại hoặc liên hệ hỗ trợ.'
+            }
+            extra={[
+              <Button
+                key="my-appointments"
+                type="primary"
+                size="large"
+                icon={<CalendarOutlined />}
+                onClick={() => navigate('/appointment')}
+              >
+                Xem lịch hẹn của tôi
+              </Button>,
+              <Button
+                key="home"
+                size="large"
+                icon={<HomeOutlined />}
+                onClick={() => navigate('/')}
+              >
+                Về trang chủ
+              </Button>,
+            ]}
+          />
+
+          {isDepositSuccess && deposit && (
+            <Card className="mt-8 shadow-sm" style={{ borderRadius: 16 }}>
+              <div className="space-y-5 p-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500">Số tiền cọc</span>
+                  <span className="text-3xl font-bold text-green-600">
+                    {fmtAmount(deposit.amount)}
+                  </span>
                 </div>
-              </div>
-              <span style={{ fontSize: 20, fontWeight: 800, color: '#d97706' }}>
-                {Number(paymentData.amount || 0).toLocaleString('vi-VN')} ₫
-              </span>
-            </div>
 
-            {/* Ngày hết hạn */}
-            {endDate && (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '12px 0', borderBottom: '1px solid #f1f5f9',
-                marginBottom: 14,
-              }}>
-                <CalendarOutlined style={{ color: '#6b7280', fontSize: 16 }} />
-                <div>
-                  <p style={{ margin: 0, fontSize: 12, color: '#9ca3af' }}>Hết hạn vào</p>
-                  <p style={{ margin: 0, fontWeight: 600, fontSize: 14, color: '#111827' }}>{endDate}</p>
-                </div>
-              </div>
-            )}
+                <Divider />
 
-            {/* Features */}
-            {parseFeatures(pkg?.features).length > 0 && (
-              <div>
-                <p style={{ fontSize: 12, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.6, margin: '0 0 10px' }}>
-                  Quyền lợi bao gồm
-                </p>
-                {parseFeatures(pkg.features).map((f: string, i: number) => (
-                  <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                    <CheckCircleOutlined style={{ color: '#16a34a', fontSize: 13, marginTop: 2, flexShrink: 0 }} />
-                    <span style={{ fontSize: 13, color: '#374151' }}>{f}</span>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-gray-500">Trạng thái</p>
+                    <DepositStatusBadge status={deposit.status} />
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Thông tin giao dịch */}
-        {paymentData && (
-          <div style={{
-            background: '#fff', borderRadius: 14, padding: '20px 24px',
-            border: '1px solid #e5e7eb',
-            boxShadow: '0 1px 8px rgba(0,0,0,0.05)', marginBottom: 24,
-          }}>
-            <h2 style={{ fontSize: 14, fontWeight: 700, color: '#111827', margin: '0 0 14px' }}>
-              Thông tin giao dịch
-            </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 20px' }}>
-              {[
-                { label: 'Mã thanh toán', value: `#${paymentData.id}` },
-                { label: 'Mã giao dịch', value: paymentData.transactionId || '—' },
-                {
-                  label: 'Phương thức',
-                  value: (paymentData.paymentMethod || '').toUpperCase(),
-                },
-                {
-                  label: 'Ngày thanh toán',
-                  value: paymentData.paidAt
-                    ? new Date(paymentData.paidAt).toLocaleString('vi-VN')
-                    : '—',
-                },
-              ].map((item) => (
-                <div key={item.label}>
-                  <p style={{ fontSize: 11, color: '#9ca3af', margin: '0 0 2px', textTransform: 'uppercase', letterSpacing: 0.4 }}>
-                    {item.label}
-                  </p>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: '#374151', margin: 0 }}>
-                    {item.value}
-                  </p>
+                  <div>
+                    <p className="text-gray-500">Loại cọc</p>
+                    <p className="font-medium">
+                      {deposit.depositType === 'BEFORE_VIEWING'
+                        ? 'Giữ chỗ trước khi xem'
+                        : 'Cọc chốt mua'}
+                    </p>
+                  </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
 
-        {/* Nút điều hướng */}
-        <div style={{ display: 'flex', gap: 10 }}>
-          <Button
-            block
-            size="large"
-            icon={<HomeOutlined />}
-            onClick={() => navigate('/')}
-            style={{ height: 44, fontWeight: 600 }}
-          >
-            Về trang chủ
-          </Button>
-          <Button
-            block
-            type="primary"
-            size="large"
-            icon={<FileTextOutlined />}
-            onClick={() => navigate('/posts/new')}
-            style={{ height: 44, fontWeight: 600 }}
-          >
-            Đăng tin ngay
-          </Button>
+                {property && (
+                  <>
+                    <Divider />
+                    <div>
+                      <p className="text-gray-500 mb-2">Bất động sản</p>
+                      <p className="font-semibold text-base">{property.title}</p>
+                      <p className="text-sm text-gray-500 mt-1">
+                        📍 {property.district}, {property.city}
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+            </Card>
+          )}
+
+          {!isDepositSuccess && (
+            <Card className="mt-8" style={{ backgroundColor: '#fef2f2', borderColor: '#fecaca' }}>
+              <h3 className="text-red-600 font-semibold mb-3">Giao dịch không thành công</h3>
+              <ul className="list-disc pl-5 space-y-2 text-sm text-gray-600">
+                <li>Bạn đã hủy thanh toán trên cổng VNPay hoặc MoMo</li>
+                <li>Tài khoản không đủ số dư hoặc bị hạn chế</li>
+                <li>Kết nối mạng bị gián đoạn trong quá trình thanh toán</li>
+              </ul>
+              <Button
+                danger
+                type="primary"
+                block
+                size="large"
+                className="mt-6"
+                onClick={() => navigate('/appointment')}
+              >
+                Quay lại và thử thanh toán lại
+              </Button>
+            </Card>
+          )}
         </div>
+      </div>
+    );
+  }
+
+  // ==================== FALLBACK - Thanh toán khác (VIP,...) ====================
+  return (
+    <div className="min-h-screen bg-gray-50 py-12 px-4">
+      <div className="mx-auto max-w-lg">
+        <Result
+          status="success"
+          title="Thanh toán thành công!"
+          subTitle="Cảm ơn bạn đã sử dụng dịch vụ."
+          extra={[
+            <Button key="home" type="primary" size="large" onClick={() => navigate('/')}>
+              Về trang chủ
+            </Button>,
+          ]}
+        />
       </div>
     </div>
   );
 };
 
-export default PaymentSuccessPage;
+export default PaymentResultPage;

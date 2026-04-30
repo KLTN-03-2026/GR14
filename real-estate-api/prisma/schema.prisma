@@ -7,64 +7,56 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ==================== USER & AUTH ====================
-
 model User {
-  id              Int      @id @default(autoincrement())
-  username        String   @unique @db.VarChar(255)
-  password        String   @db.VarChar(255)
-  fullName        String?  @map("full_name") @db.VarChar(255)
-  phone           String   @unique @db.VarChar(15)
-  email           String   @unique @db.VarChar(255)
-  address         String?  @db.VarChar(255)
-  status          Int      @default(1)
-  
-  // ---> THÊM 2 DÒNG NÀY <---
-  isVip           Boolean  @default(false) @map("is_vip")
-  vipExpiry       DateTime? @map("vip_expiry")
-  vipPriorityLevel Int      @default(0) @map("vip_priority_level")
-
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-
-  customer        Customer?
-  employee        Employee?
-  userRoles       UserRole[]
-  posts           Post[]
-  favorites       Favorite[]
-  refreshTokens   RefreshToken[]
+  id               Int               @id @default(autoincrement())
+  username         String            @unique @db.VarChar(255)
+  password         String            @db.VarChar(255)
+  fullName         String?           @map("full_name") @db.VarChar(255)
+  phone            String?           @unique @db.VarChar(15)
+  email            String            @unique @db.VarChar(255)
+  address          String?           @db.VarChar(255)
+  status           Int               @default(1)
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  isVip            Boolean           @default(false) @map("is_vip")
+  vipExpiry        DateTime?         @map("vip_expiry")
+  vipPriorityLevel Int               @default(0) @map("vip_priority_level")
+  customer         Customer?
+  employee         Employee?
+  favorites        Favorite[]
+  notifications    Notification[]
+  payments         Payment[]
+  posts            Post[]
+  propertyDeposits PropertyDeposit[]
+  refreshTokens    RefreshToken[]
+  behaviors        UserBehavior[]
+  userRoles        UserRole[]
   vipSubscriptions VipSubscription[]
-  payments        Payment[]
-  behaviors       UserBehavior[]
-  notifications   Notification[]
 
   @@map("users")
 }
 
-
-
 model Role {
-  id          Int      @id @default(autoincrement())
-  code        String   @unique @db.VarChar(20)
-  name        String   @db.VarChar(255)
-  description String?  @db.VarChar(255)
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  userRoles UserRole[]
+  id          Int        @id @default(autoincrement())
+  code        String     @unique @db.VarChar(20)
+  name        String     @db.VarChar(255)
+  description String?    @db.VarChar(255)
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  userRoles   UserRole[]
 
   @@map("roles")
 }
 
 model UserRole {
-  id     Int @id @default(autoincrement())
-  userId Int @map("user_id")
-  roleId Int @map("role_id")
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  id     Int  @id @default(autoincrement())
+  userId Int  @map("user_id")
+  roleId Int  @map("role_id")
+  role   Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, roleId])
+  @@index([roleId], map: "user_roles_role_id_fkey")
   @@map("user_roles")
 }
 
@@ -76,9 +68,9 @@ model RefreshToken {
   userId    Int      @map("user_id")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
+  @@index([userId], map: "refresh_tokens_user_id_fkey")
   @@map("refresh_tokens")
 }
 
@@ -87,99 +79,89 @@ model PasswordReset {
   email     String   @db.VarChar(255)
   otp       String   @db.VarChar(10)
   expireAt  DateTime @map("expire_at")
-  type      String   @db.VarChar(20) // 'register' | 'reset'
+  type      String   @db.VarChar(20)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("password_resets")
 }
 
-// ==================== CUSTOMER & EMPLOYEE ====================
-
 model Customer {
-  id        Int      @id @default(autoincrement())
-  code      String   @unique @map("customer_code") @db.VarChar(10)
-  userId    Int      @unique @map("user_id")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  status       Int    @default(1)
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           Int           @id @default(autoincrement())
+  code         String        @unique @map("customer_code") @db.VarChar(10)
+  userId       Int           @unique @map("user_id")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  status       Int           @default(1)
   appointments Appointment[]
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("customers")
 }
 
 model Employee {
-  id        Int       @id @default(autoincrement())
-  code      String    @unique @map("employee_code") @db.VarChar(10)
-  startDate DateTime? @map("start_date")
-  city      String?   @db.VarChar(100)
-  ward      String?   @map("district") @db.VarChar(100)
-  maxAppointmentsPerDay Int @default(8) @map("max_appointments_per_day")
-  isActive  Boolean   @default(true) @map("is_active")
-  lastAssignedAt DateTime? @map("last_assigned_at")
-  userId    Int       @unique @map("user_id")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  status      Int      @default(1)
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  houses       House[]
-  lands        Land[]
-  appointments Appointment[]
+  id                    Int           @id @default(autoincrement())
+  code                  String        @unique @map("employee_code") @db.VarChar(10)
+  startDate             DateTime?     @map("start_date")
+  userId                Int           @unique @map("user_id")
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+  status                Int           @default(1)
+  city                  String?       @db.VarChar(100)
+  ward                  String?       @map("district") @db.VarChar(100)
+  maxAppointmentsPerDay Int           @default(8) @map("max_appointments_per_day")
+  isActive              Boolean       @default(true) @map("is_active")
+  lastAssignedAt        DateTime?     @map("last_assigned_at")
+  appointments          Appointment[]
+  user                  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  houses                House[]
+  lands                 Land[]
 
   @@map("employees")
 }
 
-enum PropertyCategoryType {
-  HOUSE
-  LAND
-}
-
-// ==================== PROPERTY CATEGORY ====================
-
 model PropertyCategory {
-  id   Int    @id @default(autoincrement())
-  code String @unique @map("category_code") @db.VarChar(10)
-  name String @db.VarChar(255)
+  id           Int                  @id @default(autoincrement())
+  code         String               @unique @map("category_code") @db.VarChar(10)
+  name         String               @db.VarChar(255)
   categoryType PropertyCategoryType @map("category_type")
-
-  houses House[]
-  lands  Land[]
+  houses       House[]
+  lands        Land[]
 
   @@map("property_categories")
 }
 
-// ==================== HOUSE (Nhà) ====================
-
 model House {
-  id          Int      @id @default(autoincrement())
-  code        String   @unique @map("house_code") @db.VarChar(10)
-  title       String   @db.VarChar(255)
-  city        String?  @db.VarChar(100)
-  district    String?  @db.VarChar(100)
-  ward        String?  @db.VarChar(100)
-  street      String?  @db.VarChar(100)
-  houseNumber String?  @map("house_number") @db.VarChar(20)
-  description String?  @db.Text
-  price       Decimal? @db.Decimal(15, 2)
-  area        Float?
-  direction   String?  @db.VarChar(50)
-  floors      Int?     @default(1)
-  bedrooms    Int?     @default(0)
-  bathrooms   Int?     @default(0)
-  status      Int      @default(1)
-  categoryId  Int?     @map("category_id")
-  employeeId  Int?     @map("employee_id")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id            Int               @id @default(autoincrement())
+  code          String            @unique @map("house_code") @db.VarChar(10)
+  title         String            @db.VarChar(255)
+  city          String?           @db.VarChar(100)
+  district      String?           @db.VarChar(100)
+  ward          String?           @db.VarChar(100)
+  street        String?           @db.VarChar(100)
+  houseNumber   String?           @map("house_number") @db.VarChar(20)
+  description   String?           @db.Text
+  price         Decimal?          @db.Decimal(15, 2)
+  area          Float?
+  direction     String?           @db.VarChar(50)
+  floors        Int?              @default(1)
+  bedrooms      Int?              @default(0)
+  bathrooms     Int?              @default(0)
+  status        Int               @default(1)
+  categoryId    Int?              @map("category_id")
+  employeeId    Int?              @map("employee_id")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+  depositStatus Int               @default(0) @map("deposit_status")
+  appointments  Appointment[]
+  favorites     Favorite[]
+  images        HouseImage[]
+  category      PropertyCategory? @relation(fields: [categoryId], references: [id])
+  employee      Employee?         @relation(fields: [employeeId], references: [id])
+  behaviors     UserBehavior[]
 
-  category     PropertyCategory? @relation(fields: [categoryId], references: [id])
-  employee     Employee?         @relation(fields: [employeeId], references: [id])
-  images       HouseImage[]
-  appointments Appointment[]
-  favorites    Favorite[]
-  behaviors    UserBehavior[]
-
+  @@index([categoryId], map: "houses_category_id_fkey")
+  @@index([employeeId], map: "houses_employee_id_fkey")
   @@map("houses")
 }
 
@@ -191,44 +173,44 @@ model HouseImage {
   houseId   Int      @map("house_id")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+  house     House    @relation(fields: [houseId], references: [id], onDelete: Cascade)
 
-  house House @relation(fields: [houseId], references: [id], onDelete: Cascade)
-
+  @@index([houseId], map: "house_images_house_id_fkey")
   @@map("house_images")
 }
 
-// ==================== LAND (Đất) ====================
-
 model Land {
-  id          Int      @id @default(autoincrement())
-  code        String   @unique @map("land_code") @db.VarChar(10)
-  title       String   @db.VarChar(255)
-  city        String?  @db.VarChar(100)
-  district    String?  @db.VarChar(100)
-  ward        String?  @db.VarChar(100)
-  street      String?  @db.VarChar(100)
-  plotNumber  String?  @map("plot_number") @db.VarChar(20)
-  description String?  @db.Text
-  price       Decimal? @db.Decimal(15, 2)
-  area        Float?
-  direction   String?  @db.VarChar(50)
-  frontWidth  Float?   @map("front_width")
-  landLength  Float?   @map("land_length")
-  landType    String?  @map("land_type") @db.VarChar(100)
-  legalStatus String?  @map("legal_status") @db.VarChar(100)
-  status      Int      @default(1)
-  categoryId  Int?     @map("category_id")
-  employeeId  Int?     @map("employee_id")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id            Int               @id @default(autoincrement())
+  code          String            @unique @map("land_code") @db.VarChar(10)
+  title         String            @db.VarChar(255)
+  city          String?           @db.VarChar(100)
+  district      String?           @db.VarChar(100)
+  ward          String?           @db.VarChar(100)
+  street        String?           @db.VarChar(100)
+  plotNumber    String?           @map("plot_number") @db.VarChar(20)
+  description   String?           @db.Text
+  price         Decimal?          @db.Decimal(15, 2)
+  area          Float?
+  direction     String?           @db.VarChar(50)
+  frontWidth    Float?            @map("front_width")
+  landLength    Float?            @map("land_length")
+  landType      String?           @map("land_type") @db.VarChar(100)
+  legalStatus   String?           @map("legal_status") @db.VarChar(100)
+  status        Int               @default(1)
+  categoryId    Int?              @map("category_id")
+  employeeId    Int?              @map("employee_id")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+  depositStatus Int               @default(0) @map("deposit_status")
+  appointments  Appointment[]     @relation("LandAppointments")
+  favorites     Favorite[]        @relation("LandFavorites")
+  images        LandImage[]
+  category      PropertyCategory? @relation(fields: [categoryId], references: [id])
+  employee      Employee?         @relation(fields: [employeeId], references: [id])
+  behaviors     UserBehavior[]    @relation("LandBehaviors")
 
-  category     PropertyCategory? @relation(fields: [categoryId], references: [id])
-  employee     Employee?         @relation(fields: [employeeId], references: [id])
-  images       LandImage[]
-  appointments Appointment[]     @relation("LandAppointments")
-  favorites    Favorite[]        @relation("LandFavorites")
-  behaviors    UserBehavior[]    @relation("LandBehaviors")
-
+  @@index([categoryId], map: "lands_category_id_fkey")
+  @@index([employeeId], map: "lands_employee_id_fkey")
   @@map("lands")
 }
 
@@ -240,95 +222,110 @@ model LandImage {
   landId    Int      @map("land_id")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+  land      Land     @relation(fields: [landId], references: [id], onDelete: Cascade)
 
-  land Land @relation(fields: [landId], references: [id], onDelete: Cascade)
-
+  @@index([landId], map: "land_images_land_id_fkey")
   @@map("land_images")
 }
 
-// ==================== APPOINTMENT ====================
-
 model Appointment {
-  id              Int      @id @default(autoincrement())
-  houseId         Int?     @map("house_id")
-  landId          Int?     @map("land_id")
-  customerId      Int      @map("customer_id")
-  employeeId      Int?     @map("employee_id")
-  appointmentDate DateTime @map("appointment_date")
-  durationMinutes Int      @default(60) @map("duration_minutes")
-  assignedAt      DateTime? @map("assigned_at")
-  firstContactAt  DateTime? @map("first_contact_at")
-  slaAssignDeadlineAt DateTime? @map("sla_assign_deadline_at")
-  slaFirstContactDeadlineAt DateTime? @map("sla_first_contact_deadline_at")
-  slaStatus       Int      @default(0) @map("sla_status") // 0: on_track, 1: at_risk, 2: breached
-  autoAssignReason String? @map("auto_assign_reason") @db.VarChar(255)
-  status          Int      @default(0) // 0: pending, 1: approved, 2: rejected
-  actualStatus    Int?     @map("actual_status")
-  cancelReason    String?  @map("cancel_reason") @db.Text
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id                        Int              @id @default(autoincrement())
+  houseId                   Int?             @map("house_id")
+  landId                    Int?             @map("land_id")
+  customerId                Int              @map("customer_id")
+  employeeId                Int?             @map("employee_id")
+  appointmentDate           DateTime         @map("appointment_date")
+  status                    Int              @default(0)
+  actualStatus              Int?             @map("actual_status")
+  cancelReason              String?          @map("cancel_reason") @db.Text
+  createdAt                 DateTime         @default(now()) @map("created_at")
+  updatedAt                 DateTime         @updatedAt @map("updated_at")
+  durationMinutes           Int              @default(60) @map("duration_minutes")
+  assignedAt                DateTime?        @map("assigned_at")
+  firstContactAt            DateTime?        @map("first_contact_at")
+  slaAssignDeadlineAt       DateTime?        @map("sla_assign_deadline_at")
+  slaFirstContactDeadlineAt DateTime?        @map("sla_first_contact_deadline_at")
+  slaStatus                 Int              @default(0) @map("sla_status")
+  autoAssignReason          String?          @map("auto_assign_reason") @db.VarChar(255)
+  customer                  Customer         @relation(fields: [customerId], references: [id])
+  employee                  Employee?        @relation(fields: [employeeId], references: [id])
+  house                     House?           @relation(fields: [houseId], references: [id])
+  land                      Land?            @relation("LandAppointments", fields: [landId], references: [id])
+  deposit                   PropertyDeposit?
 
-  house    House?    @relation(fields: [houseId], references: [id])
-  land     Land?     @relation("LandAppointments", fields: [landId], references: [id])
-  customer Customer  @relation(fields: [customerId], references: [id])
-  employee Employee? @relation(fields: [employeeId], references: [id])
-
+  @@index([customerId], map: "appointments_customer_id_fkey")
+  @@index([employeeId], map: "appointments_employee_id_fkey")
+  @@index([houseId], map: "appointments_house_id_fkey")
+  @@index([landId], map: "appointments_land_id_fkey")
   @@map("appointments")
 }
 
-// ==================== POST ====================
+model PropertyDeposit {
+  id                Int         @id @default(autoincrement())
+  appointmentId     Int         @unique @map("appointment_id")
+  userId            Int         @map("user_id")
+  amount            Decimal     @db.Decimal(15, 2)
+  refundAmount      Decimal?    @map("refund_amount") @db.Decimal(15, 2)
+  refundAccountInfo String?     @map("refund_account_info") @db.Text
+  depositType       String      @default("BEFORE_VIEWING") @map("deposit_type") @db.VarChar(50)
+  status            Int         @default(0)
+  expiresAt         DateTime?   @map("expires_at")
+
+  adminNote         String?     @map("admin_note") @db.Text
+  refundedAt        DateTime?   @map("refunded_at")
+
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+  payment           Payment?
+  appointment       Appointment @relation(fields: [appointmentId], references: [id])
+  user              User        @relation(fields: [userId], references: [id])
+
+  @@index([userId], map: "property_deposits_user_id_fkey")
+  @@map("property_deposits")
+}
 
 model Post {
-  id          Int       @id @default(autoincrement())
-  postType    String    @map("post_type") @db.VarChar(50) // SELL_HOUSE, SELL_LAND, RENT_HOUSE, RENT_LAND, NEED_BUY, NEED_RENT, NEWS, PROMOTION
-  title       String    @db.VarChar(255)
-  city        String?   @db.VarChar(100)
-  district    String?   @db.VarChar(100)
-  ward        String?   @db.VarChar(100)
-  address     String?   @db.VarChar(255)
-  contactPhone String?  @map("contact_phone") @db.VarChar(30)
-  contactLink  String?  @map("contact_link") @db.VarChar(500)
-  description String    @db.Text
-  price       Decimal?  @db.Decimal(15, 2)
-  area        Decimal?  @db.Decimal(10, 2)
-  direction   String?   @db.VarChar(50)
-  
-  // Fields for House posts (SELL_HOUSE, RENT_HOUSE)
-  bedrooms    Int?      @default(0)
-  bathrooms   Int?      @default(0)
-  floors      Int?      @default(1)
-  
-  // Fields for Land posts (SELL_LAND, RENT_LAND)
-  frontWidth  Float?    @map("front_width")
-  landLength  Float?    @map("land_length")
-  landType    String?   @map("land_type") @db.VarChar(100)
-  legalStatus String?   @map("legal_status") @db.VarChar(100)
-  
-  // Fields for NEED_BUY/NEED_RENT
-  minPrice    Decimal?  @map("min_price") @db.Decimal(15, 2)
-  maxPrice    Decimal?  @map("max_price") @db.Decimal(15, 2)
-  minArea     Float?    @map("min_area")
-  maxArea     Float?    @map("max_area")
-  
-  // Fields for NEWS/PROMOTION
-  startDate   DateTime? @map("start_date")
-  endDate     DateTime? @map("end_date")
-  discountCode String?  @map("discount_code") @db.VarChar(50)
-  
-  status      Int       @default(1) // 1: pending, 2: approved, 3: rejected
-  isVip       Boolean   @default(false) @map("is_vip")
-  vipExpiry   DateTime? @map("vip_expiry")
-  vipPriorityLevel Int  @default(0) @map("vip_priority_level") // 0..3 (VIP0..VIP3) để sort
-  userId      Int       @map("user_id")
-  postedAt    DateTime  @default(now()) @map("posted_at")
-  approvedAt  DateTime? @map("approved_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-
-  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  images          PostImage[]
+  id               Int               @id @default(autoincrement())
+  postType         String            @map("post_type") @db.VarChar(50)
+  title            String            @db.VarChar(255)
+  city             String?           @db.VarChar(100)
+  district         String?           @db.VarChar(100)
+  ward             String?           @db.VarChar(100)
+  address          String?           @db.VarChar(255)
+  contactPhone     String?           @map("contact_phone") @db.VarChar(30)
+  contactLink      String?           @map("contact_link") @db.VarChar(500)
+  description      String            @db.Text
+  price            Decimal?          @db.Decimal(15, 2)
+  area             Decimal?          @db.Decimal(10, 2)
+  direction        String?           @db.VarChar(50)
+  bedrooms         Int?              @default(0)
+  bathrooms        Int?              @default(0)
+  floors           Int?              @default(1)
+  frontWidth       Float?            @map("front_width")
+  landLength       Float?            @map("land_length")
+  landType         String?           @map("land_type") @db.VarChar(100)
+  legalStatus      String?           @map("legal_status") @db.VarChar(100)
+  minPrice         Decimal?          @map("min_price") @db.Decimal(15, 2)
+  maxPrice         Decimal?          @map("max_price") @db.Decimal(15, 2)
+  minArea          Float?            @map("min_area")
+  maxArea          Float?            @map("max_area")
+  startDate        DateTime?         @map("start_date")
+  endDate          DateTime?         @map("end_date")
+  discountCode     String?           @map("discount_code") @db.VarChar(50)
+  status           Int               @default(1)
+  userId           Int               @map("user_id")
+  postedAt         DateTime          @default(now()) @map("posted_at")
+  approvedAt       DateTime?         @map("approved_at")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  isVip            Boolean           @default(false) @map("is_vip")
+  vipExpiry        DateTime?         @map("vip_expiry")
+  vipPriorityLevel Int               @default(0) @map("vip_priority_level")
+  images           PostImage[]
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   vipSubscriptions VipSubscription[]
 
+  @@index([userId], map: "posts_user_id_fkey")
   @@map("posts")
 }
 
@@ -339,25 +336,22 @@ model PostImage {
   postId    Int      @map("post_id")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
 
-  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
-
+  @@index([postId], map: "post_images_post_id_fkey")
   @@map("post_images")
 }
 
-// ==================== USER BEHAVIOR (for recommendation) ====================
-
 model UserBehavior {
-  id         Int      @id @default(autoincrement())
-  userId     Int      @map("user_id")
-  houseId    Int?     @map("house_id")
-  landId     Int?     @map("land_id")
-  action     String   @db.VarChar(20) // 'view', 'click', 'save'
-  createdAt  DateTime @default(now()) @map("created_at")
-
-  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  house House? @relation(fields: [houseId], references: [id], onDelete: Cascade)
-  land  Land?  @relation("LandBehaviors", fields: [landId], references: [id], onDelete: Cascade)
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  houseId   Int?     @map("house_id")
+  landId    Int?     @map("land_id")
+  action    String   @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at")
+  house     House?   @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  land      Land?    @relation("LandBehaviors", fields: [landId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, action])
   @@index([houseId])
@@ -365,100 +359,95 @@ model UserBehavior {
   @@map("user_behaviors")
 }
 
-// ==================== FAVORITE ====================
-
 model Favorite {
   id        Int      @id @default(autoincrement())
   userId    Int      @map("user_id")
   houseId   Int?     @map("house_id")
   landId    Int?     @map("land_id")
   createdAt DateTime @default(now()) @map("created_at")
-
-  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  house House? @relation(fields: [houseId], references: [id], onDelete: Cascade)
-  land  Land?  @relation("LandFavorites", fields: [landId], references: [id], onDelete: Cascade)
+  house     House?   @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  land      Land?    @relation("LandFavorites", fields: [landId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, houseId])
   @@unique([userId, landId])
+  @@index([houseId], map: "favorites_house_id_fkey")
+  @@index([landId], map: "favorites_land_id_fkey")
   @@map("favorites")
 }
 
-// ==================== VIP PACKAGES ====================
-
 model VipPackage {
-  id            Int      @id @default(autoincrement())
-  name          String   @db.VarChar(255)
-  description   String?  @db.Text
-  durationDays  Int      @map("duration_days") // Số ngày gói VIP có hiệu lực
-  price         Decimal  @db.Decimal(15, 2)
-  packageType   String   @default("POST_VIP") @map("package_type") @db.VarChar(50) // 'POST_VIP', 'ACCOUNT_VIP'
-  priorityLevel Int      @default(1) @map("priority_level") // Mức độ ưu tiên (càng cao càng lên đầu)
-  features      String?  @db.Text // JSON string các tính năng
-  status        Int      @default(1) // 1: active, 0: inactive
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
-
+  id            Int               @id @default(autoincrement())
+  name          String            @db.VarChar(255)
+  description   String?           @db.Text
+  durationDays  Int               @map("duration_days")
+  price         Decimal           @db.Decimal(15, 2)
+  priorityLevel Int               @default(1) @map("priority_level")
+  features      String?           @db.Text
+  status        Int               @default(1)
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+  packageType   String            @default("POST_VIP") @map("package_type") @db.VarChar(50)
   subscriptions VipSubscription[]
 
   @@map("vip_packages")
 }
 
 model VipSubscription {
-  id         Int       @id @default(autoincrement())
-  postId     Int?       @map("post_id")
-  packageId  Int       @map("package_id")
-  userId     Int       @map("user_id")
-  startDate  DateTime? @map("start_date")
-  endDate    DateTime? @map("end_date")
-  status     Int       @default(0) @map("status") // 0: pending payment, 1: active, 2: expired, 3: cancelled
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
+  id        Int        @id @default(autoincrement())
+  postId    Int?       @map("post_id")
+  packageId Int        @map("package_id")
+  userId    Int        @map("user_id")
+  startDate DateTime?  @map("start_date")
+  endDate   DateTime?  @map("end_date")
+  status    Int        @default(0) @map("status")
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+  payment   Payment?
+  package   VipPackage @relation(fields: [packageId], references: [id])
+  post      Post?      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  post    Post?       @relation(fields: [postId], references: [id], onDelete: Cascade)
-  package VipPackage @relation(fields: [packageId], references: [id])
-  user    User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  payment Payment?
-
+  @@index([packageId], map: "vip_subscriptions_package_id_fkey")
+  @@index([postId], map: "vip_subscriptions_post_id_fkey")
+  @@index([userId], map: "vip_subscriptions_user_id_fkey")
   @@map("vip_subscriptions")
 }
 
 model Payment {
-  id             Int       @id @default(autoincrement())
-  subscriptionId Int       @unique @map("subscription_id")
-  userId         Int       @map("user_id")
-  amount         Decimal   @db.Decimal(15, 2)
-  paymentMethod  String    @map("payment_method") @db.VarChar(50) // 'vnpay', 'momo'
-  
-  // ---> BỔ SUNG DÒNG NÀY <---
-  paymentType    String    @default("POST_VIP") @map("payment_type") @db.VarChar(50) // 'POST_VIP', 'ACCOUNT_VIP'
+  id             Int              @id @default(autoincrement())
+  subscriptionId Int?             @unique @map("subscription_id")
+  userId         Int              @map("user_id")
+  amount         Decimal          @db.Decimal(15, 2)
+  paymentMethod  String           @map("payment_method") @db.VarChar(50)
+  transactionId  String?          @unique @map("transaction_id") @db.VarChar(255)
+  status         Int              @default(0)
+  paymentUrl     String?          @map("payment_url") @db.Text
+  paidAt         DateTime?        @map("paid_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  paymentType    String           @default("POST_VIP") @map("payment_type") @db.VarChar(50)
+  depositId      Int?             @unique @map("deposit_id")
+  deposit        PropertyDeposit? @relation(fields: [depositId], references: [id], onDelete: Cascade)
+  subscription   VipSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  transactionId  String?   @unique @map("transaction_id") @db.VarChar(255) // ID từ cổng thanh toán
-  status         Int       @default(0) // 0: pending, 1: success, 2: failed, 3: cancelled
-  paymentUrl     String?   @map("payment_url") @db.Text
-  paidAt         DateTime? @map("paid_at")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
-
-  subscription VipSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-
+  @@index([userId], map: "payments_user_id_fkey")
   @@map("payments")
 }
-// ==================== NOTIFICATIONS ====================
 
 model Notification {
   id        Int      @id @default(autoincrement())
   userId    Int      @map("user_id")
-  type      String   @db.VarChar(50) // 'APPOINTMENT_APPROVED', 'APPOINTMENT_REJECTED', 'POST_APPROVED', 'POST_REJECTED', 'VIP_EXPIRING', 'SYSTEM'
+  type      String   @db.VarChar(50)
   title     String   @db.VarChar(255)
   message   String   @db.Text
   isRead    Boolean  @default(false) @map("is_read")
-  refId     Int?     @map("ref_id")   // ID của appointment / post liên quan
-  refType   String?  @map("ref_type") @db.VarChar(50) // 'appointment' | 'post'
+  refId     Int?     @map("ref_id")
+  refType   String?  @map("ref_type") @db.VarChar(50)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, isRead])
   @@map("notifications")
@@ -473,9 +462,14 @@ model PaymentTransaction {
   paymentMethod String   @map("payment_method") @db.VarChar(50)
   status        String   @db.VarChar(50)
   responseCode  String?  @map("response_code") @db.VarChar(50)
-  responseData  String?  @map("response_data") @db.Text // JSON response từ payment gateway
+  responseData  String?  @map("response_data") @db.Text
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   @@map("payment_transactions")
+}
+
+enum PropertyCategoryType {
+  HOUSE
+  LAND
 }

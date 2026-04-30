@@ -20,6 +20,7 @@ import { PostService } from './post.service';
 import { CreatePostDto, UpdatePostDto, PostType } from './dto/post.dto';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('posts')
 export class PostController {
@@ -121,4 +122,10 @@ export class PostController {
   delete(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     return this.postService.delete(id, req.user.id, req.user.roles);
   }
+   upgradeToVip(
+  @Param('id', ParseIntPipe) id: number,
+  @Req() req: any
+) {
+  return this.postService.initiatePostVipUpgrade(id, req.user.id);
+}
 }

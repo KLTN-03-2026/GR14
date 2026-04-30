@@ -88,6 +88,9 @@ const WORKING_HOURS = {
 
 const BUSINESS_TIMEZONE_OFFSET_MINUTES = 7 * 60;
 
+// [ADD] Giới hạn tối đa 10 ngày kể từ hiện tại cho phép đặt lịch hẹn
+const MAX_BOOKING_DAYS_AHEAD = 10;
+
 type AutoAssignCandidate = {
   employeeId: number;
   score: number;
@@ -99,7 +102,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
   private slaTimer: NodeJS.Timeout | null = null;
   private readonly logger = new Logger(AppointmentService.name);
 
-  // Khởi tạo các dependency dùng cho logic lịch hẹn, mail và auto-assign.
   constructor(
     private prisma: PrismaService,
     private mailService: MailService,
@@ -108,7 +110,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     private notificationService: NotificationService,
   ) { }
 
-  // Tạo timer chạy nền để cập nhật SLA định kỳ mỗi phút.
   onModuleInit() {
     this.slaTimer = setInterval(() => {
       void this.refreshSlaStatus().catch((error) => {
@@ -119,7 +120,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     }, 60_000);
   }
 
-  // Dọn timer khi module bị tắt để tránh rò rỉ tài nguyên.
   onModuleDestroy() {
     if (this.slaTimer) {
       clearInterval(this.slaTimer);
@@ -127,7 +127,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  // Kiểm tra actor có phải nhân viên thật sự hay không.
   private isEmployeeRole(actor: AppointmentActor) {
     return (
       Array.isArray(actor.roles) &&
@@ -136,7 +135,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  // Tìm employeeId theo userId của tài khoản nhân viên.
   private async resolveEmployeeIdByUser(userId: number) {
     const employee = await this.prisma.employee.findUnique({
       where: { userId },
@@ -148,7 +146,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     return employee.id;
   }
 
-  // Tạo điều kiện lọc chung cho danh sách lịch hẹn của admin.
   private buildFindAllWhere(search?: string, status?: number) {
     const andConditions: any[] = [];
 
@@ -175,53 +172,44 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     return { AND: andConditions };
   }
 
-  // Chuẩn hóa chuỗi để so sánh tên vùng/khu vực.
   private normalizeText(value?: string | null) {
     return (value || '').trim().toLowerCase();
   }
 
-  // Lấy đầu ngày theo múi giờ kinh doanh.
   private startOfDay(date: Date) {
     const business = this.toBusinessDate(date);
     business.setUTCHours(0, 0, 0, 0);
     return this.fromBusinessDate(business);
   }
 
-  // Lấy cuối ngày theo múi giờ kinh doanh.
-  private endOfDay(date: Date) {
-    const business = this.toBusinessDate(date);
-    business.setUTCHours(23, 59, 59, 999);
-    return this.fromBusinessDate(business);
+  private endOfDay(date: Date): Date {
+    const d = new Date(date);
+    d.setHours(23, 59, 59, 999);
+    return d;
   }
 
-  // Cộng phút vào một thời điểm.
   private addMinutes(date: Date, minutes: number) {
     return new Date(date.getTime() + minutes * 60_000);
   }
 
-  // Kiểm tra hai khoảng thời gian có chồng lấn nhau hay không.
   private hasOverlap(startA: Date, endA: Date, startB: Date, endB: Date) {
     return startA < endB && startB < endA;
   }
 
-  // Chuyển sang thời gian nghiệp vụ của hệ thống (GMT+7).
   private toBusinessDate(date: Date) {
     return new Date(date.getTime() + BUSINESS_TIMEZONE_OFFSET_MINUTES * 60_000);
   }
 
-  // Chuyển từ thời gian nghiệp vụ về UTC chuẩn để lưu/so sánh.
   private fromBusinessDate(date: Date) {
     return new Date(date.getTime() - BUSINESS_TIMEZONE_OFFSET_MINUTES * 60_000);
   }
 
-  // Tạo Date có đúng giờ/phút trong cùng ngày nghiệp vụ.
   private toClockDate(base: Date, hour: number, minute: number) {
     const business = this.toBusinessDate(base);
     business.setUTCHours(hour, minute, 0, 0);
     return this.fromBusinessDate(business);
   }
 
-  // Kiểm tra một thời điểm có khớp block 30 phút hay không.
   private isSlotAligned(date: Date) {
     const business = this.toBusinessDate(date);
     return (
@@ -231,7 +219,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  // Kiểm tra lịch hẹn nằm hoàn toàn trong khung làm việc hợp lệ.
   private isInsideWorkingWindow(start: Date, end: Date) {
     const startBusiness = this.toBusinessDate(start);
     const endBusiness = this.toBusinessDate(end);
@@ -262,36 +249,49 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     return inMorning || inAfternoon;
   }
 
-  // Chặn lịch đặt sai khung giờ hoặc sai độ dài slot.
-  private assertWorkingSlot(start: Date, durationMinutes: number) {
-    const end = this.addMinutes(start, durationMinutes);
+  private addDays(date: Date, days: number): Date {
+    const result = new Date(date);
+    result.setDate(result.getDate() + days);
+    return result;
+  }
+
+ private assertWorkingSlot(start: Date, durationMinutes: number) {
+    const end = new Date(start.getTime() + durationMinutes * 60_000);
+
     if (!this.isSlotAligned(start)) {
       throw new BadRequestException('Giờ hẹn phải theo block 30 phút');
     }
 
-    if (durationMinutes % WORKING_HOURS.slotMinutes !== 0) {
-      throw new BadRequestException(
-        'Thời lượng lịch hẹn phải chia hết cho 30 phút',
-      );
+    if (durationMinutes % 30 !== 0) {
+      throw new BadRequestException('Thời lượng lịch hẹn phải chia hết cho 30 phút');
     }
 
     if (!this.isInsideWorkingWindow(start, end)) {
+      throw new BadRequestException('Giờ hẹn phải nằm trong khung làm việc 08:00-12:00 hoặc 13:30-17:30');
+    }
+  }
+
+  /**
+   * [ADD] Validate: không cho phép đặt lịch hẹn quá MAX_BOOKING_DAYS_AHEAD (10 ngày) kể từ hôm nay.
+   * Tính theo ngày đầy đủ: hết ngày thứ 10 (23:59:59) là deadline.
+   */
+  private assertBookingDateWithinLimit(appointmentDate: Date, now = new Date()) {
+    const maxDate = this.endOfDay(this.addDays(now, MAX_BOOKING_DAYS_AHEAD));
+    if (appointmentDate.getTime() > maxDate.getTime()) {
       throw new BadRequestException(
-        'Giờ hẹn phải nằm trong khung làm việc 08:00-12:00 hoặc 13:30-17:30',
+        `Chỉ được đặt lịch hẹn trong vòng ${MAX_BOOKING_DAYS_AHEAD} ngày kể từ hôm nay`,
       );
     }
   }
 
-  // Tạo baseline SLA cho lịch hẹn mới.
   private getSlaBaseline(now = new Date()) {
     return {
-      slaAssignDeadlineAt: this.addMinutes(now, 30),       // Tăng từ 5 → 30 phút để tránh breach ngay lập tức
+      slaAssignDeadlineAt: this.addMinutes(now, 30),
       slaFirstContactDeadlineAt: this.addMinutes(now, 24 * 60),
       slaStatus: SLA_STATUS.ON_TRACK,
     };
   }
 
-  // Tính SLA hiện tại theo trạng thái gán nhân viên và liên hệ đầu tiên.
   private computeSlaStatus(input: {
     now: Date;
     employeeId?: number | null;
@@ -310,14 +310,14 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
 
     if (!employeeId && slaAssignDeadlineAt) {
       if (now > slaAssignDeadlineAt) return SLA_STATUS.BREACHED;
-      if (slaAssignDeadlineAt.getTime() - now.getTime() <= 600_000)   // AT_RISK khi còn ≤ 10 phút
+      if (slaAssignDeadlineAt.getTime() - now.getTime() <= 600_000)
         return SLA_STATUS.AT_RISK;
       return SLA_STATUS.ON_TRACK;
     }
 
     if (employeeId && !firstContactAt && slaFirstContactDeadlineAt) {
       if (now > slaFirstContactDeadlineAt) return SLA_STATUS.BREACHED;
-      if (slaFirstContactDeadlineAt.getTime() - now.getTime() <= 600_000)   // AT_RISK khi còn ≤ 10 phút
+      if (slaFirstContactDeadlineAt.getTime() - now.getTime() <= 600_000)
         return SLA_STATUS.AT_RISK;
       return SLA_STATUS.ON_TRACK;
     }
@@ -325,7 +325,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     return SLA_STATUS.ON_TRACK;
   }
 
-  // Tìm các lịch hẹn đang tồn tại của nhân viên để phát hiện xung đột.
   private async hasConflict(
     employeeId: number,
     appointmentDate: Date,
@@ -361,7 +360,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  // Đếm số lịch hẹn của một nhân viên trong một ngày.
   private async getDailyLoad(employeeId: number, date: Date) {
     return this.prisma.appointment.count({
       where: {
@@ -375,7 +373,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  // Chấm điểm các nhân viên phù hợp để auto-assign một lịch hẹn.
   private async buildAutoAssignCandidates(
     appointmentId: number,
     appointmentDate: Date,
@@ -476,7 +473,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     return candidates.sort((a, b) => b.score - a.score);
   }
 
-  // Tìm các khung giờ thay thế nếu slot hiện tại bị xung đột.
   private async suggestAlternativeSlots(
     appointmentId: number,
     baseDate: Date,
@@ -574,7 +570,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     return suggestions;
   }
 
-  // Quét lại toàn bộ lịch hẹn để cập nhật SLA đang chạy.
   private async refreshSlaStatus() {
     const now = new Date();
     const appointments = await this.prisma.appointment.findMany({
@@ -613,7 +608,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  // Lấy danh sách lịch hẹn cho admin kèm phân trang, tìm kiếm và thống kê trạng thái.
   async findAll(page = 1, limit = 10, search?: string, status?: number) {
     const skip = (page - 1) * limit;
     const where = this.buildFindAllWhere(search, status);
@@ -659,7 +653,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  // Lấy chi tiết một lịch hẹn theo id.
   async findById(id: number) {
     const appointment = await this.prisma.appointment.findUnique({
       where: { id },
@@ -686,7 +679,11 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     const durationMinutes =
       dto.durationMinutes && dto.durationMinutes > 0 ? dto.durationMinutes : 60;
     const appointmentDate = new Date(dto.appointmentDate);
+
+    // [ADD] Validate: không được đặt lịch quá 10 ngày kể từ hôm nay
+    this.assertBookingDateWithinLimit(appointmentDate, now);
     this.assertWorkingSlot(appointmentDate, durationMinutes);
+
     const slaBaseline = this.getSlaBaseline(now);
 
     const appointment = await this.prisma.appointment.create({
@@ -710,7 +707,7 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  // Admin tạo lịch hẹn, có thể dùng khách hiện có hoặc tạo khách mới.
+  // Admin tạo lịch hẹn.
   async adminCreate(dto: AdminCreateAppointmentDto) {
     if (!!dto.houseId === !!dto.landId) {
       throw new BadRequestException(
@@ -721,27 +718,23 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     let resolvedCustomerId: number;
 
     if (dto.customerId) {
-      // Option A: dùng khách hàng có sẵn
       const existing = await this.prisma.customer.findUnique({
         where: { id: dto.customerId },
       });
       if (!existing) throw new BadRequestException('Khách hàng không tồn tại');
       resolvedCustomerId = dto.customerId;
     } else if (dto.newCustomerPhone) {
-      // Option B: tạo hoặc tìm khách hàng theo SĐT
       const existingUser = await this.prisma.user.findUnique({
         where: { phone: dto.newCustomerPhone },
       });
 
       if (existingUser) {
-        // User đã tồn tại → kiểm tra có customer chưa
         const existingCustomer = await this.prisma.customer.findUnique({
           where: { userId: existingUser.id },
         });
         if (existingCustomer) {
           resolvedCustomerId = existingCustomer.id;
         } else {
-          // Có user nhưng chưa là customer → tạo customer
           const count = await this.prisma.customer.count();
           const newCustomer = await this.prisma.customer.create({
             data: {
@@ -767,7 +760,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
           resolvedCustomerId = newCustomer.id;
         }
       } else {
-        // Tạo mới user + customer
         const count = await this.prisma.customer.count();
         const code = `CUS${String(count + 1).padStart(3, '0')}`;
         const bcrypt = await import('bcrypt');
@@ -806,7 +798,11 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     const durationMinutes =
       dto.durationMinutes && dto.durationMinutes > 0 ? dto.durationMinutes : 60;
     const appointmentDate = new Date(dto.appointmentDate);
+
+    // [ADD] Admin cũng bị chặn nếu đặt lịch quá 10 ngày
+    this.assertBookingDateWithinLimit(appointmentDate, now);
     this.assertWorkingSlot(appointmentDate, durationMinutes);
+
     const slaBaseline = this.getSlaBaseline(now);
 
     const appointment = await this.prisma.appointment.create({
@@ -829,7 +825,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
       this.autoAssignProducer.publishAutoAssign(appointment.id);
     }
 
-    // Gửi mail xác nhận
     const customerWithUser = await this.prisma.customer.findUnique({
       where: { id: resolvedCustomerId },
       include: { user: { select: { fullName: true, email: true } } },
@@ -842,7 +837,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
         formatDateTime(new Date(dto.appointmentDate)),
         propertyTitle,
       );
-      // Publish lên RabbitMQ – không block request
       this.mailProducer.sendMail(
         customerWithUser.user.email,
         'Lịch hẹn của bạn đã được tạo - BĐS',
@@ -853,7 +847,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     return { message: 'Tạo lịch hẹn thành công', data: appointment };
   }
 
-  // Admin cập nhật lịch hẹn: ngày giờ, nhân viên, trạng thái.
   async update(id: number, dto: UpdateAppointmentDto) {
     const appointment = await this.prisma.appointment.findUnique({
       where: { id },
@@ -881,6 +874,10 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (nextStatus === 1 && nextEmployeeId) {
+      // [ADD] Validate 10 ngày khi admin update ngày hẹn
+      if (dto.appointmentDate) {
+        this.assertBookingDateWithinLimit(nextAppointmentDate);
+      }
       this.assertWorkingSlot(nextAppointmentDate, nextDuration);
       const conflict = await this.hasConflict(
         nextEmployeeId,
@@ -930,7 +927,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
       include: appointmentInclude,
     });
 
-    // Send cancellation email when status changed to 2
     if (dto.status === 2 && appointmentFull?.customer?.user?.email) {
       const propertyTitle =
         appointmentFull.house?.title || appointmentFull.land?.title || '';
@@ -967,7 +963,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
 
   }
 
-  // Xóa một lịch hẹn theo id.
   async delete(id: number) {
     const appointment = await this.prisma.appointment.findUnique({
       where: { id },
@@ -977,7 +972,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     return { message: 'Xóa lịch hẹn thành công' };
   }
 
-  // Gán hoặc đổi nhân viên phụ trách cho lịch hẹn.
   async assignEmployee(id: number, dto: AssignEmployeeDto) {
     const appointment = await this.prisma.appointment.findUnique({
       where: { id },
@@ -1028,7 +1022,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     return { message: 'Phân công nhân viên thành công', data: updated };
   }
 
-  // Duyệt lịch hẹn và gán nhân viên chính thức.
   async approve(id: number, dto: ApproveAppointmentDto) {
     const appointment = await this.prisma.appointment.findUnique({
       where: { id },
@@ -1110,7 +1103,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     return { message: 'Duyệt lịch hẹn thành công', data: updated };
   }
 
-  // Từ chối hoặc hủy lịch hẹn, có thể kèm lý do.
   async cancel(id: number, dto?: CancelAppointmentDto) {
     const appointment = await this.prisma.appointment.findUnique({
       where: { id },
@@ -1163,7 +1155,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     return { message: 'Từ chối lịch hẹn thành công', data: updated };
   }
 
-  // Tự động chọn nhân viên phù hợp nhất cho lịch hẹn.
   async autoAssign(id: number, force = false) {
     const appointment = await this.prisma.appointment.findUnique({
       where: { id },
@@ -1296,7 +1287,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  // Gợi ý các slot thay thế nếu lịch hiện tại chưa thể gán.
   async suggestSlots(id: number) {
     const appointment = await this.prisma.appointment.findUnique({
       where: { id },
@@ -1334,7 +1324,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  // Tạo dữ liệu lịch cho FullCalendar trên màn hình quản trị.
   async getCalendarEvents(query: AppointmentCalendarQueryDto) {
     const start = new Date(query.start);
     const end = new Date(query.end);
@@ -1384,27 +1373,20 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
         id: item.id,
         title: `${title} - ${customerName}`,
         start: item.appointmentDate.toISOString(),
-        end: this.addMinutes(
-          item.appointmentDate,
-          durationMinutes,
-        ).toISOString(),
+        end: this.addMinutes(item.appointmentDate, durationMinutes).toISOString(),
         allDay: false,
-        extendedProps: {
-          employeeId: item.employeeId,
-          employeeName,
-          customerName,
-          durationMinutes,
-          location:
-            `${item.house?.district || item.land?.district || ''}, ${item.house?.city || item.land?.city || ''}`.replace(
-              /^,\s*|,\s*$/g,
-              '',
-            ),
-        },
+       extendedProps: {
+      employeeId: item.employeeId,
+      employeeName,
+      customerName,
+      durationMinutes,
+      actualStatus: item.actualStatus, // ← thêm dòng này
+      location: `${item.house?.district || item.land?.district || ''}, ${item.house?.city || item.land?.city || ''}`.replace(/^,\s*|,\s*$/g, ''),
+    },
       };
     });
   }
 
-  // Di chuyển một lịch hẹn trên calendar sang giờ hoặc nhân viên khác.
   async moveCalendarAppointment(id: number, dto: MoveCalendarAppointmentDto) {
     const appointment = await this.prisma.appointment.findUnique({
       where: { id },
@@ -1425,6 +1407,9 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     if (nextDate < new Date()) {
       throw new BadRequestException('Không thể điều phối lịch hẹn quá khứ');
     }
+
+    // [ADD] Validate 10 ngày khi điều phối lịch trên calendar
+    this.assertBookingDateWithinLimit(nextDate);
 
     const nextEmployeeId = dto.employeeId || appointment.employeeId;
     if (!nextEmployeeId) {
@@ -1489,7 +1474,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     return { message: 'Điều phối lịch thành công', data: updated };
   }
 
-  // Đánh dấu thời điểm liên hệ lần đầu với khách hàng.
   async markFirstContact(id: number, dto: MarkFirstContactDto) {
     const appointment = await this.prisma.appointment.findUnique({
       where: { id },
@@ -1541,7 +1525,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     return { message: 'Đã cập nhật lần liên hệ đầu tiên', data: updated };
   }
 
-  // Lấy lịch hẹn của một nhân viên, có kiểm tra quyền nếu actor là nhân viên.
   async findByEmployee(employeeId: number, actor: AppointmentActor) {
     let effectiveEmployeeId = employeeId;
 
@@ -1591,13 +1574,11 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  // Lấy tất cả lịch hẹn đang được phân công cho chính nhân viên đang đăng nhập.
   async findMyAssignedAppointments(actor: AppointmentActor) {
     const employeeId = await this.resolveEmployeeIdByUser(actor.id);
     return this.findByEmployee(employeeId, { ...actor, roles: ['EMPLOYEE'] });
   }
 
-  // Cập nhật trạng thái thực tế sau khi nhân viên xử lý lịch hẹn.
   async updateActualStatus(
     id: number,
     dto: UpdateActualStatusDto,
@@ -1637,5 +1618,134 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     });
 
     return { message: 'Cập nhật trạng thái thực tế thành công', data: updated };
+  }
+ async findMyAppointments(userId: number, status?: number) {
+    const customer = await this.prisma.customer.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (!customer) throw new NotFoundException('Không tìm thấy thông tin khách hàng');
+
+    const where: any = { customerId: customer.id };
+    if (typeof status === 'number') {
+      where.status = status;
+    }
+
+    return this.prisma.appointment.findMany({
+      where,
+      include: appointmentInclude,
+      orderBy: { appointmentDate: 'desc' },
+    });
+  }
+
+  async findMyAppointmentById(appointmentId: number, userId: number) {
+    const customer = await this.prisma.customer.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (!customer) throw new NotFoundException('Không tìm thấy thông tin khách hàng');
+
+    const appointment = await this.prisma.appointment.findFirst({
+      where: { 
+        id: appointmentId, 
+        customerId: customer.id 
+      },
+      include: appointmentInclude,
+    });
+
+    if (!appointment) {
+      throw new NotFoundException('Lịch hẹn không tồn tại hoặc không thuộc về bạn');
+    }
+
+    return appointment;
+  }
+// Thêm vào DepositService để sửa lỗi tại file cron.ts
+async findExpiredDepositIds(now: Date): Promise<number[]> {
+    const expiredDeposits = await this.prisma.propertyDeposit.findMany({
+      where: {
+        status: 1, // Trạng thái 1: Đang giữ chỗ (Active)
+        expiresAt: {
+          lt: now, // Thời gian hết hạn nhỏ hơn thời gian hiện tại
+        },
+      },
+      select: { id: true },
+    });
+
+    return expiredDeposits.map((d) => d.id);
+  }
+async expireDeposit(depositId: number) {
+    return await this.prisma.$transaction(async (tx) => {
+      const deposit = await tx.propertyDeposit.findUnique({
+        where: { id: depositId },
+        include: {
+          appointment: {
+            include: {
+              house: { select: { id: true } },
+              land: { select: { id: true } },
+            },
+          },
+        },
+      });
+
+      // Nếu không tìm thấy hoặc đã được xử lý rồi thì bỏ qua
+      if (!deposit || deposit.status !== 1) return;
+
+      // 1. Cập nhật trạng thái Deposit thành Hết hạn (giả định status 5 là EXPIRED)
+      await tx.propertyDeposit.update({
+        where: { id: depositId },
+        data: { status: 5 }, 
+      });
+
+      // 2. Giải phóng trạng thái bất động sản (depositStatus: 0 - Trống)
+      const houseId = deposit.appointment.house?.id;
+      const landId = deposit.appointment.land?.id;
+
+      if (houseId) {
+        await tx.house.update({
+          where: { id: houseId },
+          data: { depositStatus: 0 },
+        });
+      } else if (landId) {
+        await tx.land.update({
+          where: { id: landId },
+          data: { depositStatus: 0 },
+        });
+      }
+
+      console.log(`[Cron] Đã xử lý hết hạn giao dịch cọc ID: ${depositId}`);
+    });
+  }
+
+
+
+async cancelMyAppointment(appointmentId: number, userId: number, dto?: CancelAppointmentDto) {
+    const customer = await this.prisma.customer.findUnique({ where: { userId } });
+    if (!customer) throw new NotFoundException('Khách hàng không tồn tại');
+
+    const appointment = await this.prisma.appointment.findFirst({
+      where: { 
+        id: appointmentId, 
+        customerId: customer.id, 
+        status: { in: [0, 1] } 
+      },
+    });
+
+    if (!appointment) {
+      throw new BadRequestException('Không thể hủy lịch này (đã từ chối hoặc không tồn tại)');
+    }
+
+    const updated = await this.prisma.appointment.update({
+      where: { id: appointmentId },
+      data: { 
+        status: 2, 
+        cancelReason: dto?.cancelReason?.trim() || null 
+      },
+      include: appointmentInclude,
+    });
+
+    return { 
+      message: 'Hủy lịch hẹn thành công', 
+      data: updated 
+    };
   }
 }

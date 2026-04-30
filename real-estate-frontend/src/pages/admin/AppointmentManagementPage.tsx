@@ -75,11 +75,17 @@ const AppointmentManagementPage: React.FC = () => {
     const [assignModalOpen, setAssignModalOpen] = useState(false);
     const [assignId, setAssignId] = useState<number | null>(null);
     const [assignData, setAssignData] = useState<{ employeeId?: number }>({});
+
     const [deleteTarget, setDeleteTarget] = useState<Appointment | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [slotSuggestionOpen, setSlotSuggestionOpen] = useState(false);
     const [slotSuggestions, setSlotSuggestions] = useState<Array<{ at: string; availableEmployees: number }>>([]);
     const [detailItem, setDetailItem] = useState<Appointment | null>(null);
+
+    // Actual status modal
+    const [actualModalOpen, setActualModalOpen] = useState(false);
+    const [actualId, setActualId] = useState<number | null>(null);
+    const [actualData, setActualData] = useState<{ actualStatus?: number; cancelReason?: string }>({});
 
     const loadAppointments = useCallback(async () => {
         setLoading(true);
@@ -142,6 +148,7 @@ const AppointmentManagementPage: React.FC = () => {
         setApproveData({ employeeId: record.employeeId ?? undefined });
         setApproveModalOpen(true);
     };
+
     const handleApprove = async () => {
         if (!approveData.employeeId) {
             toast.error('Vui lòng chọn nhân viên');
@@ -164,6 +171,33 @@ const AppointmentManagementPage: React.FC = () => {
         setCancelData({});
         setCancelModalOpen(true);
     };
+
+    // -- Actual status --------------------------------------
+    const openActualModal = (record: Appointment) => {
+        setActualId(record.id);
+        setActualData({ actualStatus: record.actualStatus ?? undefined });
+        setActualModalOpen(true);
+    };
+
+    const handleUpdateActual = async () => {
+        if (actualData.actualStatus === undefined) {
+            toast.error('Vui lòng chọn trạng thái');
+            return;
+        }
+        try {
+            await appointmentApi.updateActualStatus(actualId!, {
+                actualStatus: actualData.actualStatus,
+                cancelReason: actualData.cancelReason,
+            });
+            toast.success('Cập nhật trạng thái thực tế thành công');
+            setActualModalOpen(false);
+            loadAppointments();
+        } catch (e: unknown) {
+            const err = e as ApiError;
+            toast.error(err.response?.data?.message || 'Cập nhật thất bại');
+        }
+    };
+
     const handleCancel = async () => {
         if (!cancelData.cancelReason?.trim()) {
             toast.error('Vui lòng nhập lý do');
@@ -186,6 +220,7 @@ const AppointmentManagementPage: React.FC = () => {
         setAssignData({ employeeId: record.employeeId ?? undefined });
         setAssignModalOpen(true);
     };
+
     const handleAssign = async () => {
         if (!assignData.employeeId) {
             toast.error('Vui lòng chọn nhân viên');
@@ -314,28 +349,44 @@ const AppointmentManagementPage: React.FC = () => {
         {
             title: 'Thực tế',
             key: 'actualStatus',
-            width: 220,
+            width: 160,
             render: (_, r) => {
+                // Chỉ áp dụng cho lịch hẹn đã duyệt
                 if (r.status !== APPOINTMENT_STATUS.APPROVED) {
                     return <span style={{ color: '#bbb' }}>Chưa áp dụng</span>;
                 }
 
-                if (r.actualStatus === undefined || r.actualStatus === null) {
-                    return <Badge color="light">Chưa cập nhật</Badge>;
-                }
+                const hasValue = r.actualStatus !== undefined && r.actualStatus !== null;
+                const label = hasValue
+                    ? (APPOINTMENT_ACTUAL_STATUS_LABELS[r.actualStatus!] || `Không rõ (${r.actualStatus})`)
+                    : null;
+                const badgeColor = hasValue
+                    ? (ACTUAL_STATUS_COLOR[r.actualStatus!] === 'green'
+                        ? 'success'
+                        : ACTUAL_STATUS_COLOR[r.actualStatus!] === 'gold'
+                            ? 'warning'
+                            : 'error')
+                    : 'light';
 
-                const label = APPOINTMENT_ACTUAL_STATUS_LABELS[r.actualStatus] || `Không rõ (${r.actualStatus})`;
                 return (
-                    <div>
-                        <Badge color={
-                            ACTUAL_STATUS_COLOR[r.actualStatus] === 'green'
-                                ? 'success'
-                                : ACTUAL_STATUS_COLOR[r.actualStatus] === 'gold'
-                                    ? 'warning'
-                                    : 'error'
-                        }>{label}</Badge>
+                    <div
+                        className="inline-flex flex-col gap-1 cursor-pointer group"
+                        onClick={(e) => { e.stopPropagation(); openActualModal(r); }}
+                        title="Nhấn để cập nhật trạng thái thực tế"
+                    >
+                        <div className="flex items-center gap-1.5">
+                            <Badge color={badgeColor}>
+                                {hasValue ? label : 'Chưa cập nhật'}
+                            </Badge>
+                            <svg
+                                className="h-3.5 w-3.5 flex-shrink-0 text-gray-300 transition group-hover:text-brand-500"
+                                viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+                            >
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                        </div>
                         {r.cancelReason && (
-                            <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{r.cancelReason}</div>
+                            <div style={{ fontSize: 11, color: '#888' }}>{r.cancelReason}</div>
                         )}
                     </div>
                 );
@@ -344,7 +395,7 @@ const AppointmentManagementPage: React.FC = () => {
         {
             title: 'Hành động',
             key: 'action',
-            width: 280,
+            width: 220,
             render: (_, record) => {
                 const actualUpdated = record.actualStatus !== undefined && record.actualStatus !== null;
 
@@ -432,37 +483,25 @@ const AppointmentManagementPage: React.FC = () => {
             <div className="mb-4 flex flex-wrap gap-2">
                 <button
                     className={tabButtonClass(activeTab === 'all')}
-                    onClick={() => {
-                        setActiveTab('all');
-                        setPage(1);
-                    }}
+                    onClick={() => { setActiveTab('all'); setPage(1); }}
                 >
                     Tất cả ({statusCounts.all})
                 </button>
                 <button
                     className={tabButtonClass(activeTab === 'pending')}
-                    onClick={() => {
-                        setActiveTab('pending');
-                        setPage(1);
-                    }}
+                    onClick={() => { setActiveTab('pending'); setPage(1); }}
                 >
                     Chờ duyệt ({statusCounts.pending})
                 </button>
                 <button
                     className={tabButtonClass(activeTab === 'approved')}
-                    onClick={() => {
-                        setActiveTab('approved');
-                        setPage(1);
-                    }}
+                    onClick={() => { setActiveTab('approved'); setPage(1); }}
                 >
                     Đã duyệt ({statusCounts.approved})
                 </button>
                 <button
                     className={tabButtonClass(activeTab === 'rejected')}
-                    onClick={() => {
-                        setActiveTab('rejected');
-                        setPage(1);
-                    }}
+                    onClick={() => { setActiveTab('rejected'); setPage(1); }}
                 >
                     Đã từ chối ({statusCounts.rejected})
                 </button>
@@ -497,7 +536,7 @@ const AppointmentManagementPage: React.FC = () => {
             <Modal
                 isOpen={approveModalOpen}
                 onClose={() => setApproveModalOpen(false)}
-                title=" Duyệt lịch hẹn"
+                title="Duyệt lịch hẹn"
                 footer={(
                     <>
                         <Button variant="outline" onClick={() => setApproveModalOpen(false)}>Hủy</Button>
@@ -520,6 +559,7 @@ const AppointmentManagementPage: React.FC = () => {
                 </div>
             </Modal>
 
+            {/* Slot Suggestion Modal */}
             <Modal
                 isOpen={slotSuggestionOpen}
                 onClose={() => setSlotSuggestionOpen(false)}
@@ -541,7 +581,7 @@ const AppointmentManagementPage: React.FC = () => {
             <Modal
                 isOpen={cancelModalOpen}
                 onClose={() => setCancelModalOpen(false)}
-                title=" Từ chối lịch hẹn"
+                title="Từ chối lịch hẹn"
                 footer={(
                     <>
                         <Button variant="outline" onClick={() => setCancelModalOpen(false)}>Hủy</Button>
@@ -561,12 +601,10 @@ const AppointmentManagementPage: React.FC = () => {
                 </div>
             </Modal>
 
-            {/* Assign employee Modal */}
+            {/* Delete Confirm Modal */}
             <Modal
                 isOpen={!!deleteTarget}
-                onClose={() => {
-                    if (!deleting) setDeleteTarget(null);
-                }}
+                onClose={() => { if (!deleting) setDeleteTarget(null); }}
                 title="Xác nhận xóa lịch hẹn"
                 width="max-w-md"
                 footer={(
@@ -577,17 +615,18 @@ const AppointmentManagementPage: React.FC = () => {
                 )}
             >
                 <p className="text-sm text-gray-700">
-                    Bạn có chắc muốn xóa lịch hẹn của khách
-                    {' '}
-                    <span className="font-semibold text-gray-900">{deleteTarget?.customer?.user?.fullName || `#${deleteTarget?.id || ''}`}</span>
-                    ?
+                    Bạn có chắc muốn xóa lịch hẹn của khách{' '}
+                    <span className="font-semibold text-gray-900">
+                        {deleteTarget?.customer?.user?.fullName || `#${deleteTarget?.id || ''}`}
+                    </span>?
                 </p>
             </Modal>
 
+            {/* Assign Employee Modal */}
             <Modal
                 isOpen={assignModalOpen}
                 onClose={() => setAssignModalOpen(false)}
-                title=" Phân công nhân viên"
+                title="Phân công nhân viên"
                 footer={(
                     <>
                         <Button variant="outline" onClick={() => setAssignModalOpen(false)}>Hủy</Button>
@@ -610,6 +649,72 @@ const AppointmentManagementPage: React.FC = () => {
                 </div>
             </Modal>
 
+            {/* Actual Status Modal */}
+            <Modal
+                isOpen={actualModalOpen}
+                onClose={() => setActualModalOpen(false)}
+                title="Cập nhật trạng thái thực tế"
+                footer={(
+                    <>
+                        <Button variant="outline" onClick={() => setActualModalOpen(false)}>Hủy</Button>
+                        <Button variant="primary" onClick={handleUpdateActual}>Cập nhật</Button>
+                    </>
+                )}
+            >
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Trạng thái thực tế buổi hẹn
+                        </label>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => setActualData((prev) => ({ ...prev, actualStatus: 1 }))}
+                                className={`flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition ${
+                                    actualData.actualStatus === 1
+                                        ? 'border-green-500 bg-green-600 text-white'
+                                        : 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100'
+                                }`}
+                            >
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                </svg>
+                                Đã gặp khách
+                            </button>
+                            <button
+                                onClick={() => setActualData((prev) => ({ ...prev, actualStatus: 0 }))}
+                                className={`flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition ${
+                                    actualData.actualStatus === 0
+                                        ? 'border-red-500 bg-red-600 text-white'
+                                        : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
+                                }`}
+                            >
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                                Chưa gặp
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Lý do - chỉ hiện khi chọn "Chưa gặp" */}
+                    {actualData.actualStatus === 0 && (
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Lý do <span className="font-normal text-gray-400">(tuỳ chọn)</span>
+                            </label>
+                            <textarea
+                                rows={2}
+                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                                placeholder="Khách hủy, không liên lạc được..."
+                                value={actualData.cancelReason || ''}
+                                onChange={(e) => setActualData((prev) => ({ ...prev, cancelReason: e.target.value }))}
+                            />
+                        </div>
+                    )}
+                </div>
+            </Modal>
+
+            {/* Detail Drawer */}
             <DetailDrawer
                 isOpen={!!detailItem}
                 onClose={() => setDetailItem(null)}

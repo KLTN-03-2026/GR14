@@ -14,15 +14,19 @@ import {
   DefaultValuePipe,
 } from '@nestjs/common';
 import type { Response } from 'express';
+
 import { PaymentService } from './payment.service';
 import { CreatePaymentDto, VNPayCallbackDto } from './dto/payment.dto';
+
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('payment')
 export class PaymentController {
-  constructor(private paymentService: PaymentService) { }
+  constructor(private paymentService: PaymentService) {}
+
+  // ── Public callbacks ──────────────────────────────────────────────────────
 
   @Get('vnpay/callback')
   async vnpayCallback(@Query() query: VNPayCallbackDto, @Res() res: Response) {
@@ -49,11 +53,12 @@ export class PaymentController {
   }
 
   @Post('momo/notify')
-async momoNotify(@Body() body: any, @Res() res: Response) {
-  await this.paymentService.handleMoMoIPN(body);
-  return res.status(200).json({ message: 'ok' });
-}
+  async momoNotify(@Body() body: any, @Res() res: Response) {
+    await this.paymentService.handleMoMoIPN(body);
+    return res.status(200).json({ message: 'ok' });
+  }
 
+  // ── Authenticated ─────────────────────────────────────────────────────────
 
   @UseGuards(JwtAuthGuard)
   @Post('create')
@@ -75,6 +80,8 @@ async momoNotify(@Body() body: any, @Res() res: Response) {
     return this.paymentService.getMyPayments(req.user.id, page, limit);
   }
 
+  // ── Admin routes (tất cả đặt TRƯỚC :id) ──────────────────────────────────
+
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @Get('admin/all')
@@ -84,10 +91,31 @@ async momoNotify(@Body() body: any, @Res() res: Response) {
     @Query('search') search?: string,
     @Query('method') method?: string,
     @Query('status') status?: string,
+    @Query('type') type?: string,          // ← thêm
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    return this.paymentService.getAllPayments(page, limit, search, method, status, startDate, endDate);
+    return this.paymentService.getAllPayments(
+      page,
+      limit,
+      search,
+      method,
+      status,
+      type,          // ← thêm
+      startDate,
+      endDate,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Get('admin/revenue')
+  async getRevenueStats(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('groupBy') groupBy: 'day' | 'month' | 'year' = 'month',
+  ) {
+    return this.paymentService.getRevenueStats(startDate, endDate, groupBy);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
