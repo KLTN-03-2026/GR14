@@ -7,6 +7,8 @@ export type NotificationType =
   | 'POST_APPROVED'
   | 'POST_REJECTED'
   | 'VIP_EXPIRING'
+  | 'DEPOSIT_REFUND_APPROVED'
+  | 'DEPOSIT_REFUND_REJECTED'
   | 'SYSTEM';
 
 export interface CreateNotificationDto {

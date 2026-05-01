@@ -79,6 +79,156 @@ const DepositBadge = ({ status }: { status: DepositStatus }) => {
   );
 };
 
+// ─── Deposit Policy Modal ──────────────────────────────────────────────────────
+
+interface DepositPolicyModalProps {
+  isAfterViewing: boolean;
+  propertyTitle: string;
+  onAgree: () => void;
+  onClose: () => void;
+}
+
+const DepositPolicyModal: React.FC<DepositPolicyModalProps> = ({ isAfterViewing, propertyTitle, onAgree, onClose }) => {
+  const [agreed, setAgreed] = useState(false);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 mx-4 w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-5 text-white">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/20">
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-lg font-bold">Chính sách đặt cọc bất động sản</h2>
+              <p className="text-sm text-white/80 line-clamp-1">{propertyTitle}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="px-6 py-5 max-h-[55vh] overflow-y-auto space-y-4">
+          {/* Loại cọc */}
+          <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+            <h3 className="text-sm font-bold text-blue-800 mb-2">📋 Hai loại đặt cọc</h3>
+            <div className="space-y-2 text-sm text-blue-700">
+              <div className="flex items-start gap-2">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-200 text-[10px] font-bold">1</span>
+                <div>
+                  <p className="font-semibold">Giữ chỗ trước khi xem</p>
+                  <p className="text-xs text-blue-600">Đặt cọc giữ chỗ BĐS trước ngày hẹn xem nhà. Có thể hoàn tiền theo điều kiện.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-purple-200 text-purple-800 text-[10px] font-bold">2</span>
+                <div>
+                  <p className="font-semibold text-purple-800">Cọc chốt mua (sau khi xem)</p>
+                  <p className="text-xs text-purple-600">Sau khi đã đi xem BĐS, cọc chốt mua thể hiện cam kết mua. <strong>Không được hoàn lại.</strong></p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Quy định số tiền */}
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <h3 className="text-sm font-bold text-gray-800 mb-2">💰 Quy định số tiền cọc</h3>
+            <div className="space-y-1.5 text-sm text-gray-600">
+              <p>• Tối thiểu: <strong className="text-gray-800">1.000.000 ₫</strong></p>
+              <p>• Tối đa: <strong className="text-gray-800">30% giá trị BĐS</strong></p>
+            </div>
+          </div>
+
+          {/* Chính sách hoàn tiền */}
+          <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+            <h3 className="text-sm font-bold text-green-800 mb-2">🔄 Chính sách hoàn tiền</h3>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-green-600">
+                  <th className="pb-1.5">Trường hợp</th>
+                  <th className="pb-1.5 text-right">Tỷ lệ hoàn</th>
+                </tr>
+              </thead>
+              <tbody className="text-green-800">
+                <tr className="border-t border-green-200">
+                  <td className="py-1.5">Hủy <strong>trước</strong> ngày hẹn xem</td>
+                  <td className="py-1.5 text-right font-bold">95%</td>
+                </tr>
+                <tr className="border-t border-green-200">
+                  <td className="py-1.5">Hủy <strong>sau</strong> ngày hẹn (chưa xem)</td>
+                  <td className="py-1.5 text-right font-bold text-orange-600">50%</td>
+                </tr>
+                <tr className="border-t border-green-200">
+                  <td className="py-1.5">Cọc chốt mua (đã xem)</td>
+                  <td className="py-1.5 text-right font-bold text-red-600">0% — Mất cọc</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Thời hạn giữ chỗ */}
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <h3 className="text-sm font-bold text-amber-800 mb-2">⏰ Thời hạn giữ chỗ</h3>
+            <div className="space-y-1.5 text-sm text-amber-700">
+              <p>• Giữ chỗ trước khi xem: hết hạn <strong>cuối ngày sau ngày hẹn</strong></p>
+              <p>• Cọc chốt mua: hết hạn sau <strong>3 ngày</strong> kể từ khi cọc</p>
+              <p>• Hết hạn → BĐS được mở khóa, tiền cọc <strong>không hoàn lại</strong></p>
+            </div>
+          </div>
+
+          {/* Cảnh báo đặc biệt cho cọc chốt mua */}
+          {isAfterViewing && (
+            <div className="rounded-xl border-2 border-red-300 bg-red-50 p-4">
+              <div className="flex items-start gap-2">
+                <svg className="h-5 w-5 shrink-0 text-red-600 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+                <div>
+                  <p className="font-bold text-red-700">⚠️ Bạn đang đặt cọc chốt mua!</p>
+                  <p className="mt-1 text-sm text-red-600">Bạn đã xem BĐS này. Tiền cọc sẽ <strong>KHÔNG ĐƯỢC HOÀN LẠI</strong> nếu bạn thay đổi ý định.</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-gray-100 px-6 py-4">
+          <label className="mb-4 flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={agreed}
+              onChange={(e) => setAgreed(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm text-gray-700">
+              Tôi đã đọc, hiểu rõ và <strong>đồng ý</strong> với chính sách đặt cọc bất động sản nêu trên.
+            </span>
+          </label>
+          <div className="flex justify-end gap-2.5">
+            <button
+              onClick={onClose}
+              className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+            >
+              Hủy bỏ
+            </button>
+            <button
+              onClick={onAgree}
+              disabled={!agreed}
+              className="rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+            >
+              Đồng ý & Tiếp tục đặt cọc
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── Refund Modal ─────────────────────────────────────────────────────────────
 
 interface RefundModalProps {
@@ -92,8 +242,8 @@ const RefundModal: React.FC<RefundModalProps> = ({ deposit, onClose, onSuccess }
   const [loading, setLoading] = useState(false);
 
   const isBeforeAppointment = dayjs().isBefore(dayjs(deposit.appointment.appointmentDate));
-  const refundPct = isBeforeAppointment ? 95 : 100;
-  const estimatedRefund = (Number(deposit.amount) * refundPct) / 100;
+  const refundPct = isBeforeAppointment ? 95 : 50;
+  const estimatedRefund = Math.round((Number(deposit.amount) * refundPct) / 100);
 
   const handleSubmit = async () => {
     if (!accountInfo.trim()) {
@@ -134,7 +284,7 @@ const RefundModal: React.FC<RefundModalProps> = ({ deposit, onClose, onSuccess }
           <p className="mt-1">
             {isBeforeAppointment
               ? `Hủy trước ngày hẹn → hoàn ${refundPct}% (~${fmtAmount(estimatedRefund)})`
-              : `Đã đi xem không ưng ý → hoàn ${refundPct}% (~${fmtAmount(estimatedRefund)})`}
+              : `Hủy sau ngày hẹn → hoàn ${refundPct}% (~${fmtAmount(estimatedRefund)})`}
           </p>
         </div>
 
@@ -310,8 +460,8 @@ const DepositModal: React.FC<DepositModalProps> = ({
               <div className="mb-4 rounded-xl border border-blue-100 bg-blue-50 p-3.5 text-sm text-blue-800">
                 <p className="font-semibold">Chính sách hoàn tiền:</p>
                 <ul className="mt-1 space-y-0.5">
-                  <li>• Hủy trước ngày hẹn → hoàn <strong>95%</strong></li>
-                  <li>• Đi xem không ưng ý → hoàn <strong>100%</strong></li>
+                  <li>• Hủy <strong>trước</strong> ngày hẹn → hoàn <strong>95%</strong></li>
+                  <li>• Hủy <strong>sau</strong> ngày hẹn → hoàn <strong>50%</strong></li>
                 </ul>
                 <p className="mt-1.5 text-xs text-blue-600">Ngày hẹn: {fmtDate(appointmentDate)}</p>
               </div>
@@ -572,6 +722,7 @@ const MyAppointmentsPage: React.FC = () => {
   const [page, setPage] = useState(1);
 
   const [depositTarget, setDepositTarget] = useState<any | null>(null);
+  const [policyTarget, setPolicyTarget] = useState<any | null>(null);
   const [refundTarget, setRefundTarget] = useState<Deposit | null>(null);
   const [statusFilter, setStatusFilter] = useState<number | 'all'>('all');
 
@@ -711,7 +862,7 @@ const MyAppointmentsPage: React.FC = () => {
                   key={appt.id}
                   appointment={appt}
                   deposit={depositMap[appt.id] ?? null}
-                  onDeposit={() => setDepositTarget(appt)}
+                  onDeposit={() => setPolicyTarget(appt)}
                   onRefund={() => setRefundTarget(depositMap[appt.id] ?? null)}
                 />
               ))}
@@ -753,6 +904,23 @@ const MyAppointmentsPage: React.FC = () => {
           </>
         )}
       </main>
+
+      {/* ── Deposit Policy Modal ──────────────────── */}
+      {policyTarget && (
+        <DepositPolicyModal
+          isAfterViewing={policyTarget.actualStatus !== null}
+          propertyTitle={
+            policyTarget.house?.title ||
+            policyTarget.land?.title ||
+            'Bất động sản'
+          }
+          onAgree={() => {
+            setDepositTarget(policyTarget);
+            setPolicyTarget(null);
+          }}
+          onClose={() => setPolicyTarget(null)}
+        />
+      )}
 
       {/* ── Deposit Modal ──────────────────────────── */}
       {depositTarget && (

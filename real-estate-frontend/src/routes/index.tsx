@@ -27,7 +27,7 @@ import MoMoCallbackPage from "@/pages/public/MomoPayCallbackPage";
 import FengshuiPage from "@/pages/public/FengShui";
 import ValuationPage from "@/pages/public/valuation/ValuationPage";
 import NotificationsPage from "@/pages/public/NotificationsPage";
-import MyAppointmentsPage from "@/pages/public/Myappointmentspage";
+import MyAppointmentsPage from "@/pages/public/MyAppointmentsPage";
 
 // Auth pages
 import LoginPage from "@/pages/auth/LoginPage";
@@ -56,7 +56,8 @@ import PaymentHistoryPage from "@/pages/admin/PaymentHistoryPage";
 import VipPackageManagementPage from "@/pages/admin/VipPackageManagementPage";
 import VipPackageFormPage from "@/pages/admin/VipPackageFormPage";
 import AdminProfilePage from "@/pages/admin/ProfilePage";
-import RefundManagementPage from "@/pages/admin/Refundmanagementpage";
+import RefundManagementPage from "@/pages/admin/RefundManagementPage";
+import DepositManagementPage from "@/pages/admin/DepositManagementPage";
 
 // Employee pages
 import EmployeeDashboardPage from "@/pages/employee/EmployeeDashboardPage";
@@ -169,6 +170,7 @@ const router = createBrowserRouter([
       { path: "vip-packages", element: <VipPackageManagementPage /> },
       { path: "vip-packages/create", element: <VipPackageFormPage /> },
       { path: "vip-packages/:id/edit", element: <VipPackageFormPage /> },
+      { path: "deposits", element: <DepositManagementPage /> },
       { path: "refunds", element: <RefundManagementPage /> },
       { path: "profile", element: <AdminProfilePage /> },
       { path: "admin-profile", element: <AdminProfilePage /> },

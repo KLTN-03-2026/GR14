@@ -45,4 +45,10 @@ getAdminRefunds: (params: { page?: number; limit?: number; status?: number }) =>
 
 adminProcessRefund: (id: number, body: { approve: boolean; adminNote?: string }) =>
   apiClient.patch(`/deposits/${id}/refund`, body),
+
+getAllDeposits: (params: { page?: number; limit?: number; status?: number }) =>
+  apiClient.get('/deposits', { params }),
+
+completeDeposit: (id: number) =>
+  apiClient.patch(`/deposits/${id}/complete`),
 };

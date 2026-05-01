@@ -3,14 +3,22 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { VNPayService } from '../payment/services/vnpay.service';
 import { MoMoService } from '../payment/services/momo.service';
+import { MailService } from '../../common/mail/mail.service';
+import { MailProducerService } from '../../common/mail/mail-producer.service';
+import { NotificationService } from '../notification/notification.service';
 
 // ─── Hằng số ───────────────────────────────────────────────────────────────
 const AFTER_VIEWING_LOCK_DAYS = 3;
-const CANCEL_BEFORE_VIEWING_REFUND_RATE = 0.95;
+const CANCEL_BEFORE_VIEWING_REFUND_RATE = 0.95; // Huỷ trước ngày hẹn → hoàn 95%
+const CANCEL_AFTER_VIEWING_REFUND_RATE = 0.50;  // Huỷ sau ngày hẹn  → hoàn 50%
+const PENDING_DEPOSIT_TTL_MINUTES = 30;          // Fix #2: Deposit pending quá 30 phút → tự cleanup
+const MIN_DEPOSIT_AMOUNT = 1_000_000;            // Fix #6: Tối thiểu 1 triệu VND
+const MAX_DEPOSIT_RATE = 0.30;                   // Fix #6: Tối đa 30% giá BĐS
 
 export interface ICreateDepositRequest {
   appointmentId: number;
@@ -29,7 +37,7 @@ export interface IRequestRefund {
 export interface IAdminProcessRefund {
   depositId: number;
   approve: boolean;
-  adminNote?: string; // ← thêm vào đây
+  adminNote?: string;
 }
 
 export interface ICompleteDeposit {
@@ -39,10 +47,15 @@ export interface ICompleteDeposit {
 // ─── Service ───────────────────────────────────────────────────────────────
 @Injectable()
 export class DepositService {
+  private readonly logger = new Logger(DepositService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly vnpayService: VNPayService,
     private readonly momoService: MoMoService,
+    private readonly mailService: MailService,
+    private readonly mailProducer: MailProducerService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   // ── Helpers ────────────────────────────────────────────────────────────────
@@ -53,12 +66,13 @@ export class DepositService {
     return result;
   }
 
+  // Fix #11: Simplified endOfDayVN — uses UTC offset directly without double conversion
   private endOfDayVN(date: Date): Date {
-    const d = new Date(date.getTime());
-    d.setUTCHours(d.getUTCHours() + 7);
-    d.setUTCHours(23, 59, 59, 999);
-    d.setUTCHours(d.getUTCHours() - 7);
-    return d;
+    const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+    // Convert to VN time, set to 23:59:59.999, convert back to UTC
+    const vnTime = new Date(date.getTime() + VN_OFFSET_MS);
+    vnTime.setUTCHours(23, 59, 59, 999);
+    return new Date(vnTime.getTime() - VN_OFFSET_MS);
   }
 
   private resolveDepositType(
@@ -83,6 +97,10 @@ export class DepositService {
       return this.endOfDayVN(this.addDays(appointmentDate, 1));
     }
     return this.addDays(now, AFTER_VIEWING_LOCK_DAYS);
+  }
+
+  private formatCurrency(amount: number): string {
+    return amount.toLocaleString('vi-VN', { style: 'currency', currency: 'VND' });
   }
 
   // ── Queries ────────────────────────────────────────────────────────────────
@@ -143,7 +161,13 @@ export class DepositService {
       this.prisma.propertyDeposit.findMany({
         where,
         include: {
-          appointment: true,
+          user: { select: { id: true, fullName: true, email: true, phone: true } },
+          appointment: {
+            include: {
+              house: { select: { id: true, title: true } },
+              land: { select: { id: true, title: true } },
+            },
+          },
           payment: true,
         },
         orderBy: { createdAt: 'desc' },
@@ -159,46 +183,43 @@ export class DepositService {
     };
   }
 
-  // deposit.service.ts - thêm method này vào sau findAll()
+  async findRefundRequests(page: number = 1, limit: number = 10, status?: number) {
+    const skip = (page - 1) * limit;
 
-async findRefundRequests(page: number = 1, limit: number = 10, status?: number) {
-  const skip = (page - 1) * limit;
+    const where =
+      status !== undefined
+        ? { status }
+        : { status: { in: [2, 3] }, refundAccountInfo: { not: null } };
 
-  const where =
-    status !== undefined
-      ? { status }
-      : { status: { in: [2, 3] }, refundAccountInfo: { not: null } };
-
-  const [items, total] = await Promise.all([
-    this.prisma.propertyDeposit.findMany({
-      where,
-      include: {
-        user: {
-          select: { id: true, fullName: true, email: true, phone: true },
-        },
-        appointment: {
-          include: {
-            house: { select: { id: true, title: true } },
-            land:  { select: { id: true, title: true } },
+    const [items, total] = await Promise.all([
+      this.prisma.propertyDeposit.findMany({
+        where,
+        include: {
+          user: {
+            select: { id: true, fullName: true, email: true, phone: true },
+          },
+          appointment: {
+            include: {
+              house: { select: { id: true, title: true } },
+              land: { select: { id: true, title: true } },
+            },
+          },
+          payment: {
+            select: { paymentMethod: true, transactionId: true },
           },
         },
-        payment: {
-          select: { paymentMethod: true, transactionId: true },
-        },
-      },
-      orderBy: { updatedAt: 'desc' },
-      skip,
-      take: limit,
-    }),
-    this.prisma.propertyDeposit.count({ where }),
-  ]);
+        orderBy: { updatedAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.propertyDeposit.count({ where }),
+    ]);
 
-  return {
-    data: items,
-    meta: { total, page, lastPage: Math.ceil(total / limit) },
-  };
-}
-
+    return {
+      data: items,
+      meta: { total, page, lastPage: Math.ceil(total / limit) },
+    };
+  }
 
   async findExpiredDepositIds(now: Date): Promise<number[]> {
     const expired = await this.prisma.propertyDeposit.findMany({
@@ -211,18 +232,54 @@ async findRefundRequests(page: number = 1, limit: number = 10, status?: number) 
     return expired.map((d) => d.id);
   }
 
+  // Fix #2: Tìm deposit pending (status=0) quá thời hạn → cleanup
+  async findStalePendingDepositIds(now: Date): Promise<number[]> {
+    const cutoff = new Date(now.getTime() - PENDING_DEPOSIT_TTL_MINUTES * 60 * 1000);
+    const stale = await this.prisma.propertyDeposit.findMany({
+      where: {
+        status: 0,
+        createdAt: { lt: cutoff },
+      },
+      select: { id: true },
+    });
+    return stale.map((d) => d.id);
+  }
+
+  // Fix #2: Cleanup một deposit pending (xoá payment + deposit)
+  async cleanupStalePendingDeposit(depositId: number): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      // Tìm payment liên quan
+      const payment = await tx.payment.findFirst({ where: { depositId } });
+      if (payment) {
+        // Xoá paymentTransaction trước
+        await tx.paymentTransaction.deleteMany({ where: { paymentId: payment.id } });
+        // Xoá payment
+        await tx.payment.delete({ where: { id: payment.id } });
+      }
+      // Cuối cùng xoá deposit
+      await tx.propertyDeposit.delete({ where: { id: depositId } });
+    });
+  }
+
   // ── Luồng chính ────────────────────────────────────────────────────────────
 
   async createDepositRequest(dto: ICreateDepositRequest, ipAddr: string) {
     const { appointmentId, userId, amount, paymentMethod, returnUrl } = dto;
     const now = new Date();
 
+    // Fix #6: Validate amount tối thiểu
+    if (amount < MIN_DEPOSIT_AMOUNT) {
+      throw new BadRequestException(
+        `Số tiền đặt cọc tối thiểu là ${this.formatCurrency(MIN_DEPOSIT_AMOUNT)}`,
+      );
+    }
+
     // ── Validate appointment ──────────────────────────────────────────────────
     const appointment = await this.prisma.appointment.findUnique({
       where: { id: appointmentId },
       include: {
-        house: { select: { id: true, title: true, depositStatus: true } },
-        land: { select: { id: true, title: true, depositStatus: true } },
+        house: { select: { id: true, title: true, depositStatus: true, price: true } },
+        land: { select: { id: true, title: true, depositStatus: true, price: true } },
         deposit: true,
       },
     });
@@ -240,11 +297,23 @@ async findRefundRequests(page: number = 1, limit: number = 10, status?: number) 
       );
     }
 
+    // Fix #2: Tự cleanup deposit pending cũ trước khi check
     if (appointment.deposit) {
       const s = appointment.deposit.status;
-      if (s === 0 || s === 1) {
+      if (s === 0) {
+        // Deposit pending quá hạn → tự cleanup
+        const ageMs = now.getTime() - new Date(appointment.deposit.createdAt).getTime();
+        if (ageMs > PENDING_DEPOSIT_TTL_MINUTES * 60 * 1000) {
+          await this.cleanupStalePendingDeposit(appointment.deposit.id);
+          this.logger.log(`Cleaned up stale pending deposit #${appointment.deposit.id}`);
+        } else {
+          throw new BadRequestException(
+            'Lịch hẹn này đã có giao dịch cọc đang chờ thanh toán. Vui lòng hoàn tất hoặc đợi hết hạn.',
+          );
+        }
+      } else if (s === 1) {
         throw new BadRequestException(
-          'Lịch hẹn này đã có giao dịch cọc đang xử lý hoặc đang giữ chỗ',
+          'Lịch hẹn này đã có giao dịch cọc đang giữ chỗ',
         );
       }
     }
@@ -253,12 +322,19 @@ async findRefundRequests(page: number = 1, limit: number = 10, status?: number) 
     if (!property) {
       throw new BadRequestException('Lịch hẹn không gắn với bất động sản nào');
     }
-    if (property.depositStatus === 1) {
-      throw new BadRequestException(
-        'Bất động sản này đang được giữ chỗ bởi khách hàng khác',
-      );
+
+    // Fix #6: Validate amount tối đa (30% giá BĐS)
+    const propertyPrice = Number(property.price || 0);
+    if (propertyPrice > 0) {
+      const maxAmount = Math.round(propertyPrice * MAX_DEPOSIT_RATE);
+      if (amount > maxAmount) {
+        throw new BadRequestException(
+          `Số tiền đặt cọc tối đa là ${this.formatCurrency(maxAmount)} (30% giá BĐS)`,
+        );
+      }
     }
 
+    // Fix #5: Di chuyển check depositStatus vào trong transaction + lock row
     const depositType = this.resolveDepositType(appointment.appointmentDate, now);
     const expiresAt = this.computeExpiresAt(
       depositType,
@@ -266,13 +342,31 @@ async findRefundRequests(page: number = 1, limit: number = 10, status?: number) 
       now,
     );
 
-    // orderId bắt đầu bằng "DEP" để phân biệt với VIP ("VIP...")
     const orderId = `DEP${Date.now()}${Math.random()
       .toString(36)
       .substring(2, 8)
       .toUpperCase()}`;
 
     return await this.prisma.$transaction(async (tx) => {
+      // Fix #5: Lock row bên trong transaction để tránh race condition
+      if (appointment.house?.id) {
+        const house = await tx.house.findUnique({
+          where: { id: appointment.house.id },
+          select: { depositStatus: true },
+        });
+        if (house?.depositStatus === 1) {
+          throw new BadRequestException('Bất động sản này đang được giữ chỗ bởi khách hàng khác');
+        }
+      } else if (appointment.land?.id) {
+        const land = await tx.land.findUnique({
+          where: { id: appointment.land.id },
+          select: { depositStatus: true },
+        });
+        if (land?.depositStatus === 1) {
+          throw new BadRequestException('Bất động sản này đang được giữ chỗ bởi khách hàng khác');
+        }
+      }
+
       // 1. Tạo deposit record
       const deposit = await tx.propertyDeposit.create({
         data: {
@@ -315,7 +409,6 @@ async findRefundRequests(page: number = 1, limit: number = 10, status?: number) 
       const orderInfo = `Dat coc bat dong san - Lich hen #${appointmentId}`;
 
       if (paymentMethod === 'vnpay') {
-        // VNPay: returnUrl là FE callback page (giống VIP)
         paymentUrl = this.vnpayService.createPaymentUrl(
           orderId,
           Math.round(amount),
@@ -323,7 +416,6 @@ async findRefundRequests(page: number = 1, limit: number = 10, status?: number) 
           ipAddr,
         );
       } else if (paymentMethod === 'momo') {
-        // MoMo: returnUrl là FE callback page
         const momoResponse = await this.momoService.createPaymentUrl(
           orderId,
           Math.round(amount),
@@ -332,7 +424,6 @@ async findRefundRequests(page: number = 1, limit: number = 10, status?: number) 
         );
         paymentUrl = momoResponse.payUrl;
       } else if (paymentMethod === 'MOCK') {
-        // Dev/test only
         paymentUrl = `${returnUrl}?vnp_ResponseCode=00&vnp_TxnRef=${orderId}`;
       } else {
         throw new BadRequestException('Phương thức thanh toán không hợp lệ');
@@ -434,9 +525,10 @@ async findRefundRequests(page: number = 1, limit: number = 10, status?: number) 
     }
 
     const isBefore = now < deposit.appointment.appointmentDate;
-    const refundAmount = isBefore
-      ? Math.round(Number(deposit.amount) * CANCEL_BEFORE_VIEWING_REFUND_RATE)
-      : Number(deposit.amount);
+    const refundRate = isBefore
+      ? CANCEL_BEFORE_VIEWING_REFUND_RATE   // Chưa xem → hoàn 95%
+      : CANCEL_AFTER_VIEWING_REFUND_RATE;   // Đã qua ngày hẹn → hoàn 50%
+    const refundAmount = Math.round(Number(deposit.amount) * refundRate);
 
     await this.prisma.propertyDeposit.update({
       where: { id: depositId },
@@ -453,62 +545,123 @@ async findRefundRequests(page: number = 1, limit: number = 10, status?: number) 
     };
   }
 
-async adminProcessRefund(dto: IAdminProcessRefund) {
-  const { depositId, approve } = dto;
+  // Fix #8: Thêm mail + notification khi admin xử lý hoàn tiền
+  async adminProcessRefund(dto: IAdminProcessRefund) {
+    const { depositId, approve } = dto;
 
-  const deposit = await this.prisma.propertyDeposit.findUnique({
-    where: { id: depositId },
-    include: {
-      appointment: {
-        include: {
-          house: { select: { id: true } },
-          land: { select: { id: true } },
+    const deposit = await this.prisma.propertyDeposit.findUnique({
+      where: { id: depositId },
+      include: {
+        user: { select: { id: true, fullName: true, email: true } },
+        appointment: {
+          include: {
+            house: { select: { id: true, title: true } },
+            land: { select: { id: true, title: true } },
+          },
         },
       },
-    },
-  });
+    });
 
-  if (!deposit) throw new NotFoundException('Giao dịch cọc không tồn tại');
+    if (!deposit) throw new NotFoundException('Giao dịch cọc không tồn tại');
 
-  if (deposit.status !== 2) {
-    throw new BadRequestException(
-      'Chỉ xử lý được yêu cầu hoàn tiền đang ở trạng thái chờ duyệt',
-    );
-  }
+    if (deposit.status !== 2) {
+      throw new BadRequestException(
+        'Chỉ xử lý được yêu cầu hoàn tiền đang ở trạng thái chờ duyệt',
+      );
+    }
 
-  if (approve) {
-    await this.prisma.$transaction(async (tx) => {
-      await tx.propertyDeposit.update({
+    const propertyTitle =
+      deposit.appointment.house?.title ||
+      deposit.appointment.land?.title ||
+      'Bất động sản';
+    const userName = deposit.user?.fullName || 'Quý khách';
+    const userEmail = deposit.user?.email;
+    const userId = deposit.user?.id;
+
+    if (approve) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.propertyDeposit.update({
+          where: { id: depositId },
+          data: {
+            status: 3,
+            refundedAt: new Date(),
+            adminNote: dto.adminNote ?? null,
+          },
+        });
+
+        const houseId = deposit.appointment.house?.id;
+        const landId = deposit.appointment.land?.id;
+
+        if (houseId) {
+          await tx.house.update({ where: { id: houseId }, data: { depositStatus: 0 } });
+        } else if (landId) {
+          await tx.land.update({ where: { id: landId }, data: { depositStatus: 0 } });
+        }
+      });
+
+      // Fix #8: Gửi mail thông báo duyệt hoàn tiền
+      if (userEmail) {
+        const refundAmount = Number(deposit.refundAmount || deposit.amount);
+        const html = this.mailService.getPaymentSuccessEmailHtml(
+          userName,
+          refundAmount,
+          `Hoàn tiền đặt cọc - ${propertyTitle}`,
+          undefined,
+          undefined,
+        );
+        this.mailProducer.sendMail(userEmail, 'Yêu cầu hoàn tiền đã được duyệt ✅', html);
+      }
+
+      // Fix #8: Gửi notification
+      if (userId) {
+        this.notificationService.create({
+          userId,
+          type: 'SYSTEM',
+          title: 'Hoàn tiền đã được duyệt ✅',
+          message: `Yêu cầu hoàn tiền đặt cọc "${propertyTitle}" đã được duyệt. Số tiền ${this.formatCurrency(Number(deposit.refundAmount || deposit.amount))} sẽ được chuyển về tài khoản của bạn.`,
+        }).catch((err) => this.logger.warn(`Notification failed: ${err.message}`));
+      }
+
+      return { message: 'Đã duyệt hoàn tiền thành công', depositId };
+    } else {
+      await this.prisma.propertyDeposit.update({
         where: { id: depositId },
         data: {
-          status: 3,
-          refundedAt: new Date(),          // ← mới
-          adminNote: dto.adminNote ?? null, // ← mới
+          status: 1,
+          adminNote: dto.adminNote ?? null,
         },
       });
 
-      const houseId = deposit.appointment.house?.id;
-      const landId = deposit.appointment.land?.id;
-
-      if (houseId) {
-        await tx.house.update({ where: { id: houseId }, data: { depositStatus: 0 } });
-      } else if (landId) {
-        await tx.land.update({ where: { id: landId }, data: { depositStatus: 0 } });
+      // Fix #8: Gửi mail thông báo từ chối hoàn tiền
+      if (userEmail) {
+        const noteText = dto.adminNote ? `\nLý do: ${dto.adminNote}` : '';
+        const html = `
+          <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;border:1px solid #e8e8e8;border-radius:8px;">
+            <h2 style="color:#ff4d4f;">❌ Yêu cầu hoàn tiền bị từ chối</h2>
+            <p>Kính gửi <strong>${userName}</strong>,</p>
+            <p>Yêu cầu hoàn tiền đặt cọc cho "<strong>${propertyTitle}</strong>" đã bị từ chối.${noteText}</p>
+            <p>Giao dịch cọc của bạn vẫn đang trong trạng thái giữ chỗ. Nếu cần hỗ trợ, vui lòng liên hệ đội ngũ CSKH.</p>
+            <p style="color:#888;font-size:13px;">Trân trọng,<br/>Đội ngũ BĐS</p>
+          </div>
+        `;
+        this.mailProducer.sendMail(userEmail, 'Yêu cầu hoàn tiền bị từ chối ❌', html);
       }
-    });
 
-    return { message: 'Đã duyệt hoàn tiền thành công', depositId };
-  } else {
-    await this.prisma.propertyDeposit.update({
-      where: { id: depositId },
-      data: {
-        status: 1,
-        adminNote: dto.adminNote ?? null, // ← mới
-      },
-    });
-    return { message: 'Đã từ chối yêu cầu hoàn tiền', depositId };
+      // Fix #8: Gửi notification
+      if (userId) {
+        const noteMsg = dto.adminNote ? ` Lý do: ${dto.adminNote}` : '';
+        this.notificationService.create({
+          userId,
+          type: 'SYSTEM',
+          title: 'Yêu cầu hoàn tiền bị từ chối ❌',
+          message: `Yêu cầu hoàn tiền đặt cọc "${propertyTitle}" đã bị từ chối.${noteMsg} Giao dịch cọc vẫn đang giữ chỗ.`,
+        }).catch((err) => this.logger.warn(`Notification failed: ${err.message}`));
+      }
+
+      return { message: 'Đã từ chối yêu cầu hoàn tiền', depositId };
+    }
   }
-}
+
   async completeDeposit(dto: ICompleteDeposit) {
     const { depositId } = dto;
     const deposit = await this.findById(depositId);
@@ -562,6 +715,4 @@ async adminProcessRefund(dto: IAdminProcessRefund) {
       }
     });
   }
-  
-
 }

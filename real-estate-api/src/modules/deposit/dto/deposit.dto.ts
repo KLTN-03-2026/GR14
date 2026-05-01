@@ -64,7 +64,7 @@ export class GetDepositsQueryDto {
 
   /**
    * Lọc theo status:
-   * 0=pending, 1=paid, 2=refund_requested, 3=refunded, 4=expired, 5=completed
+   * 0=pending, 1=paid, 2=refund_requested, 3=refunded, 4=completed, 5=expired
    */
   @IsOptional()
   @IsInt()

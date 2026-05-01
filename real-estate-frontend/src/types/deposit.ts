@@ -2,7 +2,7 @@
 
 export type DepositType = 'BEFORE_VIEWING' | 'AFTER_VIEWING';
 
-// 0: pending, 1: paid, 2: refund_requested, 3: refunded, 4: expired, 5: completed
+// 0: pending, 1: paid, 2: refund_requested, 3: refunded, 4: completed, 5: expired
 export type DepositStatus = 0 | 1 | 2 | 3 | 4 | 5;
 
 export interface CreateDepositRequest {
@@ -110,8 +110,8 @@ export const DEPOSIT_STATUS_CFG: Record<
   1: { label: 'Đang giữ chỗ',      dot: 'bg-blue-400',    text: 'text-blue-700',    bg: 'bg-blue-50',    border: 'border-blue-200' },
   2: { label: 'Chờ hoàn tiền',     dot: 'bg-orange-400',  text: 'text-orange-700',  bg: 'bg-orange-50',  border: 'border-orange-200' },
   3: { label: 'Đã hoàn tiền',      dot: 'bg-emerald-400', text: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' },
-  4: { label: 'Hết hạn / Mất cọc', dot: 'bg-red-400',     text: 'text-red-700',     bg: 'bg-red-50',     border: 'border-red-200' },
-  5: { label: 'Đã chốt mua',       dot: 'bg-purple-400',  text: 'text-purple-700',  bg: 'bg-purple-50',  border: 'border-purple-200' },
+  4: { label: 'Đã chốt mua',       dot: 'bg-purple-400',  text: 'text-purple-700',  bg: 'bg-purple-50',  border: 'border-purple-200' },
+  5: { label: 'Hết hạn / Mất cọc', dot: 'bg-red-400',     text: 'text-red-700',     bg: 'bg-red-50',     border: 'border-red-200' },
 };
 
 export const APPOINTMENT_STATUS_CFG: Record<

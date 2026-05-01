@@ -6,10 +6,8 @@ import { DepositService } from './deposit.service';
  * DepositExpiryCron
  *
  * Chạy lúc 07:05 sáng giờ Việt Nam (UTC 00:05) mỗi ngày.
- * Quét các giao dịch cọc status=1 đã quá expiresAt → expire + nhả BĐS.
- *
- * [FIX] Bỏ PrismaService — không dùng trực tiếp ở đây,
- * toàn bộ DB access đã được đóng gói trong DepositService.expireDeposit().
+ * 1. Quét các giao dịch cọc status=1 đã quá expiresAt → expire + nhả BĐS.
+ * 2. Fix #2: Cleanup deposit status=0 (pending) quá 30 phút → xoá record.
  */
 @Injectable()
 export class DepositExpiryCron {
@@ -19,9 +17,6 @@ export class DepositExpiryCron {
 
   /**
    * '5 0 * * *' = 00:05 UTC = 07:05 giờ Việt Nam
-   *
-   * Không dùng CronExpression.EVERY_DAY_AT_1AM vì đó là 01:00 UTC (08:00 VN),
-   * muốn chạy sát đầu ngày VN thì '5 0 * * *' chính xác hơn.
    */
   @Cron('5 0 * * *')
   async handleDepositExpiry(): Promise<void> {
@@ -30,38 +25,70 @@ export class DepositExpiryCron {
       `[DepositExpiryCron] Bắt đầu kiểm tra cọc hết hạn lúc ${now.toISOString()}`,
     );
 
-    // [FIX] Query trực tiếp từ DepositService thay vì inject PrismaService riêng
+    // ── 1. Expire các deposit đang giữ chỗ đã hết hạn ──────────────────────
     const expiredIds = await this.depositService.findExpiredDepositIds(now);
 
     if (expiredIds.length === 0) {
       this.logger.log('[DepositExpiryCron] Không có giao dịch cọc nào hết hạn');
-      return;
-    }
+    } else {
+      this.logger.log(
+        `[DepositExpiryCron] Tìm thấy ${expiredIds.length} giao dịch hết hạn, đang xử lý...`,
+      );
 
-    this.logger.log(
-      `[DepositExpiryCron] Tìm thấy ${expiredIds.length} giao dịch hết hạn, đang xử lý...`,
-    );
+      let successCount = 0;
+      let failCount = 0;
 
-    let successCount = 0;
-    let failCount = 0;
-
-    for (const id of expiredIds) {
-      try {
-        await this.depositService.expireDeposit(id);
-        successCount++;
-        this.logger.debug(`[DepositExpiryCron] Đã xử lý deposit #${id}`);
-      } catch (error) {
-        failCount++;
-        this.logger.warn(
-          `[DepositExpiryCron] Lỗi deposit #${id}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
+      for (const id of expiredIds) {
+        try {
+          await this.depositService.expireDeposit(id);
+          successCount++;
+          this.logger.debug(`[DepositExpiryCron] Đã expire deposit #${id}`);
+        } catch (error) {
+          failCount++;
+          this.logger.warn(
+            `[DepositExpiryCron] Lỗi expire deposit #${id}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
       }
+
+      this.logger.log(
+        `[DepositExpiryCron] Expire: ${successCount} thành công, ${failCount} lỗi`,
+      );
     }
 
-    this.logger.log(
-      `[DepositExpiryCron] Hoàn tất: ${successCount} thành công, ${failCount} lỗi`,
-    );
+    // ── 2. Fix #2: Cleanup deposit pending quá 30 phút ──────────────────────
+    const staleIds = await this.depositService.findStalePendingDepositIds(now);
+
+    if (staleIds.length === 0) {
+      this.logger.log('[DepositExpiryCron] Không có deposit pending nào cần cleanup');
+    } else {
+      this.logger.log(
+        `[DepositExpiryCron] Tìm thấy ${staleIds.length} deposit pending cũ, đang cleanup...`,
+      );
+
+      let cleanedCount = 0;
+      let cleanFailCount = 0;
+
+      for (const id of staleIds) {
+        try {
+          await this.depositService.cleanupStalePendingDeposit(id);
+          cleanedCount++;
+          this.logger.debug(`[DepositExpiryCron] Đã cleanup deposit #${id}`);
+        } catch (error) {
+          cleanFailCount++;
+          this.logger.warn(
+            `[DepositExpiryCron] Lỗi cleanup deposit #${id}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+      }
+
+      this.logger.log(
+        `[DepositExpiryCron] Cleanup pending: ${cleanedCount} thành công, ${cleanFailCount} lỗi`,
+      );
+    }
   }
 }
