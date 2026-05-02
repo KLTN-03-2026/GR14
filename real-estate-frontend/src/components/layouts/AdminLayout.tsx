@@ -287,26 +287,7 @@ const navItems: NavItem[] = [
     path: "/admin/vip-packages",
   },
   {
-    name: "Quản lý đặt cọc",
-    icon: (
-      <svg
-        className="w-5 h-5"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-        strokeWidth={1.5}
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-        />
-      </svg>
-    ),
-    path: "/admin/deposits",
-  },
-  {
-    name: "Hoàn tiền cọc",
+    name: "Đặt cọc",
     icon: (
       <svg
         className="w-5 h-5"
@@ -322,7 +303,10 @@ const navItems: NavItem[] = [
         />
       </svg>
     ),
-    path: "/admin/refunds",
+    subItems: [
+      { name: "Quản lý đặt cọc", path: "/admin/deposits" },
+      { name: "Hoàn tiền cọc", path: "/admin/refunds" },
+    ],
   },
 ];
 

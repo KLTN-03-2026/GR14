@@ -192,11 +192,13 @@ export class AiService {
         where: { status: 1 },
         orderBy: { updatedAt: 'desc' },
         take: limit,
+        include: { images: { take: 1, orderBy: { position: 'asc' }, select: { url: true } } },
       }),
       this.prisma.land.findMany({
         where: { status: 1 },
         orderBy: { updatedAt: 'desc' },
         take: limit,
+        include: { images: { take: 1, orderBy: { position: 'asc' }, select: { url: true } } },
       }),
       this.prisma.post.findMany({
         where: { status: 2 },
@@ -281,7 +283,7 @@ export class AiService {
     if (generateContentResponse) return generateContentResponse;
 
     // Handle intents that don't need RAG lookup
-    const directResponse = this.handleDirectIntent(intent, question);
+    const directResponse = await this.handleDirectIntent(intent, question);
     if (directResponse) {
       return this.returnChatWithMemory(sessionId, question, conversationEarly, {
         answer: directResponse.answer,
@@ -512,53 +514,53 @@ export class AiService {
 
     const intentInstructions = this.buildIntentInstructions(intent);
 
-    const promptParts = [
-      '===HE THONG===',
-      'Ban la tro ly AI tu van bat dong san CHUYEN NGHIEP va CHINH XAC cho nen tang Real Estate Viet Nam.',
-      'LUON tra loi bang TIENG VIET. Giong dieu than thien, chuyen nghiep.',
+    // Build system instruction (proper Vietnamese, separated from user content)
+    const systemInstruction = [
+      'Bạn là trợ lý AI tư vấn bất động sản CHUYÊN NGHIỆP cho nền tảng Real Estate Việt Nam.',
+      'LUÔN trả lời bằng TIẾNG VIỆT có dấu. Giọng điệu thân thiện, chuyên nghiệp.',
       '',
-      '===NHIEM VU===',
-      `Intent: ${intent.type}`,
+      `Nhiệm vụ: ${intent.type}`,
       intentInstructions,
       '',
-      '===QUY TAC BAT BUOC (DO CHINH XAC LA UU TIEN SO 1)===',
-      '1. CHI su dung du lieu tu CONTEXT ben duoi. TUYET DOI khong duoc bịa thong tin.',
-      '2. PHAI KIEM TRA GIA: neu nguoi dung yeu cau "duoi X ty" thi CHI goi y BDS co gia <= X ty. Neu BDS trong context KHONG phu hop gia, tra ve recommendations rong.',
-      '3. PHAI KIEM TRA LOAI: neu hoi "dat nen" thi chi goi y loai=land, neu hoi "nha" thi chi goi y loai=house.',
-      '4. PHAI KIEM TRA VI TRI: neu nguoi dung chi dinh khu vuc, uu tien BDS o khu vuc do.',
-      '5. Neu KHONG co BDS nao phu hop trong CONTEXT, tra ve summary "Hien tai minh chua tim thay BDS phu hop" va recommendations rong [].',
-      '6. Moi recommendation PHAI co "reason" giai thich CU THE tai sao BDS do phu hop (gia nam trong ngan sach, dien tich hop ly, vi tri tien loi...).',
-      '7. Moi recommendation PHAI copy dung sourceId va source tu CONTEXT.',
-      '8. suggestedQuestions PHAI lien quan den nhu cau hien tai cua nguoi dung.',
+      '=== QUY TẮC BẮT BUỘC ===',
+      '1. CHỈ sử dụng dữ liệu từ CONTEXT. TUYỆT ĐỐI không bịa thông tin.',
+      '2. KIỂM TRA GIÁ: nếu yêu cầu "dưới X tỷ" → CHỈ gợi ý BĐS giá ≤ X tỷ.',
+      '3. KIỂM TRA LOẠI: "đất nền" → loại=land, "nhà" → loại=house.',
+      '4. KIỂM TRA VỊ TRÍ: ưu tiên BĐS đúng khu vực yêu cầu.',
+      '5. Nếu KHÔNG có BĐS phù hợp → summary nói rõ, recommendations rỗng [].',
+      '6. Mỗi recommendation PHẢI có "reason" giải thích CỤ THỂ.',
+      '7. Mỗi recommendation PHẢI copy đúng sourceId và source từ CONTEXT.',
+      '8. suggestedQuestions PHẢI liên quan đến nhu cầu hiện tại.',
       '',
-      '===DINH DANG JSON===',
+      '=== ĐỊNH DẠNG JSON ===',
       '{"summary":"string","recommendations":[{"title":"string","location":"string","price":number,"area":number,"bedrooms":number,"floors":number,"direction":"string","reason":"string","source":"string","sourceId":number,"url":"string"}],"followUp":"string","suggestedQuestions":["string"]}',
-      '- summary: tom tat ngan gon ket qua (vi du: "Minh tim thay 2 can nha duoi 3 ty tai Da Nang")',
-      '- recommendations: toi da 3 BDS PHU HOP NHAT. De trong [] neu khong co BDS nao dung yeu cau.',
-      '- reason: ly do CU THE (vi du: "Gia 2.5 ty nam trong ngan sach 3 ty, dien tich 80m2 phu hop gia dinh nho")',
-      '- suggestedQuestions: 2-3 goi y tiep theo lien quan',
-    ];
+    ].join('\n');
 
+    // Build multi-turn contents for proper Gemini conversation context
+    const contents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+
+    // Add conversation history as multi-turn messages (proper Gemini format)
     if (recentMemory.length > 0) {
-      promptParts.push(
-        `Lich su ngan: ${recentMemory.map((x) => `${x.role}: ${x.text}`).join(' || ')}`,
-      );
+      for (const turn of recentMemory) {
+        const geminiRole = turn.role === 'assistant' ? 'model' : 'user';
+        // Compact history turns to save tokens
+        const compactText = this.compactMemoryText(turn.text, 300);
+        contents.push({ role: geminiRole, parts: [{ text: compactText }] });
+      }
     }
 
+    // Build the current user message with context
+    const userMessageParts: string[] = [];
     if (conversation.summaryMemory) {
-      promptParts.push(
-        `Tong ket hoi thoai truoc do: ${conversation.summaryMemory}`,
-      );
+      userMessageParts.push(`Tóm tắt hội thoại trước: ${conversation.summaryMemory}`);
     }
-
     if (hasIntentFilter) {
-      promptParts.push(`Intent: ${JSON.stringify(intent)}`);
+      userMessageParts.push(`Intent đã phân tích: ${JSON.stringify(intent)}`);
     }
+    userMessageParts.push(`CONTEXT:\n${context}`);
+    userMessageParts.push(`CÂU HỎI: ${question}`);
 
-    promptParts.push(`CONTEXT:\n${context}`);
-    promptParts.push(`CAU_HOI: ${question}`);
-
-    const prompt = promptParts.join('\n\n');
+    contents.push({ role: 'user', parts: [{ text: userMessageParts.join('\n\n') }] });
 
     let answer = noDataAnswer;
     let structured: Record<string, unknown> | null = null;
@@ -567,7 +569,8 @@ export class AiService {
       const geminiResp = await axios.post(
         `${this.geminiApiBase}/models/${this.geminiChatModel}:generateContent?key=${this.geminiApiKey}`,
         {
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          systemInstruction: { parts: [{ text: systemInstruction }] },
+          contents,
           generationConfig: {
             temperature: 0.2,
             maxOutputTokens: 2048,
@@ -793,10 +796,9 @@ export class AiService {
   ): Promise<ChatResult | null> {
     if (intent.type !== 'compare_property') return null;
 
-    if (intent.compareIds && intent.compareIds.length >= 2) {
-      const compareAnswer = await this.compareService.buildCompareAnswer(
-        intent.compareIds,
-      );
+    // Helper to return compare result
+    const returnCompare = async (ids: number[]) => {
+      const compareAnswer = await this.compareService.buildCompareAnswer(ids);
       return this.returnChatWithMemory(sessionId, question, conversation, {
         answer: compareAnswer.answer,
         structured: null,
@@ -806,6 +808,11 @@ export class AiService {
         relatedSources: [],
         suggestedQuestions: compareAnswer.suggestedQuestions,
       });
+    };
+
+    // Strategy 0: explicit IDs parsed from the question
+    if (intent.compareIds && intent.compareIds.length >= 2) {
+      return returnCompare(intent.compareIds);
     }
 
     // Strategy 1: user named two specific properties — search each separately
@@ -818,19 +825,55 @@ export class AiService {
         idA ?? undefined,
       );
       if (idA !== null && idB !== null && idA !== idB) {
-        const compareAnswer = await this.compareService.buildCompareAnswer([
-          idA,
-          idB,
-        ]);
-        return this.returnChatWithMemory(sessionId, question, conversation, {
-          answer: compareAnswer.answer,
-          structured: null,
-          intent,
-          confidence: 1,
-          sources: compareAnswer.sources,
-          relatedSources: [],
-          suggestedQuestions: compareAnswer.suggestedQuestions,
-        });
+        return returnCompare([idA, idB]);
+      }
+
+      // Strategy 1.5: If description matching failed, try extracting
+      // multiple prices from the full question and match each to a property.
+      // This handles "Đất Hòa Vang 2.050.000.000 đ so sánh với Đất Hòa Vang 2.100.000.000 đ"
+      this.logger.log(
+        `Compare Strategy 1 partial fail: idA=${idA} idB=${idB}, trying multi-price extraction`,
+      );
+    }
+
+    // Strategy 1.5: Extract all prices from the full question and find matching properties
+    {
+      const allPrices = this.extractAllPricesFromText(question);
+      if (allPrices.length >= 2) {
+        const sourceType = this.compareService.extractSourceTypeFromText(question);
+        const locationTokens = this.compareService.extractLocationTokens(question);
+
+        const foundIds: number[] = [];
+        const usedIds = new Set<number>();
+
+        for (const price of allPrices.slice(0, 3)) {
+          // Build a synthetic description for each price
+          const syntheticDesc = [
+            sourceType === 'land' ? 'Đất' : sourceType === 'house' ? 'Nhà' : '',
+            ...locationTokens.slice(0, 5),
+            price.toString(),
+          ].filter(Boolean).join(' ');
+
+          const id = await this.compareService.findByPriceAndLocation(
+            // Use original question fragments for better location matching
+            `${syntheticDesc} ${question}`.slice(0, 300),
+            usedIds.size > 0 ? [...usedIds][0] : undefined,
+          );
+
+          if (id !== null && !usedIds.has(id)) {
+            foundIds.push(id);
+            usedIds.add(id);
+          }
+
+          if (foundIds.length >= 2) break;
+        }
+
+        if (foundIds.length >= 2) {
+          this.logger.log(
+            `Compare Strategy 1.5 success: found ids=${foundIds.join(',')} via multi-price extraction`,
+          );
+          return returnCompare(foundIds);
+        }
       }
     }
 
@@ -843,18 +886,7 @@ export class AiService {
         conversation.memory,
       );
       if (historyIds.length >= 2) {
-        const compareAnswer = await this.compareService.buildCompareAnswer(
-          historyIds.slice(0, 3),
-        );
-        return this.returnChatWithMemory(sessionId, question, conversation, {
-          answer: compareAnswer.answer,
-          structured: null,
-          intent,
-          confidence: 1,
-          sources: compareAnswer.sources,
-          relatedSources: [],
-          suggestedQuestions: compareAnswer.suggestedQuestions,
-        });
+        return returnCompare(historyIds.slice(0, 3));
       }
     }
 
@@ -872,17 +904,44 @@ export class AiService {
           .map((c) => Number(c.payload?.sourceId))
           .filter((id) => Number.isFinite(id) && id > 0);
         if (ids.length >= 2) {
-          const compareAnswer =
-            await this.compareService.buildCompareAnswer(ids);
-          return this.returnChatWithMemory(sessionId, question, conversation, {
-            answer: compareAnswer.answer,
-            structured: null,
-            intent,
-            confidence: 1,
-            sources: compareAnswer.sources,
-            relatedSources: [],
-            suggestedQuestions: compareAnswer.suggestedQuestions,
-          });
+          return returnCompare(ids);
+        }
+      }
+    }
+
+    // Strategy 4: last resort — extract any prices from the full question
+    // and search broadly for properties matching those prices
+    {
+      const allPrices = this.extractAllPricesFromText(question);
+      const sourceType = this.compareService.extractSourceTypeFromText(question);
+
+      if (allPrices.length >= 1 || sourceType) {
+        // Build a broader intent from the question
+        const broadIntent: ParsedIntent = {
+          type: 'compare_property',
+          sourceType: sourceType || intent.sourceType,
+        };
+
+        if (allPrices.length >= 2) {
+          broadIntent.minPrice = Math.min(...allPrices) * 0.9;
+          broadIntent.maxPrice = Math.max(...allPrices) * 1.1;
+        } else if (allPrices.length === 1) {
+          broadIntent.minPrice = allPrices[0] * 0.8;
+          broadIntent.maxPrice = allPrices[0] * 1.2;
+        }
+
+        const candidates = await this.findDbCandidatesByIntent(broadIntent, 10);
+        if (candidates.length >= 2) {
+          const ids = candidates
+            .slice(0, 3)
+            .map((c) => Number(c.payload?.sourceId))
+            .filter((id) => Number.isFinite(id) && id > 0);
+          if (ids.length >= 2) {
+            this.logger.log(
+              `Compare Strategy 4 success: found ids=${ids.join(',')} via broad price search`,
+            );
+            return returnCompare(ids);
+          }
         }
       }
     }
@@ -989,18 +1048,25 @@ export class AiService {
    * Works on the raw (non-normalized) question to preserve property names.
    * Returns [] if the parts look like referential words ("nhà này", "cái đó", etc.)
    * rather than actual property descriptions.
+   *
+   * Handles patterns like:
+   * - "so sánh A với B"
+   * - "A so sánh với B"
+   * - "so sánh A và B"
+   * - "Đất - Huyện Hòa Vang 2.050.000.000 đ so sánh với Đất - Huyện Hòa Vang 2.100.000.000 đ"
    */
   private parseCompareDescriptions(question: string): string[] {
     // Remove leading compare trigger words
-    const stripped = question
+    let stripped = question
       .replace(
         /^(so\s+s[aá]nh|compare|so\s+v[oớ]i|h[aã]y\s+so\s+s[aá]nh)\s*/i,
         '',
       )
       .trim();
 
-    // Split by connectors: " với ", " và ", " vs ", " or ", " hoặc "
-    const splitRegex = /\s+(?:với|và|vs|or|hoặc)\s+/i;
+    // Split by connectors including "so sánh với" in the middle of text
+    // This handles "A so sánh với B" pattern
+    const splitRegex = /\s+(?:so\s+s[aá]nh\s+v[oớ]i|v[oớ]i|và|vs|or|hoặc|so\s+s[aá]nh)\s+/i;
     const parts = stripped
       .split(splitRegex)
       .map((p) => p.trim())
@@ -1067,10 +1133,10 @@ export class AiService {
     }
   }
 
-  private handleDirectIntent(
+  private async handleDirectIntent(
     intent: ParsedIntent,
     question: string,
-  ): { answer: string; suggestedQuestions: string[] } | null {
+  ): Promise<{ answer: string; suggestedQuestions: string[] } | null> {
     if (intent.type === 'greeting') {
       return {
         answer:
@@ -1089,6 +1155,19 @@ export class AiService {
     if (intent.type === 'qa_real_estate') {
       const qaAnswer = this.answerQA(question);
       if (qaAnswer) return qaAnswer;
+
+      // Gemini QA fallback: answer knowledge questions not in static bank
+      const geminiQA = await this.answerQAWithGemini(question);
+      if (geminiQA) {
+        return {
+          answer: geminiQA,
+          suggestedQuestions: [
+            'Sổ hồng là gì?',
+            'Tìm nhà dưới 3 tỷ',
+            'Kinh nghiệm mua nhà lần đầu',
+          ],
+        };
+      }
     }
 
     if (intent.type === 'booking') {
@@ -1310,6 +1389,76 @@ export class AiService {
             'Tìm đất nền giá rẻ',
           ],
         },
+        {
+          pattern: /\b(vay|ngan hang|lai suat|tra gop)\b.*\b(nha|dat|bds)\b|\b(nha|dat)\b.*\b(vay|ngan hang|tra gop)\b/,
+          answer:
+            'Quy trình vay mua nhà tại ngân hàng:\n1. Điều kiện: Thu nhập ổn định, CCCD, hộ khẩu\n2. Tỷ lệ cho vay: 60-70% giá trị BĐS\n3. Lãi suất: Ưu đãi năm đầu 6-8%/năm, sau đó 10-12%/năm\n4. Thời hạn: 10-25 năm, trả góp hàng tháng\n5. Hồ sơ: CCCD, xác nhận thu nhập, hợp đồng mua bán, sổ hồng\n\nLưu ý: Tổng trả góp không nên vượt 40% thu nhập.',
+          suggestedQuestions: [
+            'Kinh nghiệm mua nhà lần đầu',
+            'Thuế phí mua nhà bao nhiêu?',
+            'Tìm nhà dưới 3 tỷ',
+          ],
+        },
+        {
+          pattern: /\b(quy hoach|trong quy hoach|kiem tra quy hoach)\b/,
+          answer:
+            'Kiểm tra quy hoạch trước khi mua BĐS:\n\nCách kiểm tra:\n1. Tra cứu trực tuyến trên website Sở TN&MT\n2. Đến UBND phường/xã xin trích lục bản đồ\n3. Kiểm tra tại Văn phòng đăng ký đất đai\n\nCác loại cần kiểm tra:\n- Quy hoạch sử dụng đất (ở/nông nghiệp/công)\n- Quy hoạch giao thông (lộ giới)\n- Quy hoạch xây dựng (mật độ, tầng cao)\n\n⚠️ BĐS nằm trong vùng quy hoạch có thể bị thu hồi hoặc không được cấp phép xây dựng.',
+          suggestedQuestions: [
+            'Sổ hồng là gì?',
+            'Kinh nghiệm mua nhà lần đầu',
+            'Tìm đất nền có sổ',
+          ],
+        },
+        {
+          pattern: /\b(dat coc|hop dong dat coc|tien coc)\b/,
+          answer:
+            'Hợp đồng đặt cọc mua BĐS:\n\nNội dung bắt buộc:\n- Thông tin hai bên, mô tả BĐS\n- Số tiền cọc (thường 5-10% giá trị)\n- Thời hạn giao dịch, điều khoản phạt\n\nQuy định pháp luật:\n- Bên mua bỏ cọc → mất tiền cọc\n- Bên bán bỏ cọc → trả gấp đôi\n\nLời khuyên:\n- Nên công chứng hợp đồng\n- Kiểm tra kỹ pháp lý trước khi cọc\n- Không cọc quá 10% giá trị',
+          suggestedQuestions: [
+            'Thủ tục mua bán nhà đất',
+            'Kinh nghiệm mua nhà lần đầu',
+            'Tìm nhà dưới 5 tỷ',
+          ],
+        },
+        {
+          pattern: /\b(dat nen|dat tho cu|dat nong nghiep|loai dat)\b.*\b(khac|la gi|nghia)\b|\b(khac nhau|phan biet)\b.*\b(dat)\b/,
+          answer:
+            'Phân biệt các loại đất:\n\nĐất thổ cư (đất ở): Được xây nhà, cấp sổ hồng, giá cao nhất.\nĐất nền: Đã quy hoạch phân lô, cần kiểm tra pháp lý dự án.\nĐất nông nghiệp: CHỈ dùng sản xuất, KHÔNG được xây nhà. Muốn xây phải chuyển đổi mục đích (mất phí).\nĐất công: Thuộc sở hữu Nhà nước, không được mua bán.',
+          suggestedQuestions: [
+            'Quy hoạch đất là gì?',
+            'Tìm đất nền có sổ',
+            'Sổ hồng là gì?',
+          ],
+        },
+        {
+          pattern: /\b(giay phep xay|xin phep xay|phep xay)\b/,
+          answer:
+            'Giấy phép xây dựng (GPXD):\n\nHồ sơ: Đơn xin, sổ hồng, bản vẽ thiết kế, CCCD.\nThời gian: 15-20 ngày làm việc.\nChi phí: 75.000 - 150.000 VNĐ.\n\nMiễn phép: Nhà ở riêng lẻ tại nông thôn (một số vùng), sửa chữa nhỏ.\n⚠️ Xây không phép phạt 40-80 triệu và buộc tháo dỡ.',
+          suggestedQuestions: [
+            'Quy hoạch đất là gì?',
+            'Sổ hồng là gì?',
+            'Tìm nhà dưới 3 tỷ',
+          ],
+        },
+        {
+          pattern: /\b(tim tuong|thong thuy|dien tich su dung|dien tich san)\b/,
+          answer:
+            'Phân biệt diện tích BĐS:\n\nDiện tích tim tường: Đo từ tâm tường bao, bao gồm tường. Thường ghi trên sổ hồng.\nDiện tích thông thủy: Đo từ mặt trong tường, diện tích sử dụng thực tế.\n\nVí dụ: Sổ hồng ghi 80m² (tim tường) → thực tế sử dụng khoảng 72-75m² (thông thủy).\n\n💡 Luôn hỏi rõ loại diện tích khi mua nhà!',
+          suggestedQuestions: [
+            'Kinh nghiệm mua nhà lần đầu',
+            'Sổ hồng là gì?',
+            'Tìm căn hộ dưới 3 tỷ',
+          ],
+        },
+        {
+          pattern: /\b(dau tu|sinh loi|loi nhuan)\b.*\b(bds|bat dong san|nha|dat)\b|\b(bds|bat dong san)\b.*\b(dau tu|sinh loi)\b/,
+          answer:
+            'Kinh nghiệm đầu tư BĐS:\n\n1. Mua đất nền chờ tăng giá (lãi 15-30%/năm, rủi ro pháp lý)\n2. Mua căn hộ cho thuê (lãi 4-7%/năm, ổn định)\n3. Mua nhà phố cho thuê mặt bằng (lãi 3-5%/năm)\n\nNguyên tắc vàng:\n- Vị trí, vị trí, vị trí\n- Pháp lý rõ ràng, sổ hồng\n- Không dùng quá 50% vốn vay\n\n⚠️ Tránh dự án ma, đất nông nghiệp rao bán như đất ở.',
+          suggestedQuestions: [
+            'Tìm đất nền giá rẻ',
+            'Quy hoạch đất là gì?',
+            'Tìm nhà cho thuê',
+          ],
+        },
       ];
 
     for (const qa of qaBank) {
@@ -1472,6 +1621,12 @@ export class AiService {
     const floors = Number(house.floors ?? 0);
     const direction = String(house.direction || '');
 
+    // Extract first image URL from images array if available
+    const images = Array.isArray(house.images) ? house.images : [];
+    const firstImage = images.length > 0
+      ? String((images[0] as Record<string, unknown>)?.url || '')
+      : '';
+
     const payload: Record<string, unknown> = {
       source: 'house',
       sourceId: house.id,
@@ -1487,6 +1642,7 @@ export class AiService {
       floors,
       direction,
       description: house.description || '',
+      imageUrl: firstImage || null,
       url: `${this.frontendUrl}/houses/${house.id}`,
     };
 
@@ -1517,6 +1673,12 @@ export class AiService {
     const landType = String(land.landType || land.land_type || '');
     const frontWidth = this.toNumber(land.frontWidth ?? land.front_width);
 
+    // Extract first image URL from images array if available
+    const images = Array.isArray(land.images) ? land.images : [];
+    const firstImage = images.length > 0
+      ? String((images[0] as Record<string, unknown>)?.url || '')
+      : '';
+
     const payload: Record<string, unknown> = {
       source: 'land',
       sourceId: land.id,
@@ -1532,6 +1694,7 @@ export class AiService {
       landType,
       frontWidth,
       description: land.description || '',
+      imageUrl: firstImage || null,
       url: `${this.frontendUrl}/lands/${land.id}`,
     };
 
@@ -2021,6 +2184,80 @@ export class AiService {
       .trim();
   }
 
+  /**
+   * Gemini QA fallback: for qa_real_estate intent questions not matched by static QA bank,
+   * ask Gemini to answer as a real estate expert.
+   */
+  private async answerQAWithGemini(question: string): Promise<string | null> {
+    if (!this.geminiApiKey) return null;
+    try {
+      const systemPrompt = [
+        'Bạn là chuyên gia tư vấn bất động sản Việt Nam.',
+        'Trả lời câu hỏi kiến thức BĐS bằng tiếng Việt có dấu, rõ ràng, chính xác.',
+        'Nếu câu hỏi không liên quan đến BĐS, trả lời "Mình chỉ hỗ trợ về bất động sản thôi nhé!"',
+        'Giới hạn trả lời trong 200 từ. Dùng gạch đầu dòng nếu cần.',
+      ].join('\n');
+
+      const resp = await axios.post(
+        `${this.geminiApiBase}/models/${this.geminiChatModel}:generateContent?key=${this.geminiApiKey}`,
+        {
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ role: 'user', parts: [{ text: question }] }],
+          generationConfig: { temperature: 0.3, maxOutputTokens: 512 },
+        },
+        { timeout: this.geminiTimeoutMs },
+      );
+
+      const text = resp.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      return text.length > 20 ? text : null;
+    } catch (error) {
+      this.logger.warn(`Gemini QA fallback failed: ${this.stringifyError(error)}`);
+      return null;
+    }
+  }
+
+  /**
+   * Extract ALL prices from text. Returns unique price values in order of appearance.
+   * Handles Vietnamese dot-separated format (2.050.000.000), tỷ/triệu format, etc.
+   */
+  private extractAllPricesFromText(text: string): number[] {
+    const prices: number[] = [];
+    const seen = new Set<number>();
+
+    const addPrice = (p: number) => {
+      if (Number.isFinite(p) && p > 0 && !seen.has(p)) {
+        seen.add(p);
+        prices.push(p);
+      }
+    };
+
+    // Pattern 1: Vietnamese dot-separated format: 2.050.000.000 (đ/đồng/vnd optional)
+    const dotSepRegex = /(\d{1,3}(?:\.\d{3}){2,})\s*(?:đ|dong|đồng|vnd)?/gi;
+    let match: RegExpExecArray | null;
+    while ((match = dotSepRegex.exec(text)) !== null) {
+      const num = Number(match[1].replace(/\./g, ''));
+      addPrice(num);
+    }
+
+    // Pattern 2: X tỷ Y triệu
+    const tyRegex = /(\d+(?:[.,]\d+)?)\s*(?:tỷ|ty)\s*(?:(\d+)\s*(?:triệu|trieu|tr))?/gi;
+    while ((match = tyRegex.exec(text)) !== null) {
+      const ty = Number(match[1].replace(',', '.'));
+      const trieu = match[2] ? Number(match[2]) : 0;
+      addPrice(ty * 1_000_000_000 + trieu * 1_000_000);
+    }
+
+    // Pattern 3: X triệu (standalone, not part of tỷ pattern)
+    const trieuRegex = /(\d+(?:[.,]\d+)?)\s*(?:triệu|trieu|tr)(?!\s*\d)/gi;
+    while ((match = trieuRegex.exec(text)) !== null) {
+      const num = Number(match[1].replace(',', '.')) * 1_000_000;
+      addPrice(num);
+    }
+
+    return prices;
+  }
+
+
   private toVnd(amountText: string, unit?: string): number | undefined {
     const amount = Number(String(amountText).replace(/,/g, '.'));
     if (!Number.isFinite(amount)) return undefined;
@@ -2092,29 +2329,20 @@ export class AiService {
 
     if (recs.length > 0) {
       lines.push('');
-      lines.push('Gợi ý:');
-      recs.slice(0, 5).forEach((r, idx) => {
-        lines.push(
-          this.formatSuggestionBlock(idx + 1, {
-            title: r.title,
-            location: r.location,
-            price: r.price,
-            area: r.area,
-            bedrooms: r.bedrooms,
-            floors: r.floors,
-            direction: r.direction,
-            url: r.url,
-            source: r.source,
-            sourceId: r.sourceId,
-            reason: r.reason,
-          }),
-        );
+      recs.slice(0, 3).forEach((r, idx) => {
+        const title = String(r.title || '').trim();
+        const reason = String(r.reason || '').trim();
+        const price = this.formatVnd(r.price);
+        // Concise one-liner: "1. Title — price"
+        let line = `${idx + 1}. **${title}** — ${price}`;
+        if (reason) line += `\n   _${reason}_`;
+        lines.push(line);
       });
     }
 
     if (followUp) {
       lines.push('');
-      lines.push(`Gợi ý tiếp: ${followUp}`);
+      lines.push(followUp);
     }
 
     const result = lines.join('\n').trim();
@@ -2130,35 +2358,19 @@ export class AiService {
       return 'Hiện tại mình chưa tìm thấy bất động sản nào phù hợp với yêu cầu của bạn.';
     }
 
-    const first = recs[0];
     const lines: string[] = [];
-    lines.push(`Mình tìm thấy ${recs.length} gợi ý phù hợp nhất.`);
+    lines.push(`Mình tìm thấy **${recs.length} gợi ý** phù hợp nhất:`);
     lines.push('');
-    lines.push('Gợi ý:');
 
     recs.forEach((r, idx) => {
-      lines.push(
-        this.formatSuggestionBlock(idx + 1, {
-          title: r.title,
-          location:
-            [r.street, r.ward, r.district, r.city].filter(Boolean).join(', ') ||
-            `${String(r.district || 'N/A')}, ${String(r.city || 'N/A')}`,
-          price: r.price,
-          area: r.area,
-          bedrooms: r.bedrooms,
-          floors: r.floors,
-          direction: r.direction,
-          url: r.url,
-          source: r.source,
-          sourceId: r.sourceId,
-        }),
-      );
+      const title = String(r.title || 'BĐS').trim();
+      const price = this.formatVnd(r.price);
+      const area = this.formatArea(r.area);
+      lines.push(`${idx + 1}. **${title}** — ${price} • ${area}`);
     });
 
     lines.push('');
-    lines.push(
-      `Bạn muốn mình lọc kỹ hơn theo khu vực ${String(first.city || '')} hoặc theo khoảng giá cụ thể không?`,
-    );
+    lines.push('Bạn muốn xem chi tiết căn nào hoặc lọc kỹ hơn không?');
 
     return lines.join('\n').trim();
   }
