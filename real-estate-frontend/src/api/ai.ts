@@ -11,6 +11,11 @@ export interface ChatSource {
     ward?: string;
     street?: string;
     score?: number;
+    imageUrl?: string | null;
+    bedrooms?: number;
+    floors?: number;
+    direction?: string;
+    description?: string;
 }
 
 export interface ChatIntent {

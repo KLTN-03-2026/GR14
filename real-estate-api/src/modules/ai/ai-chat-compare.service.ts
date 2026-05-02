@@ -56,47 +56,255 @@ export class AiChatCompareService {
   }
 
   /**
+   * Extract a VND price from free-text like "2.050.000.000 đ", "2 tỷ", "500 triệu".
+   */
+  extractPriceFromText(text: string): number | null {
+    // Match Vietnamese dot-separated format: 2.050.000.000 (đ/đồng/vnd optional)
+    const dotSepMatch = text.match(
+      /(\d{1,3}(?:\.\d{3}){2,})\s*(?:đ|dong|đồng|vnd)?/i,
+    );
+    if (dotSepMatch) {
+      const num = Number(dotSepMatch[1].replace(/\./g, ''));
+      if (Number.isFinite(num) && num > 0) return num;
+    }
+
+    // Match "X tỷ Y triệu" or "X.Y tỷ"
+    const tyMatch = text.match(
+      /(\d+(?:[.,]\d+)?)\s*(?:tỷ|ty)\s*(?:(\d+)\s*(?:triệu|trieu|tr))?/i,
+    );
+    if (tyMatch) {
+      const ty = Number(tyMatch[1].replace(',', '.'));
+      const trieu = tyMatch[2] ? Number(tyMatch[2]) : 0;
+      const total = ty * 1_000_000_000 + trieu * 1_000_000;
+      if (Number.isFinite(total) && total > 0) return total;
+    }
+
+    // Match "X triệu"
+    const trieuMatch = text.match(/(\d+(?:[.,]\d+)?)\s*(?:triệu|trieu|tr)/i);
+    if (trieuMatch) {
+      const num = Number(trieuMatch[1].replace(',', '.')) * 1_000_000;
+      if (Number.isFinite(num) && num > 0) return num;
+    }
+
+    return null;
+  }
+
+  /**
+   * Detect property type from description text.
+   */
+  extractSourceTypeFromText(
+    text: string,
+  ): 'house' | 'land' | null {
+    const norm = this.normalizeText(text);
+    if (/\b(dat|nen|dat nen|lo dat)\b/.test(norm)) return 'land';
+    if (/\b(nha|can ho|chung cu|biet thu|nha pho)\b/.test(norm)) return 'house';
+    return null;
+  }
+
+  /**
+   * Extract location keywords (district, ward, city) from the description.
+   */
+  extractLocationTokens(text: string): string[] {
+    const norm = this.normalizeText(text);
+    // Remove numeric-only tokens and common stop words, keep location-like words
+    const locationStops = new Set([
+      'dat', 'nha', 'can', 'ban', 'cho', 'thue', 'mua', 'voi', 'va',
+      'de', 'la', 'so', 'gia', 'dien', 'tich', 'phong', 'ngu', 'tang',
+    ]);
+    return norm
+      .split(/\s+/)
+      .filter((t) => t.length >= 2 && !locationStops.has(t) && !/^\d+$/.test(t))
+      .slice(0, 10);
+  }
+
+  /**
+   * Find a property by price + location + type using precise DB queries.
+   * This is the primary strategy for compare descriptions that include prices.
+   */
+  async findByPriceAndLocation(
+    description: string,
+    excludeId?: number,
+  ): Promise<number | null> {
+    const price = this.extractPriceFromText(description);
+    const sourceType = this.extractSourceTypeFromText(description);
+    const locationTokens = this.extractLocationTokens(description);
+
+    if (price === null && locationTokens.length === 0) return null;
+
+    // Build price range: allow 5% tolerance for rounding
+    const priceTolerance = price ? price * 0.05 : 0;
+    const minPrice = price ? price - priceTolerance : undefined;
+    const maxPrice = price ? price + priceTolerance : undefined;
+
+    const priceFilter = minPrice !== undefined && maxPrice !== undefined
+      ? { gte: minPrice, lte: maxPrice }
+      : undefined;
+
+    // Build location OR filters from tokens
+    const locationOrFilters = locationTokens.length > 0
+      ? locationTokens.flatMap((token) => [
+          { district: { contains: token } },
+          { ward: { contains: token } },
+          { city: { contains: token } },
+          { street: { contains: token } },
+          { title: { contains: token } },
+        ])
+      : undefined;
+
+    const selectFields = {
+      id: true,
+      title: true,
+      street: true,
+      ward: true,
+      district: true,
+      city: true,
+      price: true,
+      area: true,
+    } as const;
+
+    type DbRecord = {
+      id: number;
+      title: string | null;
+      street: string | null;
+      ward: string | null;
+      district: string | null;
+      city: string | null;
+      price: unknown;
+      area: unknown;
+    };
+
+    const scoreRecord = (r: DbRecord): number => {
+      if (excludeId !== undefined && r.id === excludeId) return -1;
+
+      let score = 0;
+      const recordPrice = this.toNumber(r.price);
+
+      // Price proximity scoring (most important for disambiguation)
+      if (price !== null && recordPrice > 0) {
+        const diff = Math.abs(recordPrice - price);
+        const pct = diff / price;
+        if (pct < 0.001) score += 20;       // exact match
+        else if (pct < 0.01) score += 15;    // ~1% off
+        else if (pct < 0.05) score += 10;    // ~5% off
+        else if (pct < 0.1) score += 5;      // ~10% off
+        else score += 1;
+      }
+
+      // Location scoring
+      const recordNorm = this.normalizeText(
+        [r.title, r.street, r.ward, r.district, r.city]
+          .filter(Boolean)
+          .join(' '),
+      );
+      for (const token of locationTokens) {
+        if (recordNorm.includes(token)) score += 3;
+      }
+
+      return score;
+    };
+
+    try {
+      const buildWhere = (extraWhere?: Record<string, unknown>) => {
+        const where: Record<string, unknown> = { status: 1, ...extraWhere };
+        if (priceFilter) where.price = priceFilter;
+        if (locationOrFilters) where.OR = locationOrFilters;
+        return where;
+      };
+
+      // Query based on detected source type, or both if unknown
+      let candidates: DbRecord[] = [];
+
+      if (sourceType !== 'house') {
+        const lands = await this.prisma.land.findMany({
+          where: buildWhere() as never,
+          orderBy: { updatedAt: 'desc' },
+          take: 100,
+          select: selectFields,
+        });
+        candidates.push(...(lands as DbRecord[]));
+      }
+
+      if (sourceType !== 'land') {
+        const houses = await this.prisma.house.findMany({
+          where: buildWhere() as never,
+          orderBy: { updatedAt: 'desc' },
+          take: 100,
+          select: selectFields,
+        });
+        candidates.push(...(houses as DbRecord[]));
+      }
+
+      // If strict query returned nothing, try with just price filter
+      if (candidates.length === 0 && priceFilter) {
+        if (sourceType !== 'house') {
+          const lands = await this.prisma.land.findMany({
+            where: { status: 1, price: priceFilter } as never,
+            orderBy: { updatedAt: 'desc' },
+            take: 100,
+            select: selectFields,
+          });
+          candidates.push(...(lands as DbRecord[]));
+        }
+        if (sourceType !== 'land') {
+          const houses = await this.prisma.house.findMany({
+            where: { status: 1, price: priceFilter } as never,
+            orderBy: { updatedAt: 'desc' },
+            take: 100,
+            select: selectFields,
+          });
+          candidates.push(...(houses as DbRecord[]));
+        }
+      }
+
+      if (candidates.length === 0) return null;
+
+      // Score and pick best
+      let bestId: number | null = null;
+      let bestScore = 0;
+      for (const c of candidates) {
+        const s = scoreRecord(c);
+        if (s > bestScore) {
+          bestScore = s;
+          bestId = c.id;
+        }
+      }
+
+      return bestScore >= 3 ? bestId : null;
+    } catch (error) {
+      this.logger.warn(
+        `findByPriceAndLocation failed: ${this.stringifyError(error)}`,
+      );
+      return null;
+    }
+  }
+
+  /**
    * Find the sourceId of a property matching a free-text description.
+   * Tries price+location DB query first, then falls back to text token scoring.
    */
   async findIdByDescription(
     description: string,
     excludeId?: number,
   ): Promise<number | null> {
+    // Strategy 1: Try precise price+location+type matching first
+    const priceMatch = await this.findByPriceAndLocation(
+      description,
+      excludeId,
+    );
+    if (priceMatch !== null) {
+      this.logger.log(
+        `findIdByDescription: matched by price+location → id=${priceMatch}`,
+      );
+      return priceMatch;
+    }
+
+    // Strategy 2: Fall back to text token scoring
     const stopWords = new Set([
-      'nha',
-      'dat',
-      'can',
-      'tin',
-      'ban',
-      'cho',
-      'thue',
-      'mua',
-      'o',
-      'tai',
-      'voi',
-      'va',
-      'de',
-      'la',
-      'duong',
-      'phuong',
-      'quan',
-      'tp',
-      'thanh',
-      'pho',
-      'thi',
-      'xa',
-      'huyen',
-      'so',
-      'mat',
-      'tien',
-      'hem',
-      'ngo',
-      'biet',
-      'thu',
-      'can',
-      'ho',
-      'chung',
-      'cu',
+      'nha', 'dat', 'can', 'tin', 'ban', 'cho', 'thue', 'mua',
+      'o', 'tai', 'voi', 'va', 'de', 'la', 'duong', 'phuong',
+      'quan', 'tp', 'thanh', 'pho', 'thi', 'xa', 'huyen',
+      'so', 'mat', 'tien', 'hem', 'ngo', 'biet', 'thu',
+      'can', 'ho', 'chung', 'cu',
     ]);
     const descNorm = this.normalizeText(description);
     const descTokens = descNorm

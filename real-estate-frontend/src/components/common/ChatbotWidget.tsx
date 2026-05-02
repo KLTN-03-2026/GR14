@@ -36,11 +36,18 @@ const STARTER_QUESTIONS = [
     'Tìm nhà dưới 3 tỷ',
     'Sổ hồng là gì?',
     'Tìm đất nền giá rẻ',
+    'So sánh 2 BĐS phù hợp nhất',
     'Kinh nghiệm mua nhà lần đầu',
-    'Cách đặt lịch hẹn xem nhà',
-    'Cách nâng cấp tài khoản VIP',
+    'Quy trình vay mua nhà',
     'Gợi ý viết mô tả đăng bán nhà',
 ];
+
+const SOURCE_TYPE_LABEL: Record<string, string> = { house: '🏠 Nhà', land: '🏗️ Đất', post: '📰 Tin' };
+const PLACEHOLDER_GRADIENTS: Record<string, string> = {
+    house: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    land: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+    post: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+};
 
 const resolveDetailPath = (source: ChatSource): string | null => {
     if (!source.sourceId) return null;
@@ -93,6 +100,44 @@ const TypingIndicator: React.FC = () => (
     </div>
 );
 
+/* ─── Rich Property Source Card ───────────────────────────────────────── */
+const PropertyCard: React.FC<{ source: ChatSource; onClose: () => void }> = ({ source, onClose }) => {
+    const path = resolveDetailPath(source);
+    const imgUrl = source.imageUrl;
+    const typeLabel = SOURCE_TYPE_LABEL[source.source || ''] || '📋 BĐS';
+    const location = [source.ward, source.district, source.city].filter(Boolean).join(', ');
+    return (
+        <div className="group flex gap-2 rounded-lg border border-slate-200 bg-white p-2 transition hover:shadow-md">
+            {/* Thumbnail */}
+            <div className="h-16 w-16 shrink-0 overflow-hidden rounded-md" style={imgUrl ? undefined : { background: PLACEHOLDER_GRADIENTS[source.source || 'house'] }}>
+                {imgUrl ? (
+                    <img src={imgUrl} alt={source.title} className="h-full w-full object-cover" loading="lazy" />
+                ) : (
+                    <div className="flex h-full w-full items-center justify-center text-lg text-white/80">🏡</div>
+                )}
+            </div>
+            {/* Info */}
+            <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1">
+                    <span className="text-[10px] font-semibold text-indigo-600">{typeLabel}</span>
+                    {source.sourceId && <span className="text-[9px] text-slate-400">#{source.sourceId}</span>}
+                </div>
+                <div className="text-xs font-medium text-slate-800 line-clamp-1">{source.title}</div>
+                {location && <div className="text-[10px] text-slate-500 line-clamp-1">📍 {location}</div>}
+                <div className="mt-0.5 flex items-center gap-2 text-[10px]">
+                    {source.price ? <span className="font-bold text-rose-600">{formatVnd(source.price)}</span> : null}
+                    {source.area ? <span className="text-slate-500">{formatArea(source.area)}</span> : null}
+                </div>
+                {path && (
+                    <Link to={path} className="mt-0.5 inline-block text-[10px] font-semibold text-blue-600 hover:underline" onClick={onClose}>
+                        Xem chi tiết →
+                    </Link>
+                )}
+            </div>
+        </div>
+    );
+};
+
 /* ─── Quick Reply Chip ─────────────────────────────────────────────────── */
 const QuickReply: React.FC<{ text: string; onClick: (text: string) => void; disabled: boolean }> = ({
     text,
@@ -103,7 +148,7 @@ const QuickReply: React.FC<{ text: string; onClick: (text: string) => void; disa
         type="button"
         disabled={disabled}
         onClick={() => onClick(text)}
-        className="rounded-full border border-blue-300 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+        className="rounded-full border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-1 text-xs font-medium text-blue-700 shadow-sm transition hover:from-blue-100 hover:to-indigo-100 hover:shadow disabled:cursor-not-allowed disabled:opacity-50"
     >
         {text}
     </button>
@@ -143,7 +188,27 @@ const ChatbotWidget: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [compareModal, setCompareModal] = useState<CompareModalState>(null);
+    const [isListening, setIsListening] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement | null>(null);
+    const inputRef = useRef<HTMLInputElement | null>(null);
+
+    // Voice input via Web Speech API
+    const startVoiceInput = useCallback(() => {
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (!SpeechRecognition) return;
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'vi-VN';
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+        recognition.onresult = (event: any) => {
+            const transcript = event.results?.[0]?.[0]?.transcript || '';
+            if (transcript) setQuery((prev) => (prev ? `${prev} ${transcript}` : transcript));
+        };
+        recognition.onstart = () => setIsListening(true);
+        recognition.onend = () => setIsListening(false);
+        recognition.onerror = () => setIsListening(false);
+        recognition.start();
+    }, []);
 
     const sessionId = useMemo(() => {
         const key = 'real-estate-ai-session-id';
@@ -193,6 +258,26 @@ const ChatbotWidget: React.FC = () => {
             }
         };
 
+        // Parse markdown: **bold** and _italic_
+        const parseMarkdown = (text: string, keyPrefix: string): ReactNode[] => {
+            const parts: ReactNode[] = [];
+            // Combined regex for **bold** and _italic_
+            const mdRegex = /\*\*(.+?)\*\*|_(.+?)_/g;
+            let last = 0;
+            let m: RegExpExecArray | null;
+            while ((m = mdRegex.exec(text)) !== null) {
+                if (m.index > last) parts.push(<span key={`${keyPrefix}-t${last}`}>{text.slice(last, m.index)}</span>);
+                if (m[1]) {
+                    parts.push(<strong key={`${keyPrefix}-b${m.index}`} className="font-semibold">{m[1]}</strong>);
+                } else if (m[2]) {
+                    parts.push(<em key={`${keyPrefix}-i${m.index}`} className="text-slate-500 not-italic text-[11px]">{m[2]}</em>);
+                }
+                last = m.index + m[0].length;
+            }
+            if (last < text.length) parts.push(<span key={`${keyPrefix}-e`}>{text.slice(last)}</span>);
+            return parts.length > 0 ? parts : [<span key={`${keyPrefix}-f`}>{text}</span>];
+        };
+
         return content.split('\n').map((line, lineIndex) => {
             const chunks: ReactNode[] = [];
             let lastIndex = 0;
@@ -211,31 +296,20 @@ const ChatbotWidget: React.FC = () => {
                     const prefixText = isDetailLink
                         ? prefixTextRaw.replace(/xem\s+chi\s+ti[eế]t\s*:\s*/i, '')
                         : prefixTextRaw;
-                    chunks.push(<span key={`txt-${lineIndex}-${urlIndex}`}>{prefixText}</span>);
+                    chunks.push(...parseMarkdown(prefixText, `txt-${lineIndex}-${urlIndex}`));
                 }
 
                 const internalPath = toInternalPath(url);
                 if (internalPath) {
                     const useDetailLabel = isDetailLink || isPropertyPath(internalPath);
                     chunks.push(
-                        <Link
-                            key={`url-${lineIndex}-${urlIndex}`}
-                            to={internalPath}
-                            className="break-all text-blue-700 underline"
-                            onClick={() => setIsOpen(false)}
-                        >
+                        <Link key={`url-${lineIndex}-${urlIndex}`} to={internalPath} className="break-all text-blue-600 underline" onClick={() => setIsOpen(false)}>
                             {useDetailLabel ? detailLabel : internalPath}
                         </Link>,
                     );
                 } else {
                     chunks.push(
-                        <a
-                            key={`url-${lineIndex}-${urlIndex}`}
-                            href={url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="break-all text-blue-700 underline"
-                        >
+                        <a key={`url-${lineIndex}-${urlIndex}`} href={url} target="_blank" rel="noreferrer" className="break-all text-blue-600 underline">
                             {isDetailLink ? detailLabel : url}
                         </a>,
                     );
@@ -247,10 +321,10 @@ const ChatbotWidget: React.FC = () => {
             }
 
             if (lastIndex < line.length) {
-                chunks.push(<span key={`tail-${lineIndex}`}>{line.slice(lastIndex)}</span>);
+                chunks.push(...parseMarkdown(line.slice(lastIndex), `tail-${lineIndex}`));
             }
             if (chunks.length === 0) {
-                chunks.push(<span key={`full-${lineIndex}`}>{line}</span>);
+                chunks.push(...parseMarkdown(line, `full-${lineIndex}`));
             }
 
             return (
@@ -469,11 +543,17 @@ const ChatbotWidget: React.FC = () => {
                     <div className="mb-3 flex w-[calc(100vw-2rem)] max-w-sm flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
                         style={{ height: '32rem' }}
                     >
-                        {/* Header */}
-                        <div className="flex shrink-0 items-center justify-between bg-slate-900 px-4 py-3 text-white">
+                        {/* Header — gradient design */}
+                        <div className="flex shrink-0 items-center justify-between bg-gradient-to-r from-indigo-600 via-blue-600 to-cyan-500 px-4 py-3 text-white shadow-md">
                             <div className="flex items-center gap-2">
-                                <span className="inline-block h-2 w-2 rounded-full bg-green-400" />
-                                <span className="text-sm font-semibold">AI Tư Vấn Bất Động Sản</span>
+                                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20 text-sm">🤖</div>
+                                <div>
+                                    <span className="text-sm font-bold">AI Bất Động Sản</span>
+                                    <div className="flex items-center gap-1 text-[10px] text-white/70">
+                                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-300" />
+                                        Đang hoạt động
+                                    </div>
+                                </div>
                             </div>
                             <button
                                 type="button"
@@ -500,75 +580,51 @@ const ChatbotWidget: React.FC = () => {
                                         return (
                                             <div key={msg.id}>
                                                 <div
-                                                    className={`max-w-[85%] rounded-xl border px-3 py-2 text-sm ${msg.sender === 'user'
-                                                        ? 'ml-auto border-blue-100 bg-blue-50 text-slate-800'
-                                                        : 'border-slate-200 bg-white text-slate-800'
+                                                    className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed ${msg.sender === 'user'
+                                                        ? 'ml-auto bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-sm'
+                                                        : 'border border-slate-100 bg-white text-slate-700 shadow-sm'
                                                         }`}
                                                 >
-                                                    <div className="mb-1 text-xs font-semibold text-slate-500">
-                                                        {msg.sender === 'user' ? 'Bạn' : 'AI'}
-                                                    </div>
+                                                    {msg.sender === 'assistant' && (
+                                                        <div className="mb-1.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-indigo-500">
+                                                            <span>🤖</span> Trợ lý AI
+                                                        </div>
+                                                    )}
                                                     <div>
                                                         {isCompareCard
                                                             ? renderCompareTable(msg.sources || [])
                                                             : renderMessageContent(msg.content)}
                                                     </div>
 
-                                                    {/* Primary sources */}
+                                                    {/* Primary sources — Rich property cards */}
                                                     {msg.sender === 'assistant' && !isCompareCard && msg.sources && msg.sources.length > 0 && (
-                                                        <div className="mt-3 space-y-2">
+                                                        <div className="mt-3 space-y-1.5">
                                                             {msg.sources
-                                                                .map((source) => ({ source, path: resolveDetailPath(source) }))
-                                                                .filter((item) => Boolean(item.path))
+                                                                .filter((s) => resolveDetailPath(s))
                                                                 .slice(0, 3)
-                                                                .map(({ source, path }) => (
-                                                                    <div
-                                                                        key={`detail-${source.source ?? 'src'}-${source.sourceId ?? source.title}`}
-                                                                        className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2"
-                                                                    >
-                                                                        <div className="text-xs text-slate-700">
-                                                                            <span className="font-semibold">{(source.source || 'item').toUpperCase()}</span>
-                                                                            {source.sourceId ? <span className="ml-1 text-slate-500">(ID {source.sourceId})</span> : null}
-                                                                            : {source.title}
-                                                                        </div>
-                                                                        <Link
-                                                                            to={path as string}
-                                                                            className="mt-1 inline-block text-xs font-semibold text-blue-700 hover:underline"
-                                                                            onClick={() => setIsOpen(false)}
-                                                                        >
-                                                                            Chi tiết tại đây
-                                                                        </Link>
-                                                                    </div>
+                                                                .map((source) => (
+                                                                    <PropertyCard
+                                                                        key={`src-${source.source}-${source.sourceId}`}
+                                                                        source={source}
+                                                                        onClose={() => setIsOpen(false)}
+                                                                    />
                                                                 ))}
                                                         </div>
                                                     )}
 
                                                     {/* Related sources */}
                                                     {msg.sender === 'assistant' && msg.relatedSources && msg.relatedSources.length > 0 && (
-                                                        <div className="mt-3 space-y-2">
-                                                            <div className="text-xs font-semibold text-slate-600">Bất động sản liên quan</div>
+                                                        <div className="mt-3 space-y-1.5">
+                                                            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Có thể bạn quan tâm</div>
                                                             {msg.relatedSources
-                                                                .map((source) => ({ source, path: resolveDetailPath(source) }))
-                                                                .filter((item) => Boolean(item.path))
+                                                                .filter((s) => resolveDetailPath(s))
                                                                 .slice(0, 3)
-                                                                .map(({ source, path }) => (
-                                                                    <div
-                                                                        key={`related-${source.source ?? 'src'}-${source.sourceId ?? source.title}`}
-                                                                        className="rounded-lg border border-slate-200 bg-white px-2 py-2"
-                                                                    >
-                                                                        <div className="text-xs text-slate-700">
-                                                                            <span className="font-semibold">{(source.source || 'item').toUpperCase()}</span>
-                                                                            {source.sourceId ? <span className="ml-1 text-slate-500">(ID {source.sourceId})</span> : null}
-                                                                            : {source.title}
-                                                                        </div>
-                                                                        <Link
-                                                                            to={path as string}
-                                                                            className="mt-1 inline-block text-xs font-semibold text-blue-700 hover:underline"
-                                                                            onClick={() => setIsOpen(false)}
-                                                                        >
-                                                                            Chi tiết tại đây
-                                                                        </Link>
-                                                                    </div>
+                                                                .map((source) => (
+                                                                    <PropertyCard
+                                                                        key={`rel-${source.source}-${source.sourceId}`}
+                                                                        source={source}
+                                                                        onClose={() => setIsOpen(false)}
+                                                                    />
                                                                 ))}
                                                         </div>
                                                     )}
@@ -602,10 +658,11 @@ const ChatbotWidget: React.FC = () => {
                             <div ref={messagesEndRef} />
                         </div>
 
-                        {/* Input bar */}
+                        {/* Input bar with voice */}
                         <div className="shrink-0 border-t border-slate-200 bg-white p-3">
-                            <div className="flex gap-2">
+                            <div className="flex gap-1.5">
                                 <input
+                                    ref={inputRef}
                                     type="text"
                                     value={query}
                                     onChange={(e) => setQuery(e.target.value)}
@@ -616,14 +673,27 @@ const ChatbotWidget: React.FC = () => {
                                         }
                                     }}
                                     disabled={loading}
-                                    placeholder="Nhập câu hỏi..."
-                                    className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 disabled:bg-slate-50"
+                                    placeholder="Hỏi về bất động sản..."
+                                    className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200 disabled:bg-slate-50"
                                 />
+                                {/* Voice input button */}
+                                {typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) && (
+                                    <button
+                                        type="button"
+                                        onClick={startVoiceInput}
+                                        disabled={loading || isListening}
+                                        className={`rounded-lg px-2.5 py-2 text-sm transition ${isListening ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'} disabled:cursor-not-allowed`}
+                                        aria-label="Nhập giọng nói"
+                                        title="Nhập bằng giọng nói"
+                                    >
+                                        🎤
+                                    </button>
+                                )}
                                 <button
                                     type="button"
                                     onClick={handleSend}
                                     disabled={loading || !query.trim()}
-                                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+                                    className="rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:from-blue-700 hover:to-indigo-700 disabled:cursor-not-allowed disabled:from-blue-300 disabled:to-blue-300"
                                 >
                                     Gửi
                                 </button>
@@ -632,16 +702,17 @@ const ChatbotWidget: React.FC = () => {
                     </div>
                 )}
 
-                {/* FAB button */}
+                {/* FAB button — premium with pulse */}
                 <button
                     type="button"
                     onClick={() => setIsOpen((prev) => !prev)}
-                    className="flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg transition hover:bg-blue-700"
+                    className="relative flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-xl transition-all hover:scale-105 hover:shadow-2xl"
                     aria-label="Mở chatbot"
                 >
-                    <svg viewBox="0 0 24 24" className="h-7 w-7" fill="currentColor" aria-hidden="true">
-                        <path d="M12 3C6.477 3 2 7.03 2 12c0 2.094.81 4.016 2.166 5.545L3 22l4.759-1.585A11.14 11.14 0 0 0 12 21c5.523 0 10-4.03 10-9s-4.477-9-10-9zm0 16a9.15 9.15 0 0 1-3.72-.785l-.324-.145-2.824.94.777-2.796-.202-.322A6.93 6.93 0 0 1 4 12c0-3.86 3.589-7 8-7s8 3.14 8 7-3.589 7-8 7zm-4-8h8v2H8v-2zm0-3h8v2H8V8zm0 6h5v2H8v-2z" />
-                    </svg>
+                    {!isOpen && (
+                        <span className="absolute inset-0 rounded-full bg-blue-500 opacity-30" style={{ animation: 'chatbot-bounce 2s infinite' }} />
+                    )}
+                    <span className="relative text-2xl">{isOpen ? '✕' : '🤖'}</span>
                 </button>
             </div>
 

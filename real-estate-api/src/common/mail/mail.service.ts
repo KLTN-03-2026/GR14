@@ -4,33 +4,88 @@ import * as nodemailer from 'nodemailer';
 
 @Injectable()
 export class MailService {
-  private transporter: nodemailer.Transporter;
   private readonly logger = new Logger(MailService.name);
+  private resendApiKey: string | undefined;
+  private transporter: nodemailer.Transporter | undefined;
 
   constructor(private configService: ConfigService) {
-    const mailPort = Number(this.configService.get('MAIL_PORT') || 587);
-    // port 465 → SSL/TLS (secure=true), 587 → STARTTLS (secure=false)
-    const isSecure = mailPort === 465;
+    this.resendApiKey = this.configService.get<string>('RESEND_API_KEY');
 
-    this.transporter = nodemailer.createTransport({
-      host: this.configService.get('MAIL_HOST') || 'smtp.gmail.com',
-      port: mailPort,
-      secure: isSecure,
-      auth: {
-        user: this.configService.get('MAIL_USER'),
-        pass: this.configService.get('MAIL_PASSWORD'),
-      },
-      connectionTimeout: 10000, // 10s — tránh treo khi VPS block port
-      greetingTimeout: 10000,
-      socketTimeout: 15000,
-    });
-
-    this.logger.log(
-      `Mail transporter: ${this.configService.get('MAIL_HOST')}:${mailPort} secure=${isSecure}`,
-    );
+    if (this.resendApiKey) {
+      // ── Ưu tiên Resend (HTTP API) — không bị VPS block SMTP port ──
+      this.logger.log('Mail provider: Resend (HTTP API)');
+    } else {
+      // ── Fallback: nodemailer SMTP (dùng khi dev local) ──
+      const mailPort = Number(this.configService.get('MAIL_PORT') || 587);
+      const isSecure = mailPort === 465;
+      this.transporter = nodemailer.createTransport({
+        host: this.configService.get('MAIL_HOST') || 'smtp.gmail.com',
+        port: mailPort,
+        secure: isSecure,
+        auth: {
+          user: this.configService.get('MAIL_USER'),
+          pass: this.configService.get('MAIL_PASSWORD'),
+        },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000,
+      });
+      this.logger.log(
+        `Mail provider: nodemailer SMTP ${this.configService.get('MAIL_HOST')}:${mailPort} secure=${isSecure}`,
+      );
+    }
   }
 
   async sendEmail(to: string, subject: string, html: string): Promise<void> {
+    if (this.resendApiKey) {
+      await this.sendViaResend(to, subject, html);
+    } else {
+      await this.sendViaSmtp(to, subject, html);
+    }
+  }
+
+  /** Gửi qua Resend HTTP API — không cần SMTP port, không bị VPS block */
+  private async sendViaResend(
+    to: string,
+    subject: string,
+    html: string,
+  ): Promise<void> {
+    const fromEmail =
+      this.configService.get<string>('RESEND_FROM_EMAIL') ||
+      'onboarding@resend.dev';
+    const fromName =
+      this.configService.get<string>('RESEND_FROM_NAME') ||
+      "Black'S City BĐS";
+
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.resendApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: `${fromName} <${fromEmail}>`,
+        to: [to],
+        subject,
+        html,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Resend API error ${response.status}: ${error}`);
+    }
+
+    this.logger.log(`[Resend] Email sent → ${to}`);
+  }
+
+  /** Fallback SMTP qua nodemailer (dùng khi dev local, không có RESEND_API_KEY) */
+  private async sendViaSmtp(
+    to: string,
+    subject: string,
+    html: string,
+  ): Promise<void> {
+    if (!this.transporter) throw new Error('SMTP transporter not initialized');
     await this.transporter.sendMail({
       from: `"Black'S City BĐS" <${this.configService.get('MAIL_USER')}>`,
       to,
