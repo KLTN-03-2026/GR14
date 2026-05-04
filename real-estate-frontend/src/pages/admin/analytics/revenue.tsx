@@ -1,28 +1,27 @@
 // src/pages/admin/analytics/revenue.tsx
+// Vai trò: "Nhìn nhanh" — phân tích trend, gateway breakdown, top spenders
+// Chi tiết giao dịch → /admin/revenue (Quản lý doanh thu)
 import { useEffect, useState } from "react";
-import { DollarSign, CreditCard, TrendingUp, Users } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { DollarSign, TrendingUp, Users, ArrowRight } from "lucide-react";
 import { analyticsApi } from "@/api/analytics";
 import { useAnalyticsContext } from "@/pages/admin/DashboardPage";
 import type {
   TimeSeriesPoint,
   SummaryKPI,
   GatewayRevenue,
-  PackageRevenue,
   TopSpender,
 } from "@/types/analytics";
 import {
   ChartCard,
   KPICard,
   AnalyticsAreaChart,
-  AnalyticsBarChart,
   AnalyticsDonutChart,
-  HorizontalBar,
   ChartSkeleton,
   EmptyState,
 } from "@/components/analytics/charts";
 
 const GATEWAY_COLORS = ["#3b82f6", "#f43f5e", "#f59e0b", "#34d399"];
-const PACKAGE_COLORS = ["#6366f1", "#8b5cf6", "#a855f7", "#d946ef"];
 
 const formatVND = (v: number) =>
   new Intl.NumberFormat("vi-VN", {
@@ -34,11 +33,11 @@ const formatVND = (v: number) =>
 
 export default function RevenueAnalyticsPage() {
   const { timeType } = useAnalyticsContext();
+  const navigate = useNavigate();
 
   const [summary, setSummary] = useState<SummaryKPI | null>(null);
   const [revenue, setRevenue] = useState<TimeSeriesPoint[]>([]);
   const [gateways, setGateways] = useState<GatewayRevenue[]>([]);
-  const [packages, setPackages] = useState<PackageRevenue[]>([]);
   const [topSpenders, setTopSpenders] = useState<TopSpender[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -48,26 +47,22 @@ export default function RevenueAnalyticsPage() {
       analyticsApi.getSummary(),
       analyticsApi.getRevenue(timeType),
       analyticsApi.getRevenueByGateway(),
-      analyticsApi.getRevenueByPackage(),
       analyticsApi.getTopSpenders(),
     ])
-      .then(([sumData, revData, gwData, pkgData, spendersData]) => {
+      .then(([sumData, revData, gwData, spendersData]) => {
         setSummary(sumData);
         setRevenue(revData);
         setGateways(gwData);
-        setPackages(pkgData);
         setTopSpenders(spendersData.slice(0, 10));
       })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [timeType]);
 
-  const maxPkgRevenue = Math.max(...packages.map((p) => p.total), 1);
-
   return (
     <div className="space-y-6">
-      {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* ── KPI tháng hiện tại ──────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <KPICard
           title="Doanh thu tháng này"
           value={summary ? formatVND(summary.revenueThisMonth) : "…"}
@@ -82,14 +77,6 @@ export default function RevenueAnalyticsPage() {
           accent="#34d399"
         />
         <KPICard
-          title="Gói VIP active"
-          value={packages
-            .reduce((s, p) => s + p.count, 0)
-            .toLocaleString("vi-VN")}
-          icon={<CreditCard size={18} />}
-          accent="#6366f1"
-        />
-        <KPICard
           title="Top spenders"
           value={topSpenders.length}
           icon={<Users size={18} />}
@@ -97,7 +84,7 @@ export default function RevenueAnalyticsPage() {
         />
       </div>
 
-      {/* Revenue over time */}
+      {/* ── Biểu đồ doanh thu theo thời gian ──────────────────────────────── */}
       <ChartCard
         title="Doanh thu theo thời gian"
         subtitle={`Chỉ tính giao dịch thành công (status=1), nhóm theo ${timeType}`}
@@ -118,106 +105,70 @@ export default function RevenueAnalyticsPage() {
         )}
       </ChartCard>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Revenue by gateway — Donut */}
-        <ChartCard
-          title="Doanh thu theo cổng thanh toán"
-          subtitle="VNPay vs MoMo — chỉ tính giao dịch thành công"
-        >
-          {loading ? (
-            <ChartSkeleton height={280} />
-          ) : gateways.length === 0 ? (
-            <EmptyState />
-          ) : (
-            <>
-              <AnalyticsDonutChart
-                data={gateways.map((g) => ({
-                  name: g.gateway.toUpperCase(),
-                  value: g.revenue,
-                }))}
-                nameKey="name"
-                valueKey="value"
-                colors={GATEWAY_COLORS}
-                height={200}
-              />
-              <div className="space-y-3 mt-4">
-                {gateways.map((g, idx) => (
-                  <div
-                    key={g.gateway}
-                    className="flex items-center justify-between rounded-xl px-4 py-3"
-                    style={{ background: "#ffffff" }}
-                  >
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="w-2.5 h-2.5 rounded-full"
-                        style={{
-                          background:
-                            GATEWAY_COLORS[idx % GATEWAY_COLORS.length],
-                        }}
-                      />
-                      <span
-                        className="text-sm font-medium"
-                        style={{ color: "#0f172a" }}
-                      >
-                        {g.gateway.toUpperCase()}
-                      </span>
-                    </div>
-                    <div className="text-right">
-                      <p
-                        className="text-sm font-bold"
-                        style={{ color: "#0f172a" }}
-                      >
-                        {formatVND(g.revenue)}
-                      </p>
-                      <p className="text-xs" style={{ color: "#64748b" }}>
-                        {g.transactions} giao dịch
-                      </p>
-                    </div>
+      {/* ── Cổng thanh toán (Donut) ─────────────────────────────────────────── */}
+      <ChartCard
+        title="Doanh thu theo cổng thanh toán"
+        subtitle="VNPay vs MoMo — chỉ tính giao dịch thành công"
+      >
+        {loading ? (
+          <ChartSkeleton height={280} />
+        ) : gateways.length === 0 ? (
+          <EmptyState />
+        ) : (
+          <>
+            <AnalyticsDonutChart
+              data={gateways.map((g) => ({
+                name: g.gateway.toUpperCase(),
+                value: g.revenue,
+              }))}
+              nameKey="name"
+              valueKey="value"
+              colors={GATEWAY_COLORS}
+              height={200}
+            />
+            <div className="space-y-3 mt-4">
+              {gateways.map((g, idx) => (
+                <div
+                  key={g.gateway}
+                  className="flex items-center justify-between rounded-xl px-4 py-3"
+                  style={{
+                    background: "#f8fafc",
+                    border: "1px solid #f1f5f9",
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-2.5 h-2.5 rounded-full"
+                      style={{
+                        background: GATEWAY_COLORS[idx % GATEWAY_COLORS.length],
+                      }}
+                    />
+                    <span
+                      className="text-sm font-medium"
+                      style={{ color: "#0f172a" }}
+                    >
+                      {g.gateway.toUpperCase()}
+                    </span>
                   </div>
-                ))}
-              </div>
-            </>
-          )}
-        </ChartCard>
+                  <div className="text-right">
+                    <p className="text-sm font-bold" style={{ color: "#0f172a" }}>
+                      {formatVND(g.revenue)}
+                    </p>
+                    <p className="text-xs" style={{ color: "#64748b" }}>
+                      {g.transactions} giao dịch
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </ChartCard>
 
-        {/* Revenue by package — Bar + HorizontalBar */}
-        <ChartCard
-          title="Doanh thu theo gói VIP"
-          subtitle="Tổng doanh thu từng gói (7 / 14 / 30 ngày)"
-        >
-          {loading ? (
-            <ChartSkeleton height={280} />
-          ) : packages.length === 0 ? (
-            <EmptyState />
-          ) : (
-            <>
-              <AnalyticsBarChart
-                data={packages.map((p) => ({ name: p.name, total: p.total }))}
-                bars={[{ key: "total", name: "Doanh thu", color: "#6366f1" }]}
-                xKey="name"
-                height={200}
-                formatter={formatVND}
-              />
-              <div className="space-y-2.5 mt-4">
-                {packages.map((p, idx) => (
-                  <HorizontalBar
-                    key={p.name}
-                    label={p.name}
-                    value={p.total}
-                    max={maxPkgRevenue}
-                    color={PACKAGE_COLORS[idx % PACKAGE_COLORS.length]}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-        </ChartCard>
-      </div>
-
-      {/* Top 10 spenders — table */}
+      {/* ── Top 10 spenders ────────────────────────────────────────────────── */}
       <ChartCard
         title="Top 10 người chi tiêu nhiều nhất"
-        subtitle="Tổng chi tiêu gói VIP — chỉ tính giao dịch thành công"
+        subtitle="Tổng chi tiêu — chỉ tính giao dịch thành công"
       >
         {loading ? (
           <ChartSkeleton height={200} />
@@ -237,7 +188,7 @@ export default function RevenueAnalyticsPage() {
                       >
                         {h}
                       </th>
-                    ),
+                    )
                   )}
                 </tr>
               </thead>
@@ -280,6 +231,46 @@ export default function RevenueAnalyticsPage() {
           </div>
         )}
       </ChartCard>
+
+      {/* ── Banner CTA → Quản lý doanh thu ────────────────────────────────── */}
+      <div
+        className="flex items-center justify-between rounded-2xl px-6 py-5"
+        style={{
+          background: "linear-gradient(135deg, #10b98112 0%, #6366f10a 100%)",
+          border: "1px solid #10b98128",
+        }}
+      >
+        <div className="flex items-center gap-3">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: "#10b98120" }}
+          >
+            <DollarSign size={20} style={{ color: "#10b981" }} />
+          </div>
+          <div>
+            <p className="text-sm font-semibold" style={{ color: "#0f172a" }}>
+              Cần xem chi tiết từng giao dịch?
+            </p>
+            <p className="text-xs mt-0.5" style={{ color: "#64748b" }}>
+              Trang Quản lý doanh thu có bảng giao dịch đầy đủ, bộ lọc nâng
+              cao (VIP / Đặt cọc / phương thức), phân trang và xuất CSV.
+            </p>
+          </div>
+        </div>
+        <button
+          id="btn-goto-revenue-management"
+          onClick={() => navigate("/admin/revenue")}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-150 flex-shrink-0 ml-6 hover:opacity-90 active:scale-95"
+          style={{
+            background: "#10b981",
+            color: "#fff",
+            boxShadow: "0 2px 10px rgba(16,185,129,0.35)",
+          }}
+        >
+          Xem chi tiết giao dịch
+          <ArrowRight size={15} />
+        </button>
+      </div>
     </div>
   );
 }
