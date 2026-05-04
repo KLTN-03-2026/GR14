@@ -674,13 +674,33 @@ export class AiService {
     conversation: ConversationState,
     payload: ChatResponsePayload,
   ): Promise<ChatResult> {
+    // Enrich the answer text stored in memory with source metadata
+    // so extractIdsFromHistory can find property IDs for compare flows.
+    let memoryAnswer = payload.answer;
+    if (payload.sources && payload.sources.length > 0) {
+      const sourceRefs = payload.sources
+        .filter((s) => {
+          const id = Number(s.sourceId);
+          return Number.isFinite(id) && id > 0;
+        })
+        .map((s) => {
+          const src = String(s.source || 'house');
+          const id = Number(s.sourceId);
+          const route = src === 'land' ? 'lands' : src === 'post' ? 'posts' : 'houses';
+          return `[ID ${id} - ${this.frontendUrl}/${route}/${id}]`;
+        });
+      if (sourceRefs.length > 0) {
+        memoryAnswer += `\n(Nguồn: ${sourceRefs.join(', ')})`;
+      }
+    }
+
     const updated = await this.updateConversationMemory(
       conversation.memoryKey,
       conversation.summaryKey,
       conversation.memory,
       conversation.summaryMemory,
       question,
-      payload.answer,
+      memoryAnswer,
     );
 
     return {
@@ -877,11 +897,9 @@ export class AiService {
       }
     }
 
-    // Strategy 2: referential language — use IDs from history
-    if (
-      !intent.compareDescriptions ||
-      intent.compareDescriptions.length === 0
-    ) {
+    // Strategy 2: referential language or fallback — always try IDs from history
+    // when earlier strategies didn't return a result
+    {
       const historyIds = this.compareService.extractIdsFromHistory(
         conversation.memory,
       );

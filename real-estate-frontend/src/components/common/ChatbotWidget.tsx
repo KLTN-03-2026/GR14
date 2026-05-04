@@ -120,7 +120,6 @@ const PropertyCard: React.FC<{ source: ChatSource; onClose: () => void }> = ({ s
             <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1">
                     <span className="text-[10px] font-semibold text-indigo-600">{typeLabel}</span>
-                    {source.sourceId && <span className="text-[9px] text-slate-400">#{source.sourceId}</span>}
                 </div>
                 <div className="text-xs font-medium text-slate-800 line-clamp-1">{source.title}</div>
                 {location && <div className="text-[10px] text-slate-500 line-clamp-1">📍 {location}</div>}
@@ -226,7 +225,7 @@ const ChatbotWidget: React.FC = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, isOpen, loading]);
 
-    const renderMessageContent = (content: string) => {
+    const renderMessageContent = (content: string, sources?: ChatSource[]) => {
         // Check if content is HTML table (from compare answer)
         if (content.trim().startsWith('<div') && content.includes('<table')) {
             return (
@@ -278,6 +277,131 @@ const ChatbotWidget: React.FC = () => {
             return parts.length > 0 ? parts : [<span key={`${keyPrefix}-f`}>{text}</span>];
         };
 
+        // Build inline property card lookup: split text by numbered sections
+        // and insert the matching PropertyCard right after each section
+        const filteredSources = (sources || []).filter((s) => resolveDetailPath(s)).slice(0, 5);
+        const hasNumberedSections = filteredSources.length > 0 && /^\d+\.\s/m.test(content);
+
+        if (hasNumberedSections) {
+            // Split content into sections by numbered headings (1. ... 2. ... 3. ...)
+            const lines = content.split('\n');
+            const sections: { lines: string[]; sourceIndex: number }[] = [];
+            let currentSection: { lines: string[]; sourceIndex: number } | null = null;
+            let numberedCount = 0;
+            let sawBlankInSection = false;
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                const numberedMatch = line.match(/^(\d+)\.\s/);
+                if (numberedMatch) {
+                    if (currentSection) sections.push(currentSection);
+                    currentSection = { lines: [line], sourceIndex: numberedCount };
+                    numberedCount++;
+                    sawBlankInSection = false;
+                } else if (currentSection) {
+                    // Detect trailing paragraph: blank line followed by non-blank, non-numbered text
+                    if (line.trim() === '') {
+                        sawBlankInSection = true;
+                        currentSection.lines.push(line);
+                    } else if (sawBlankInSection && !line.match(/^\s/) && !line.match(/^\d+\.\s/)) {
+                        // This is a new paragraph after a blank line (closing text like "Bạn có muốn...")
+                        // Close the current numbered section and start a trailing section
+                        sections.push(currentSection);
+                        currentSection = null;
+                        sawBlankInSection = false;
+                        // Collect remaining lines as a trailing (non-numbered) section
+                        const trailingLines = lines.slice(i);
+                        sections.push({ lines: trailingLines, sourceIndex: -1 });
+                        break;
+                    } else {
+                        currentSection.lines.push(line);
+                    }
+                } else {
+                    // Lines before first numbered section
+                    sections.push({ lines: [line], sourceIndex: -1 });
+                }
+            }
+            if (currentSection) sections.push(currentSection);
+
+            return sections.map((section, sectionIdx) => {
+                const sectionContent = section.lines.map((line, lineIndex) => {
+                    const chunks: ReactNode[] = [];
+                    let lastIndex = 0;
+                    let urlIndex = 0;
+                    urlRegex.lastIndex = 0;
+
+                    let match = urlRegex.exec(line);
+                    while (match) {
+                        const url = match[0];
+                        const start = match.index;
+                        const prefix = line.slice(0, start).toLowerCase();
+                        const isDetailLink = prefix.includes('xem chi tiet') || prefix.includes('xem chi tiết');
+
+                        if (start > lastIndex) {
+                            const prefixTextRaw = line.slice(lastIndex, start);
+                            const prefixText = isDetailLink
+                                ? prefixTextRaw.replace(/xem\s+chi\s+ti[eế]t\s*:\s*/i, '')
+                                : prefixTextRaw;
+                            chunks.push(...parseMarkdown(prefixText, `s${sectionIdx}-txt-${lineIndex}-${urlIndex}`));
+                        }
+
+                        const internalPath = toInternalPath(url);
+                        if (internalPath) {
+                            const useDetailLabel = isDetailLink || isPropertyPath(internalPath);
+                            chunks.push(
+                                <Link key={`s${sectionIdx}-url-${lineIndex}-${urlIndex}`} to={internalPath} className="break-all text-blue-600 underline" onClick={() => setIsOpen(false)}>
+                                    {useDetailLabel ? detailLabel : internalPath}
+                                </Link>,
+                            );
+                        } else {
+                            chunks.push(
+                                <a key={`s${sectionIdx}-url-${lineIndex}-${urlIndex}`} href={url} target="_blank" rel="noreferrer" className="break-all text-blue-600 underline">
+                                    {isDetailLink ? detailLabel : url}
+                                </a>,
+                            );
+                        }
+
+                        urlIndex += 1;
+                        lastIndex = start + url.length;
+                        match = urlRegex.exec(line);
+                    }
+
+                    if (lastIndex < line.length) {
+                        chunks.push(...parseMarkdown(line.slice(lastIndex), `s${sectionIdx}-tail-${lineIndex}`));
+                    }
+                    if (chunks.length === 0) {
+                        chunks.push(...parseMarkdown(line, `s${sectionIdx}-full-${lineIndex}`));
+                    }
+
+                    return (
+                        <div key={`s${sectionIdx}-line-${lineIndex}`} className="whitespace-pre-wrap">
+                            {chunks}
+                        </div>
+                    );
+                });
+
+                // Insert PropertyCard right after this numbered section
+                const matchedSource = section.sourceIndex >= 0 && section.sourceIndex < filteredSources.length
+                    ? filteredSources[section.sourceIndex]
+                    : null;
+
+                return (
+                    <div key={`section-${sectionIdx}`}>
+                        {sectionContent}
+                        {matchedSource && (
+                            <div className="my-1.5">
+                                <PropertyCard
+                                    source={matchedSource}
+                                    onClose={() => setIsOpen(false)}
+                                />
+                            </div>
+                        )}
+                    </div>
+                );
+            });
+        }
+
+        // Fallback: no numbered sections, render normally
         return content.split('\n').map((line, lineIndex) => {
             const chunks: ReactNode[] = [];
             let lastIndex = 0;
@@ -593,11 +717,11 @@ const ChatbotWidget: React.FC = () => {
                                                     <div>
                                                         {isCompareCard
                                                             ? renderCompareTable(msg.sources || [])
-                                                            : renderMessageContent(msg.content)}
+                                                            : renderMessageContent(msg.content, msg.sources)}
                                                     </div>
 
-                                                    {/* Primary sources — Rich property cards */}
-                                                    {msg.sender === 'assistant' && !isCompareCard && msg.sources && msg.sources.length > 0 && (
+                                                    {/* Primary sources — only show grouped cards if text has no numbered sections (otherwise they're inlined) */}
+                                                    {msg.sender === 'assistant' && !isCompareCard && msg.sources && msg.sources.length > 0 && !/^\d+\.\s/m.test(msg.content) && (
                                                         <div className="mt-3 space-y-1.5">
                                                             {msg.sources
                                                                 .filter((s) => resolveDetailPath(s))
@@ -740,7 +864,7 @@ const ChatbotWidget: React.FC = () => {
                                     return (
                                         <div key={`modal-${row.idx}-${row.source.sourceId}`} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                                             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                                                <div className="text-sm font-semibold text-blue-700">Căn {row.idx} {row.source.sourceId ? `(ID ${row.source.sourceId})` : ''}</div>
+                                                <div className="text-sm font-semibold text-blue-700">Căn {row.idx}</div>
                                                 {badges.length > 0 && (
                                                     <div className="flex flex-wrap gap-1">
                                                         {badges.map((b) => (

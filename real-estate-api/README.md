@@ -1,98 +1,204 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# 🔧 Real Estate API — NestJS Backend
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Backend RESTful API cho nền tảng bất động sản, xây dựng bằng **NestJS 11** + **TypeScript** + **Prisma ORM**.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## 📐 Kiến trúc
 
-## Description
-
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
-
-```bash
-$ npm install
+```
+src/
+├── main.ts                       # Bootstrap + Swagger + Helmet + CORS
+├── app.module.ts                 # Root module
+├── prisma/                       # PrismaService (global)
+├── common/                       # Shared infrastructure
+│   ├── cloudinary/               #   Image upload CDN
+│   ├── mail/                     #   Email via Resend API + RabbitMQ consumer
+│   ├── redis/                    #   Redis cache (ioredis)
+│   └── utils/                    #   Shared helpers
+└── modules/                      # 22 feature modules
+    ├── auth/                     #   JWT + Google OAuth + OTP + Refresh Token
+    ├── user/                     #   User CRUD + role assignment
+    ├── customer/                 #   Customer profiles
+    ├── employee/                 #   Staff management + SLA tracking
+    ├── role/                     #   RBAC roles
+    ├── profile/                  #   User profile management
+    ├── house/                    #   House CRUD + Cloudinary images
+    ├── land/                     #   Land CRUD + Cloudinary images
+    ├── property-category/        #   Property categories (HOUSE/LAND)
+    ├── favorite/                 #   Bookmark houses/lands
+    ├── featured/                 #   Featured properties for homepage
+    ├── appointment/              #   Scheduling + auto-assign via RabbitMQ + SLA
+    ├── deposit/                  #   Property deposit management
+    ├── post/                     #   News/listings + approval workflow + VIP
+    ├── payment/                  #   VNPay + MoMo integration
+    ├── vip-package/              #   VIP packages + subscriptions
+    ├── notification/             #   In-app notifications
+    ├── ai/                       #   RAG Chatbot (Gemini/Ollama + Qdrant)
+    ├── recommendation/           #   Hybrid AI property suggestions
+    ├── fengshui/                 #   Feng shui analysis (bát trạch, mệnh cung)
+    ├── valuation/                #   Proxy to ML valuation service
+    └── analytics/                #   Admin KPI dashboards (7 report types)
 ```
 
-## Compile and run the project
+## 🚀 Khởi chạy
+
+### Qua Docker (khuyến nghị)
+
+Xem [README gốc](../README.md) — backend chạy tự động cùng Docker Compose.
+
+### Chạy local (development)
 
 ```bash
-# development
-$ npm run start
+# 1. Cài đặt dependencies
+npm install
 
-# watch mode
-$ npm run start:dev
+# 2. Cấu hình .env
+cp .env.example .env
+# → Sửa DATABASE_URL, JWT_SECRET, CLOUDINARY_*, MAIL_*, etc.
 
-# production mode
-$ npm run start:prod
+# 3. Generate Prisma client + migrate
+npx prisma generate
+npx prisma migrate dev
+
+# 4. Seed dữ liệu mẫu
+npx prisma db seed
+
+# 5. Chạy dev server (watch mode)
+npm run start:dev
 ```
 
-## Run tests
+API chạy tại `http://localhost:5000/api`
+
+## 📚 API Endpoints chính
+
+### Authentication (`/api/auth`)
+| Method | Path | Mô tả |
+|--------|------|-------|
+| POST | `/auth/login` | Đăng nhập (JWT access + refresh) |
+| POST | `/auth/register` | Đăng ký + gửi OTP email |
+| POST | `/auth/verify-otp` | Xác thực OTP |
+| POST | `/auth/google` | Đăng nhập Google OAuth |
+| POST | `/auth/refresh` | Refresh access token |
+| POST | `/auth/forgot-password` | Gửi OTP reset password |
+| POST | `/auth/reset-password` | Đặt mật khẩu mới |
+
+### Properties (`/api/houses`, `/api/lands`)
+| Method | Path | Mô tả |
+|--------|------|-------|
+| GET | `/houses` | Danh sách nhà (filter, paginate, sort) |
+| GET | `/houses/:id` | Chi tiết nhà |
+| POST | `/houses` | Tạo nhà mới (Admin/Employee) |
+| PUT | `/houses/:id` | Cập nhật nhà |
+| DELETE | `/houses/:id` | Xoá nhà |
+| GET | `/lands` | Danh sách đất |
+| GET | `/lands/:id` | Chi tiết đất |
+
+### AI & Recommendation (`/api/ai`, `/api/recommendations`)
+| Method | Path | Mô tả |
+|--------|------|-------|
+| POST | `/ai/chat` | RAG chatbot hỏi đáp |
+| POST | `/ai/index` | Index data vào Qdrant |
+| GET | `/recommendations/ai` | Hybrid AI gợi ý BĐS |
+| GET | `/recommendations/houses` | Gợi ý nhà (rule-based) |
+| GET | `/recommendations/lands` | Gợi ý đất (rule-based) |
+| POST | `/recommendations/track` | Ghi nhận hành vi user |
+
+### Appointments (`/api/appointments`)
+| Method | Path | Mô tả |
+|--------|------|-------|
+| POST | `/appointments` | Đặt lịch hẹn → auto-assign NV |
+| GET | `/appointments` | Danh sách lịch hẹn |
+| PUT | `/appointments/:id` | Cập nhật trạng thái |
+
+### Payment (`/api/payment`)
+| Method | Path | Mô tả |
+|--------|------|-------|
+| POST | `/payment/create` | Tạo thanh toán VNPay/MoMo |
+| GET | `/payment/vnpay/callback` | VNPay callback |
+| POST | `/payment/momo/callback` | MoMo callback |
+| GET | `/payment/packages` | Danh sách gói VIP |
+
+### Analytics (`/api/analytics`) — Admin only
+| Method | Path | Mô tả |
+|--------|------|-------|
+| GET | `/analytics/overview` | Tổng quan dashboard |
+| GET | `/analytics/users` | Thống kê người dùng |
+| GET | `/analytics/revenue` | Thống kê doanh thu |
+| GET | `/analytics/appointments` | Thống kê lịch hẹn |
+| GET | `/analytics/behavior` | Phân tích hành vi |
+| GET | `/analytics/employees` | KPI nhân viên |
+
+## 🗄️ Database Schema
+
+**18 models** Prisma — MySQL 8.0:
+
+| Model | Mô tả |
+|-------|-------|
+| `User` | Người dùng hệ thống |
+| `Role`, `UserRole` | RBAC (ADMIN, EMPLOYEE, CUSTOMER) |
+| `Customer`, `Employee` | Profile theo role |
+| `House`, `HouseImage` | BĐS nhà + ảnh |
+| `Land`, `LandImage` | BĐS đất + ảnh |
+| `PropertyCategory` | Danh mục BĐS (HOUSE/LAND) |
+| `Appointment` | Lịch hẹn xem BĐS + SLA tracking |
+| `PropertyDeposit` | Đặt cọc BĐS |
+| `Favorite` | Yêu thích BĐS |
+| `Post`, `PostImage` | Bài đăng tin/mua bán |
+| `UserBehavior` | Tracking click/save cho recommendation |
+| `VipPackage`, `VipSubscription` | Gói VIP + đăng ký |
+| `Payment`, `PaymentTransaction` | Thanh toán VNPay/MoMo |
+| `Notification` | Thông báo in-app |
+| `RefreshToken` | JWT refresh tokens |
+| `PasswordReset` | OTP reset mật khẩu |
+
+### Status Conventions
+| Model | Giá trị | Ý nghĩa |
+|-------|---------|---------|
+| User/House/Land | 0=inactive, 1=active | Soft delete |
+| Post | 1=pending, 2=approved, 3=rejected | Duyệt bài |
+| Appointment | 0=pending, 1=approved, 2=rejected | Duyệt lịch hẹn |
+| SLA | 0=on_track, 1=at_risk, 2=breached | SLA tracking |
+| Payment | 0=pending, 1=success, 2=failed | Thanh toán |
+
+## 🔧 Message Queues (RabbitMQ)
+
+| Queue | Consumer | Chức năng |
+|-------|----------|-----------|
+| `mail_queue` | MailConsumer | Gửi email async (OTP, thông báo lịch hẹn, thanh toán) |
+| `appointment_auto_assign_queue` | AppointmentConsumer | Tự động phân công NV theo khu vực + workload |
+
+## 📦 Scripts
 
 ```bash
-# unit tests
-$ npm run test
+npm run start:dev      # Dev server (watch mode)
+npm run start:prod     # Production
+npm run build          # Build production bundle
+npm run lint           # ESLint fix
+npm run format         # Prettier format
+npm run test           # Unit tests
+npm run test:e2e       # E2E tests
 
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+# Prisma
+npm run prisma:generate  # Generate Prisma client
+npm run prisma:migrate   # Run migrations
+npm run prisma:seed      # Seed database
+npm run prisma:studio    # GUI database browser
 ```
 
-## Deployment
+## 🔗 Dependencies chính
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+| Package | Vai trò |
+|---------|---------|
+| `@nestjs/core` 11.x | Framework |
+| `@prisma/client` 5.22 | Database ORM |
+| `@nestjs/passport` + `passport-jwt` | JWT authentication |
+| `@nestjs/throttler` | Rate limiting |
+| `@nestjs/schedule` | Cron jobs |
+| `@nestjs/microservices` | RabbitMQ integration |
+| `amqp-connection-manager` | RabbitMQ client |
+| `ioredis` | Redis client |
+| `cloudinary` | Image upload |
+| `axios` | HTTP client (Qdrant, Ollama, Gemini, VNPay, MoMo) |
+| `bcrypt` | Password hashing |
+| `helmet` | Security headers |
+| `compression` | Gzip responses |
+| `class-validator` | DTO validation |

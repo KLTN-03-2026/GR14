@@ -1,3 +1,13 @@
+/**
+ * ==================== CONTROLLER GỢI Ý BĐS ====================
+ * Nhận request từ frontend, gọi RecommendationService xử lý, trả kết quả.
+ *
+ * 4 endpoints:
+ *   GET  /recommendations/houses  → Gợi ý nhà cho user
+ *   GET  /recommendations/lands   → Gợi ý đất cho user
+ *   GET  /recommendations/ai      → Gợi ý AI hybrid (nhà + đất, dùng Qdrant)
+ *   POST /recommendations/track   → Ghi lại hành vi user (click/save)
+ */
 import {
   Controller,
   Get,
@@ -11,12 +21,18 @@ import {
   DefaultValuePipe,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { Throttle } from '@nestjs/throttler';
 import { RecommendationService } from './recommendation.service';
+import { TrackBehaviorDto } from './dto/track-behavior.dto';
 
 @Controller('recommendations')
 export class RecommendationController {
   constructor(private readonly recommendationService: RecommendationService) {}
 
+  /**
+   * Lấy userId từ JWT token đã decode.
+   * Nếu không xác định được → throw lỗi 401 Unauthorized.
+   */
   private getCurrentUserId(user: any): number {
     const userId = user?.id ?? user?.userId;
     if (!userId) {
@@ -29,7 +45,9 @@ export class RecommendationController {
 
   /**
    * GET /recommendations/houses?limit=5
-   * Get personalized house recommendations for authenticated user
+   * Gợi ý nhà cho user dựa trên hành vi (Rule-based, không dùng AI).
+   * - Yêu cầu đăng nhập (JWT)
+   * - limit: số BĐS trả về (mặc định 5)
    */
   @Get('houses')
   @UseGuards(AuthGuard('jwt'))
@@ -45,7 +63,7 @@ export class RecommendationController {
 
   /**
    * GET /recommendations/lands?limit=5
-   * Get personalized land recommendations for authenticated user
+   * Gợi ý đất cho user dựa trên hành vi (Rule-based, không dùng AI).
    */
   @Get('lands')
   @UseGuards(AuthGuard('jwt'))
@@ -61,7 +79,8 @@ export class RecommendationController {
 
   /**
    * GET /recommendations/ai?limit=10
-   * Get hybrid AI recommendations (embedding + rule-based) for authenticated user
+   * Gợi ý AI hybrid: kết hợp Embedding (Qdrant) + Rule-based scoring.
+   * Đây là endpoint chính, trả về cả nhà lẫn đất xen kẽ.
    */
   @Get('ai')
   @UseGuards(AuthGuard('jwt'))
@@ -77,14 +96,17 @@ export class RecommendationController {
 
   /**
    * POST /recommendations/track
-   * Track user behavior for recommendation engine
+   * Ghi lại hành vi user khi click/save BĐS trên frontend.
+   * Body: { action: "click"|"save", houseId?: number, landId?: number }
+   *
+   * Rate limited: tối đa 60 request/phút/user để chống spam.
+   *
+   * Sau khi ghi hành vi → xóa cache gợi ý cũ → lần gọi tiếp sẽ tính lại.
    */
   @Post('track')
   @UseGuards(AuthGuard('jwt'))
-  trackBehavior(
-    @Req() req: any,
-    @Body() body: { action: string; houseId?: number; landId?: number },
-  ) {
+  @Throttle({ default: { ttl: 60000, limit: 60 } })
+  trackBehavior(@Req() req: any, @Body() body: TrackBehaviorDto) {
     return this.recommendationService.trackBehavior(
       this.getCurrentUserId(req.user),
       body.action,

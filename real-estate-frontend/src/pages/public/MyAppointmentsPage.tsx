@@ -17,7 +17,8 @@ import {
 
 const fmtAmount = (val: string | number | null | undefined) => {
   if (!val) return '—';
-  return Number(val).toLocaleString('vi-VN') + ' ₫';
+  const str = Math.round(Number(val)).toString();
+  return str.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' ₫';
 };
 
 const fmtDate = (val: string | null | undefined) => {
@@ -90,6 +91,7 @@ const DepositBadge = ({ status }: { status: DepositStatus }) => {
     </span>
   );
 };
+
 
 // ─── Refund Modal ─────────────────────────────────────────────────────────────
 
@@ -616,10 +618,12 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
             type="button"
             onClick={onDeposit}
             className="whitespace-nowrap inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold text-white transition-all active:scale-95"
-            style={{
-              background: 'linear-gradient(135deg,#f97316,#ea6c0a)',
-              boxShadow: '0 2px 8px rgba(249,115,22,0.35)',
-            }}
+            style={
+              appointment.actualStatus === 1
+                ? { background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', boxShadow: '0 2px 8px rgba(124,58,237,0.35)' }
+                : { background: 'linear-gradient(135deg,#f97316,#ea6c0a)', boxShadow: '0 2px 8px rgba(249,115,22,0.35)' }
+            }
+            title={appointment.actualStatus === 1 ? '⚠️ Cọc chốt mua sau khi xem — không được hoàn tiền' : 'Đặt cọc giữ chỗ'}
           >
             <svg
               width="12" height="12" viewBox="0 0 24 24"
@@ -629,7 +633,7 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
               <path d="M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2" />
               <path d="M16 12h6v4h-6a2 2 0 0 1 0-4z" />
             </svg>
-            Đặt cọc
+            {appointment.actualStatus === 1 ? 'Cọc chốt mua ⚠️' : 'Đặt cọc'}
           </button>
         )}
 
@@ -777,7 +781,7 @@ const MyAppointmentsPage: React.FC = () => {
           </div>
           <button
             onClick={() => navigate('/houses')}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-200 transition hover:bg-blue-700 active:scale-95"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#002f5e] px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-200 transition hover:bg-[#001d3a] active:scale-95"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -898,6 +902,7 @@ const MyAppointmentsPage: React.FC = () => {
         <DepositFormSection
           appointmentId={depositTarget.id}
           appointmentDate={depositTarget.appointmentDate}
+          isAfterViewing={depositTarget.actualStatus === 1}
           propertyTitle={
             depositTarget.house?.title ||
             depositTarget.land?.title ||
