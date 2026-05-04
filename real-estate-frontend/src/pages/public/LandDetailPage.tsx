@@ -2,14 +2,17 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { HeartOutlined, HeartFilled, CalendarOutlined } from '@ant-design/icons';
-import { landApi, recommendationApi } from '@/api';
+import { appointmentApi, landApi, recommendationApi } from '@/api';
+import { depositApi } from '@/api/deposit';
 import { PROPERTY_STATUS, PROPERTY_STATUS_LABELS } from '@/constants';
 import { useFavorites } from '@/context/FavoritesContext';
 import { Loading } from '@/components/common';
 import { formatCurrency, formatArea, getFullAddress, formatDateTime } from '@/utils';
 import { useAuthStore } from '@/stores/authStore';
-import type { Land } from '@/types';
-
+import type { Appointment, Land } from '@/types';
+import DepositFormSection from "@/components/common/DepositFormSection";
+import RefundRequestModal from '@/components/common/RefundRequestModal';
+import type { Deposit } from '@/types/deposit';
 
 const getImages = (land: Land): string[] => {
     if (!land.images || land.images.length === 0) return [];
@@ -354,6 +357,12 @@ const LandDetailPage: React.FC = () => {
     const { isFavoritedLand, addLandFavorite, removeFavoritedLand } = useFavorites();
     const [land, setLand] = useState<Land | null>(null);
     const [loading, setLoading] = useState(true);
+    const [hasBookedProperty, setHasBookedProperty] = useState(false);
+    const [hasApprovedPropertyAppointment, setHasApprovedPropertyAppointment] = useState(false);
+    const [approvedAppointment, setApprovedAppointment] = useState<Appointment | null>(null);
+    const [propertyDeposit, setPropertyDeposit] = useState<Deposit | null>(null);
+    const [showDepositForm, setShowDepositForm] = useState(false);
+    const [showRefundModal, setShowRefundModal] = useState(false);
 
     // Quay lại đúng trang + filter:
     // List page truyền: navigate(`/lands/${id}?from=${encodeURIComponent(location.pathname + location.search)}`)
@@ -371,6 +380,46 @@ const LandDetailPage: React.FC = () => {
     useEffect(() => {
         if (id) loadLand(Number(id));
     }, [id]);
+
+    useEffect(() => {
+        const loadMyPropertyAppointments = async () => {
+            if (!isAuthenticated || !land) {
+                setHasBookedProperty(false);
+                setHasApprovedPropertyAppointment(false);
+                setPropertyDeposit(null);
+                return;
+            }
+
+            try {
+                const res = await appointmentApi.getMyAppointments({ page: 1, limit: 100 });
+                const appointments: Appointment[] = res.data?.data || res.data || [];
+                const relatedAppointments = appointments.filter((appt) =>
+                    (appt.houseId === land.id || appt.landId === land.id) && appt.status !== 2
+                );
+                const booked = relatedAppointments.length > 0;
+                const approvedAppointment = relatedAppointments.find((appt) =>
+                    (appt.houseId === land.id || appt.landId === land.id) && appt.status === 1
+                ) || null;
+
+                const depositsRes = await depositApi.getMyDeposits(1, 100);
+                const deposits: Deposit[] = depositsRes.data?.data || [];
+                const refundableDeposit = deposits.find((d) =>
+                    d.status === 1 && relatedAppointments.some((appt) => appt.id === d.appointmentId && appt.actualStatus !== 1)
+                ) || null;
+
+                setHasBookedProperty(booked);
+                setHasApprovedPropertyAppointment(Boolean(approvedAppointment));
+                setApprovedAppointment(approvedAppointment);
+                setPropertyDeposit(refundableDeposit);
+            } catch {
+                setHasBookedProperty(false);
+                setHasApprovedPropertyAppointment(false);
+                setPropertyDeposit(null);
+            }
+        };
+
+        void loadMyPropertyAppointments();
+    }, [isAuthenticated, land]);
 
     const loadLand = async (landId: number) => {
         try {
@@ -410,8 +459,13 @@ const LandDetailPage: React.FC = () => {
 
     const images = getImages(land);
     const fullAddress = getFullAddress(land);
-    const landStatusLabel = PROPERTY_STATUS_LABELS[land.status] || 'Không xác định';
-    const landStatusTagClass = getPropertyStatusTagClass(land.status);
+    const isHeldByDeposit = land.depositStatus === 1;
+    const landStatusLabel = isHeldByDeposit
+        ? 'Đã giữ cọc'
+        : PROPERTY_STATUS_LABELS[land.status] || 'Không xác định';
+    const landStatusTagClass = isHeldByDeposit
+        ? 'bg-orange-50 text-orange-700 border-orange-200'
+        : getPropertyStatusTagClass(land.status);
 
     return (
         <div className="w-full pb-20" style={{ background: 'var(--pl-background, #f9fafb)' }}>
@@ -599,26 +653,117 @@ const LandDetailPage: React.FC = () => {
                                     {isFavoritedLand(land.id) ? 'Đã yêu thích' : 'Yêu thích'}
                                 </button>
 
-                                {/* Appointment button */}
-                                {land.status === PROPERTY_STATUS.SOLD ? (
-                                    <div className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full bg-gray-100 text-gray-400 text-[13px] font-semibold border border-gray-200 cursor-not-allowed select-none">
-                                        <CalendarOutlined className="text-[15px]" />
-                                        Đất đã được bán
+                                {propertyDeposit ? (
+                                    <div className="w-full rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 text-center mb-3">
+                                        Bạn đang giữ cọc bất động sản này.
                                     </div>
-                                ) : (
+                                ) : null}
+
+                                {/* Appointment button */}
+                                {!propertyDeposit && (
+                                    land.status === PROPERTY_STATUS.SOLD ? (
+                                        <div className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full bg-gray-100 text-gray-400 text-[13px] font-semibold border border-gray-200 cursor-not-allowed select-none">
+                                            <CalendarOutlined className="text-[15px]" />
+                                            Đất đã được bán
+                                        </div>
+                                    ) : land.depositStatus === 1 ? (
+                                        <div className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full bg-orange-100 text-orange-700 text-[13px] font-semibold border border-orange-200">
+                                            <CalendarOutlined className="text-[15px]" />
+                                            Đã giữ cọc
+                                        </div>
+                                    ) : hasBookedProperty ? (
+                                        <button
+                                            onClick={() => navigate('/appointment')}
+                                            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full bg-gray-200 text-gray-500 text-[13px] font-semibold border border-gray-200 transition-opacity duration-200"
+                                        >
+                                            <CalendarOutlined className="text-[15px]" />
+                                            Bạn đã đặt lịch cho bất động sản này
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={() => {
+                                                if (!isAuthenticated) {
+                                                    navigate('/login');
+                                                } else {
+                                                    navigate(`/appointment/booking?landId=${land.id}`);
+                                                }
+                                            }}
+                                            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full text-white text-[13px] font-semibold hover:opacity-90 transition-opacity duration-200"
+                                            style={{ background: 'linear-gradient(135deg, var(--pl-primary, #1e3a5f), var(--pl-accent, #0d9488))' }}
+                                        >
+                                            <CalendarOutlined className="text-[15px]" />
+                                            Đặt Lịch Hẹn
+                                        </button>
+                                    )
+                                )}
+
+                                {/* Deposit button */}
+                                {propertyDeposit ? (
                                     <button
-                                        onClick={() => navigate(`/appointment/booking?landId=${land.id}`)}
-                                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full text-white text-[13px] font-semibold hover:opacity-90 transition-opacity duration-200"
-                                        style={{ background: 'linear-gradient(135deg, var(--pl-primary, #1e3a5f), var(--pl-accent, #0d9488))' }}
+                                        onClick={() => setShowRefundModal(true)}
+                                        className="w-full mt-3 flex items-center justify-center gap-2 py-2.5 rounded-full text-[13px] font-semibold transition-all duration-200 text-white bg-red-500 hover:opacity-90"
                                     >
                                         <CalendarOutlined className="text-[15px]" />
-                                        Đặt Lịch Hẹn
+                                        Hoàn tiền cọc
                                     </button>
+                                ) : land.depositStatus !== 1 && (
+                                    <>
+                                        <button
+                                            onClick={() => {
+                                                if (!isAuthenticated) {
+                                                    navigate('/login');
+                                                } else if (!hasApprovedPropertyAppointment || !approvedAppointment) {
+                                                    toast.error('Bạn cần có lịch hẹn đã duyệt để đặt cọc.');
+                                                } else {
+                                                    setShowDepositForm((open) => !open);
+                                                }
+                                            }}
+                                            disabled={!hasApprovedPropertyAppointment}
+                                            className={`w-full mt-3 flex items-center justify-center gap-2 py-2.5 rounded-full text-[13px] font-semibold transition-all duration-200 ${hasApprovedPropertyAppointment ? 'text-white bg-orange-500 hover:opacity-90' : 'text-gray-500 bg-gray-100 cursor-not-allowed'}`}
+                                        >
+                                            <CalendarOutlined className="text-[15px]" />
+                                            {hasApprovedPropertyAppointment
+                                                ? showDepositForm ? 'Đóng form đặt cọc' : 'Đặt Cọc'
+                                                : 'Đặt Cọc (cần lịch hẹn đã duyệt)'}
+                                        </button>
+
+                                        {showDepositForm && approvedAppointment && (
+                                            <div className="mt-4">
+                                                <DepositFormSection
+                                                    appointmentId={approvedAppointment.id}
+                                                    appointmentDate={approvedAppointment.appointmentDate}
+                                                    propertyTitle={land.title}
+                                                    propertyPrice={land.price}
+                                                    propertyImage={images[1] || images[0]}
+                                                    onClose={() => setShowDepositForm(false)}
+                                                    onSuccess={() => {
+                                                        setShowDepositForm(false);
+                                                        navigate('/appointment');
+                                                    }}
+                                                    disabled={!hasApprovedPropertyAppointment}
+                                                />
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+
+                                {showRefundModal && propertyDeposit && (
+                                    <RefundRequestModal
+                                        depositId={propertyDeposit.id}
+                                        amount={Number(propertyDeposit.amount)}
+                                        propertyTitle={land.title}
+                                        onClose={() => setShowRefundModal(false)}
+                                        onSuccess={() => {
+                                            setShowRefundModal(false);
+                                            setPropertyDeposit(null);
+                                            navigate('/appointment');
+                                        }}
+                                    />
                                 )}
 
                                 {/* Trust points */}
                                 <div className="mt-5 space-y-2 border-t pt-4 text-xs" style={{ borderColor: 'var(--pl-border, #e5e7eb)', color: 'var(--pl-muted-fg, #6b7280)' }}>
-                                    {['Tin thật, đã kiểm duyệt', 'Hỗ trợ vay ngân hàng tới 70%', 'Miễn phí tư vấn pháp lý'].map((t, i) => (
+                                    {['Tin thật, đã kiểm duyệt', , 'Miễn phí tư vấn pháp lý'].map((t, i) => (
                                         <div key={i} className="flex items-center gap-2">
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--pl-success, #16a34a)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
                                             {t}

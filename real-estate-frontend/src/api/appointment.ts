@@ -52,6 +52,6 @@ export const appointmentApi = {
     updateActualStatus: (id: number, data: Record<string, unknown>) =>
         apiClient.put(`/appointments/${id}/actual-status`, data),
 
-    getMyAppointments: (params?: { status?: number }) =>
+    getMyAppointments: (params?: { status?: number; page?: number; limit?: number }) =>
         apiClient.get('/appointments/me', { params }),
 };

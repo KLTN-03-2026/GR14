@@ -1,7 +1,5 @@
 // src/types/deposit.ts
 
-export type DepositType = 'BEFORE_VIEWING' | 'AFTER_VIEWING';
-
 // 0: pending, 1: paid, 2: refund_requested, 3: refunded, 4: completed, 5: expired
 export type DepositStatus = 0 | 1 | 2 | 3 | 4 | 5;
 
@@ -21,7 +19,6 @@ export interface DepositResponse {
   data: {
     depositId: number;
     paymentId: number;
-    depositType: DepositType;
     expiresAt: string;
     paymentUrl: string;
     transactionId: string;
@@ -43,6 +40,7 @@ export interface DepositAppointment {
   house?: {
     id: number;
     title: string;
+    price?: number;
     city?: string;
     district?: string;
     depositStatus: number;
@@ -51,6 +49,7 @@ export interface DepositAppointment {
   land?: {
     id: number;
     title: string;
+    price?: number;
     city?: string;
     district?: string;
     depositStatus: number;
@@ -65,7 +64,6 @@ export interface Deposit {
   amount: string;           // Decimal từ Prisma trả về dạng string
   refundAmount: string | null;
   refundAccountInfo: string | null;
-  depositType: DepositType;
   status: DepositStatus;
   expiresAt: string | null;
   createdAt: string;
@@ -91,7 +89,6 @@ export interface DepositDetail {
   amount: string;
   refundAmount: string | null;
   refundAccountInfo: string | null;
-  depositType: DepositType;
   status: DepositStatus;
   expiresAt: string | null;
   createdAt: string;

@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
 import { appointmentApi } from '@/api';
 import { depositApi } from '@/api/deposit';
+import DepositFormSection from '@/components/common/DepositFormSection';
 import {
   DEPOSIT_STATUS_CFG,
   APPOINTMENT_STATUS_CFG,
@@ -22,6 +23,17 @@ const fmtAmount = (val: string | number | null | undefined) => {
 const fmtDate = (val: string | null | undefined) => {
   if (!val) return '—';
   return dayjs(val).format('DD/MM/YYYY HH:mm');
+};
+
+// ─── Shared label style ───────────────────────────────────────────────────────
+
+const labelStyle: React.CSSProperties = {
+  margin: '0 0 3px',
+  fontSize: 10,
+  fontWeight: 500,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  color: '#94a3b8',
 };
 
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
@@ -79,156 +91,6 @@ const DepositBadge = ({ status }: { status: DepositStatus }) => {
   );
 };
 
-// ─── Deposit Policy Modal ──────────────────────────────────────────────────────
-
-interface DepositPolicyModalProps {
-  isAfterViewing: boolean;
-  propertyTitle: string;
-  onAgree: () => void;
-  onClose: () => void;
-}
-
-const DepositPolicyModal: React.FC<DepositPolicyModalProps> = ({ isAfterViewing, propertyTitle, onAgree, onClose }) => {
-  const [agreed, setAgreed] = useState(false);
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 mx-4 w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-5 text-white">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/20">
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-              </svg>
-            </div>
-            <div>
-              <h2 className="text-lg font-bold">Chính sách đặt cọc bất động sản</h2>
-              <p className="text-sm text-white/80 line-clamp-1">{propertyTitle}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="px-6 py-5 max-h-[55vh] overflow-y-auto space-y-4">
-          {/* Loại cọc */}
-          <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
-            <h3 className="text-sm font-bold text-blue-800 mb-2">📋 Hai loại đặt cọc</h3>
-            <div className="space-y-2 text-sm text-blue-700">
-              <div className="flex items-start gap-2">
-                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-200 text-[10px] font-bold">1</span>
-                <div>
-                  <p className="font-semibold">Giữ chỗ trước khi xem</p>
-                  <p className="text-xs text-blue-600">Đặt cọc giữ chỗ BĐS trước ngày hẹn xem nhà. Có thể hoàn tiền theo điều kiện.</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-purple-200 text-purple-800 text-[10px] font-bold">2</span>
-                <div>
-                  <p className="font-semibold text-purple-800">Cọc chốt mua (sau khi xem)</p>
-                  <p className="text-xs text-purple-600">Sau khi đã đi xem BĐS, cọc chốt mua thể hiện cam kết mua. <strong>Không được hoàn lại.</strong></p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Quy định số tiền */}
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-            <h3 className="text-sm font-bold text-gray-800 mb-2">💰 Quy định số tiền cọc</h3>
-            <div className="space-y-1.5 text-sm text-gray-600">
-              <p>• Tối thiểu: <strong className="text-gray-800">1.000.000 ₫</strong></p>
-              <p>• Tối đa: <strong className="text-gray-800">30% giá trị BĐS</strong></p>
-            </div>
-          </div>
-
-          {/* Chính sách hoàn tiền */}
-          <div className="rounded-xl border border-green-200 bg-green-50 p-4">
-            <h3 className="text-sm font-bold text-green-800 mb-2">🔄 Chính sách hoàn tiền</h3>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-green-600">
-                  <th className="pb-1.5">Trường hợp</th>
-                  <th className="pb-1.5 text-right">Tỷ lệ hoàn</th>
-                </tr>
-              </thead>
-              <tbody className="text-green-800">
-                <tr className="border-t border-green-200">
-                  <td className="py-1.5">Hủy <strong>trước</strong> ngày hẹn xem</td>
-                  <td className="py-1.5 text-right font-bold">95%</td>
-                </tr>
-                <tr className="border-t border-green-200">
-                  <td className="py-1.5">Hủy <strong>sau</strong> ngày hẹn (chưa xem)</td>
-                  <td className="py-1.5 text-right font-bold text-orange-600">50%</td>
-                </tr>
-                <tr className="border-t border-green-200">
-                  <td className="py-1.5">Cọc chốt mua (đã xem)</td>
-                  <td className="py-1.5 text-right font-bold text-red-600">0% — Mất cọc</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          {/* Thời hạn giữ chỗ */}
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-            <h3 className="text-sm font-bold text-amber-800 mb-2">⏰ Thời hạn giữ chỗ</h3>
-            <div className="space-y-1.5 text-sm text-amber-700">
-              <p>• Giữ chỗ trước khi xem: hết hạn <strong>cuối ngày sau ngày hẹn</strong></p>
-              <p>• Cọc chốt mua: hết hạn sau <strong>3 ngày</strong> kể từ khi cọc</p>
-              <p>• Hết hạn → BĐS được mở khóa, tiền cọc <strong>không hoàn lại</strong></p>
-            </div>
-          </div>
-
-          {/* Cảnh báo đặc biệt cho cọc chốt mua */}
-          {isAfterViewing && (
-            <div className="rounded-xl border-2 border-red-300 bg-red-50 p-4">
-              <div className="flex items-start gap-2">
-                <svg className="h-5 w-5 shrink-0 text-red-600 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                </svg>
-                <div>
-                  <p className="font-bold text-red-700">⚠️ Bạn đang đặt cọc chốt mua!</p>
-                  <p className="mt-1 text-sm text-red-600">Bạn đã xem BĐS này. Tiền cọc sẽ <strong>KHÔNG ĐƯỢC HOÀN LẠI</strong> nếu bạn thay đổi ý định.</p>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="border-t border-gray-100 px-6 py-4">
-          <label className="mb-4 flex items-start gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={agreed}
-              onChange={(e) => setAgreed(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            />
-            <span className="text-sm text-gray-700">
-              Tôi đã đọc, hiểu rõ và <strong>đồng ý</strong> với chính sách đặt cọc bất động sản nêu trên.
-            </span>
-          </label>
-          <div className="flex justify-end gap-2.5">
-            <button
-              onClick={onClose}
-              className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
-            >
-              Hủy bỏ
-            </button>
-            <button
-              onClick={onAgree}
-              disabled={!agreed}
-              className="rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
-            >
-              Đồng ý & Tiếp tục đặt cọc
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
 // ─── Refund Modal ─────────────────────────────────────────────────────────────
 
 interface RefundModalProps {
@@ -237,13 +99,34 @@ interface RefundModalProps {
   onSuccess: () => void;
 }
 
+const MOCK_REFUND_HISTORY = [
+  { id: 'REQ-001', date: '12/10/2023', property: 'Đất – Quận Ngũ Hành Sơn', status: 'refunded' as const },
+  { id: 'REQ-002', date: '05/11/2023', property: 'Căn hộ – Quận Sơn Trà', status: 'processing' as const },
+  { id: 'REQ-003', date: '20/11/2023', property: 'Nhà phố – Quận Hải Châu', status: 'rejected' as const },
+];
+
+const REFUND_STATUS_CFG = {
+  refunded:   { label: 'Đã hoàn tiền', bg: '#dcfce7', color: '#16a34a' },
+  processing: { label: 'Đang xử lý',   bg: '#fef9c3', color: '#ca8a04' },
+  rejected:   { label: 'Từ chối',      bg: '#fee2e2', color: '#dc2626' },
+};
+
 const RefundModal: React.FC<RefundModalProps> = ({ deposit, onClose, onSuccess }) => {
   const [accountInfo, setAccountInfo] = useState('');
+  const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const isBeforeAppointment = dayjs().isBefore(dayjs(deposit.appointment.appointmentDate));
-  const refundPct = isBeforeAppointment ? 95 : 50;
+  const isBeforeVisit =
+    deposit.appointment?.actualStatus === null ||
+    deposit.appointment?.actualStatus === undefined;
+  const refundPct = isBeforeVisit ? 95 : 50;
   const estimatedRefund = Math.round((Number(deposit.amount) * refundPct) / 100);
+
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
 
   const handleSubmit = async () => {
     if (!accountInfo.trim()) {
@@ -252,7 +135,10 @@ const RefundModal: React.FC<RefundModalProps> = ({ deposit, onClose, onSuccess }
     }
     setLoading(true);
     try {
-      await depositApi.requestRefund(deposit.id, accountInfo.trim());
+      const payload = reason.trim()
+        ? `${accountInfo.trim()} | Lý do: ${reason.trim()}`
+        : accountInfo.trim();
+      await depositApi.requestRefund(deposit.id, payload);
       toast.success('Gửi yêu cầu hoàn tiền thành công!');
       onSuccess();
       onClose();
@@ -264,332 +150,341 @@ const RefundModal: React.FC<RefundModalProps> = ({ deposit, onClose, onSuccess }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 mx-4 w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-        <div className="mb-4 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-100">
-            <svg className="h-5 w-5 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-            </svg>
-          </div>
-          <div>
-            <h3 className="font-bold text-gray-900">Yêu cầu hoàn tiền</h3>
-            <p className="text-xs text-gray-500">Số tiền cọc: {fmtAmount(deposit.amount)}</p>
-          </div>
-        </div>
-
-        <div className="mb-4 rounded-xl border border-blue-100 bg-blue-50 p-3.5 text-sm text-blue-800">
-          <p className="font-semibold">Chính sách hoàn tiền:</p>
-          <p className="mt-1">
-            {isBeforeAppointment
-              ? `Hủy trước ngày hẹn → hoàn ${refundPct}% (~${fmtAmount(estimatedRefund)})`
-              : `Hủy sau ngày hẹn → hoàn ${refundPct}% (~${fmtAmount(estimatedRefund)})`}
-          </p>
-        </div>
-
-        <div className="mb-5">
-          <label className="mb-1.5 block text-sm font-medium text-gray-700">
-            Thông tin tài khoản nhận hoàn tiền <span className="text-red-500">*</span>
-          </label>
-          <textarea
-            rows={3}
-            value={accountInfo}
-            onChange={(e) => setAccountInfo(e.target.value)}
-            placeholder="VD: Vietcombank - 0123456789 - Nguyễn Văn A"
-            className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-700 placeholder-gray-400 focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 transition resize-none"
-          />
-        </div>
-
-        <div className="flex justify-end gap-2.5">
-          <button
-            onClick={onClose}
-            disabled={loading}
-            className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition"
-          >
-            Hủy
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={loading || !accountInfo.trim()}
-            className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60 transition"
-          >
-            {loading && (
-              <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-              </svg>
-            )}
-            Gửi yêu cầu
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ─── Deposit Modal ────────────────────────────────────────────────────────────
-
-interface DepositModalProps {
-  appointmentId: number;
-  appointmentDate: string;
-  propertyTitle: string;
-  isAfterViewing: boolean;
-  onClose: () => void;
-  onSuccess: () => void;
-}
-
-const DepositModal: React.FC<DepositModalProps> = ({
-  appointmentId,
-  appointmentDate,
-  propertyTitle,
-  isAfterViewing,
-  onClose,
-  onSuccess,
-}) => {
-  const [amount, setAmount] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState<'amount' | 'payment'>('amount');
-  const [paymentMethod, setPaymentMethod] = useState<'vnpay' | 'momo' | null>(null);
-
-  const suggestions = [10_000_000, 20_000_000, 50_000_000, 100_000_000];
-
-  const handleNextStep = () => {
-    const numAmount = Number(amount);
-    if (!numAmount || numAmount <= 0) {
-      toast.error('Vui lòng nhập số tiền cọc hợp lệ');
-      return;
-    }
-    setStep('payment');
-  };
-
-  const handleDeposit = async () => {
-    if (!paymentMethod) {
-      toast.error('Vui lòng chọn phương thức thanh toán');
-      return;
-    }
-
-    const numAmount = Number(amount);
-    if (isNaN(numAmount) || numAmount <= 0) {
-      toast.error('Số tiền cọc phải lớn hơn 0');
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const payload = {
-        appointmentId,
-        amount: numAmount,
-        paymentMethod,
-        // ✅ Giống VIP: dùng /payment/vnpay-callback cho VNPay
-        //               dùng VITE_API_URL/payment/momo/callback cho MoMo (BE xử lý IPN)
-        returnUrl:
-          paymentMethod === 'momo'
-            ? `${import.meta.env.VITE_API_URL}/payment/momo/callback`
-            : `${window.location.origin}/payment/vnpay-callback`,
-      };
-
-      const res = await depositApi.createDeposit(payload);
-      const responseData: any = res.data?.data || res.data || {};
-
-      const paymentUrl =
-        responseData.paymentUrl ||
-        responseData.url ||
-        responseData.redirectUrl ||
-        (responseData.payment && responseData.payment.paymentUrl);
-
-      const depositId =
-        responseData.depositId ||
-        responseData.id ||
-        (responseData.deposit && responseData.deposit.id) ||
-        (responseData.payment && responseData.payment.depositId) ||
-        responseData.paymentId;
-
-      if (paymentUrl) {
-        // ✅ Lưu depositId vào sessionStorage — VNPayCallbackPage sẽ đọc để biết đây là deposit
-        if (depositId) {
-          sessionStorage.setItem('lastDepositId', String(depositId));
+    <div
+      className="fixed inset-0 z-[1100] flex items-center justify-center p-4"
+      style={{ background: 'rgba(15,23,42,0.72)' }}
+      onClick={onClose}
+    >
+      <style>{`
+        @keyframes refundSlideUp {
+          from { opacity: 0; transform: translateY(14px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
-        window.location.href = paymentUrl;
-      } else {
-        toast.success('Tạo yêu cầu đặt cọc thành công!');
-        onSuccess?.();
-        onClose();
-      }
-    } catch (error: any) {
-      const errorMessage =
-        error?.response?.data?.message ||
-        error?.response?.data?.error ||
-        'Tạo yêu cầu thanh toán thất bại. Vui lòng thử lại!';
-      toast.error(errorMessage);
-      console.error('Deposit creation error:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+        @keyframes spinLoader {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 mx-4 w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+      <div
+        style={{
+          width: '100%',
+          maxWidth: 720,
+          maxHeight: '90vh',
+          background: '#fff',
+          borderRadius: 20,
+          border: '0.5px solid #e2e8f0',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          animation: 'refundSlideUp 0.22s cubic-bezier(0.22,1,0.36,1)',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* ── Header ── */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            gap: 12,
+            padding: '20px 24px 18px',
+            borderBottom: '0.5px solid #e2e8f0',
+            flexShrink: 0,
+          }}
+        >
+          <div>
+            <span
+              style={{
+                display: 'inline-block',
+                fontSize: 11,
+                fontWeight: 500,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                color: '#A32D2D',
+                background: '#fee2e2',
+                padding: '3px 10px',
+                borderRadius: 20,
+              }}
+            >
+              Hoàn tiền
+            </span>
+            <p style={{ margin: '10px 0 0', fontSize: 17, fontWeight: 500, color: '#0f172a', lineHeight: 1.3 }}>
+              Yêu cầu hoàn tiền đặt cọc
+            </p>
+            <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
+              Vui lòng điền thông tin để chúng tôi xử lý yêu cầu của bạn.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              flexShrink: 0,
+              width: 30,
+              height: 30,
+              borderRadius: '50%',
+              border: '0.5px solid #e2e8f0',
+              background: '#f8fafc',
+              color: '#64748b',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
 
-        {step === 'amount' ? (
-          <>
-            {/* Header */}
-            <div className="mb-4 flex items-center gap-3">
-              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${isAfterViewing ? 'bg-purple-100' : 'bg-blue-100'}`}>
-                <svg className={`h-5 w-5 ${isAfterViewing ? 'text-purple-600' : 'text-blue-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </div>
+        {/* ── Body ── */}
+        <div style={{ flex: 1, overflowY: 'auto', display: 'grid', gridTemplateColumns: '1fr 260px' }}>
+
+          {/* Left: form */}
+          <div
+            style={{
+              padding: '20px 20px 20px 24px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 18,
+              borderRight: '0.5px solid #e2e8f0',
+            }}
+          >
+            {/* Amount summary */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: '#f8fafc',
+                border: '0.5px solid #e2e8f0',
+                borderRadius: 10,
+                padding: '12px 16px',
+              }}
+            >
               <div>
-                <h3 className="font-bold text-gray-900">
-                  {isAfterViewing ? '🔒 Cọc chốt mua' : '📅 Giữ chỗ trước khi xem'}
-                </h3>
-                <p className="text-xs text-gray-500 line-clamp-1">{propertyTitle}</p>
+                <p style={labelStyle}>Số tiền cọc</p>
+                <p style={{ margin: 0, fontSize: 15, fontWeight: 500, color: '#0f172a' }}>
+                  {fmtAmount(deposit.amount)}
+                </p>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <p style={labelStyle}>Dự kiến hoàn</p>
+                <p style={{ margin: 0, fontSize: 15, fontWeight: 500, color: '#16a34a' }}>
+                  {fmtAmount(estimatedRefund)}
+                </p>
               </div>
             </div>
 
-            {isAfterViewing ? (
-              <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3.5 text-sm text-red-800">
-                <p className="font-semibold">⚠️ Lưu ý quan trọng:</p>
-                <p className="mt-1">Bạn đã đi xem bất động sản này. Nếu tiếp tục đặt cọc, đây được xem là <strong>cọc chốt mua</strong>. Tiền cọc sẽ <strong>KHÔNG ĐƯỢC HOÀN LẠI</strong> nếu bạn đổi ý không ký hợp đồng.</p>
-              </div>
-            ) : (
-              <div className="mb-4 rounded-xl border border-blue-100 bg-blue-50 p-3.5 text-sm text-blue-800">
-                <p className="font-semibold">Chính sách hoàn tiền:</p>
-                <ul className="mt-1 space-y-0.5">
-                  <li>• Hủy <strong>trước</strong> ngày hẹn → hoàn <strong>95%</strong></li>
-                  <li>• Hủy <strong>sau</strong> ngày hẹn → hoàn <strong>50%</strong></li>
-                </ul>
-                <p className="mt-1.5 text-xs text-blue-600">Ngày hẹn: {fmtDate(appointmentDate)}</p>
-              </div>
-            )}
-
-            <div className="mb-3">
-              <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                Số tiền cọc <span className="text-red-500">*</span>
+            {/* Account input */}
+            <div>
+              <label style={{ display: 'block', fontSize: 12, color: '#64748b', marginBottom: 6 }}>
+                Các khoản cọc khả dụng
               </label>
-              <div className="relative">
-                <input
-                  type="number"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="Nhập số tiền..."
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 pr-10 text-sm text-gray-700 placeholder-gray-400 focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 transition"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-gray-400">₫</span>
-              </div>
-              {amount && Number(amount) > 0 && (
-                <p className="mt-1 text-xs text-gray-500">{Number(amount).toLocaleString('vi-VN')} ₫</p>
-              )}
+              <input
+                type="text"
+                value={accountInfo}
+                onChange={(e) => setAccountInfo(e.target.value)}
+                placeholder="VD: Vietcombank – 0123456789 – Nguyễn Văn A"
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '10px 14px',
+                  fontSize: 13,
+                  color: '#0f172a',
+                  background: '#f8fafc',
+                  border: '0.5px solid #e2e8f0',
+                  borderRadius: 10,
+                  outline: 'none',
+                  transition: 'border-color 0.15s',
+                }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = '#94a3b8')}
+                onBlur={(e) => (e.currentTarget.style.borderColor = '#e2e8f0')}
+              />
             </div>
 
-            <div className="mb-5 flex flex-wrap gap-2">
-              {suggestions.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setAmount(String(s))}
-                  className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
-                    amount === String(s)
-                      ? 'border-blue-500 bg-blue-600 text-white'
-                      : 'border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'
-                  }`}
-                >
-                  {(s / 1_000_000).toLocaleString('vi-VN')}tr
-                </button>
-              ))}
+            {/* Reason */}
+            <div>
+              <label style={{ display: 'block', fontSize: 12, color: '#64748b', marginBottom: 6 }}>
+                Lý do hoàn tiền
+              </label>
+              <textarea
+                rows={4}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="Nhập lý do chi tiết..."
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '10px 14px',
+                  fontSize: 13,
+                  color: '#0f172a',
+                  background: '#f8fafc',
+                  border: '0.5px solid #e2e8f0',
+                  borderRadius: 10,
+                  outline: 'none',
+                  resize: 'none',
+                  transition: 'border-color 0.15s',
+                  lineHeight: 1.6,
+                }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = '#94a3b8')}
+                onBlur={(e) => (e.currentTarget.style.borderColor = '#e2e8f0')}
+              />
             </div>
 
-            <div className="flex justify-end gap-2.5">
-              <button onClick={onClose} className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition">
-                Hủy
-              </button>
-              <button
-                onClick={handleNextStep}
-                disabled={!amount || Number(amount) <= 0}
-                className={`rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 transition ${
-                  isAfterViewing ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700'
-                }`}
-              >
-                Tiếp theo →
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            {/* Payment step */}
-            <div className="mb-1 flex items-center gap-2">
-              <button onClick={() => setStep('amount')} className="text-gray-400 hover:text-gray-600 transition">
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-              <h3 className="font-bold text-gray-900">👑 Xác nhận thanh toán</h3>
-            </div>
-
-            <div className="mb-5 mt-4 rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-2.5 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-500">Loại giao dịch</span>
-                <span className="font-semibold text-blue-600">{isAfterViewing ? 'Cọc chốt mua' : 'Giữ chỗ xem nhà'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Bất động sản</span>
-                <span className="font-semibold text-gray-800 text-right max-w-[200px] truncate">{propertyTitle}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Ngày hẹn</span>
-                <span className="font-semibold text-gray-800">{fmtDate(appointmentDate)}</span>
-              </div>
-              <div className="border-t border-gray-200 pt-2 flex justify-between">
-                <span className="text-gray-500">Tổng tiền cọc</span>
-                <span className="text-lg font-bold text-orange-500">{Number(amount).toLocaleString('vi-VN')} ₫</span>
-              </div>
-            </div>
-
-            <p className="mb-3 text-sm font-semibold text-gray-700">Phương thức thanh toán</p>
-            <div className="mb-5 grid grid-cols-2 gap-3">
-              <button
-                onClick={() => setPaymentMethod('vnpay')}
-                className={`flex flex-col items-center justify-center gap-1.5 rounded-xl border-2 p-4 transition ${
-                  paymentMethod === 'vnpay' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'
-                }`}
-              >
-                <span className="text-lg font-black text-blue-600">VNPay</span>
-                <span className="text-[10px] text-gray-400">ATM · QR · Visa · Master</span>
-              </button>
-              <button
-                onClick={() => setPaymentMethod('momo')}
-                className={`flex flex-col items-center justify-center gap-1.5 rounded-xl border-2 p-4 transition ${
-                  paymentMethod === 'momo' ? 'border-pink-500 bg-pink-50' : 'border-gray-200 hover:border-pink-300'
-                }`}
-              >
-                <span className="text-lg font-black text-pink-500">MoMo</span>
-                <span className="text-[10px] text-gray-400">Ví điện tử MoMo</span>
-              </button>
-            </div>
-
-            <div className="flex justify-end gap-2.5">
-              <button onClick={onClose} disabled={loading} className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition">
-                Hủy
-              </button>
-              <button
-                onClick={handleDeposit}
-                disabled={loading || !paymentMethod}
-                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60 transition"
-              >
-                {loading && (
-                  <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+            {/* Submit */}
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={loading || !accountInfo.trim()}
+              style={{
+                width: '100%',
+                padding: '10px 20px',
+                borderRadius: 100,
+                border: 'none',
+                background: loading || !accountInfo.trim() ? '#e2e8f0' : '#2563eb',
+                color: loading || !accountInfo.trim() ? '#94a3b8' : '#fff',
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: loading || !accountInfo.trim() ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                transition: 'all 0.15s',
+              }}
+            >
+              {loading ? (
+                <>
+                  <svg
+                    style={{ animation: 'spinLoader 1s linear infinite' }}
+                    width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  >
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
+                    <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
                   </svg>
-                )}
-                Thanh toán ngay
-              </button>
+                  Đang gửi...
+                </>
+              ) : (
+                <>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 2 11 13M22 2 15 22 11 13 2 9l20-7z" />
+                  </svg>
+                  Gửi yêu cầu hoàn tiền
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Right: policy + estimate + history */}
+          <div
+            style={{
+              padding: 20,
+              background: '#f8fafc',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 18,
+            }}
+          >
+            {/* Refund policy */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2.2" strokeLinecap="round">
+                  <circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" />
+                </svg>
+                <p style={labelStyle}>Chính sách hoàn tiền</p>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {[
+                  { color: '#3B6D11', label: 'Hủy trước khi xem', value: '95%' },
+                  { color: '#854F0B', label: 'Hủy sau khi đã xem', value: '50%' },
+                  { color: '#A32D2D', label: 'Đã gặp & hoàn tất', value: '0%' },
+                ].map(({ color, label, value }) => (
+                  <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, color: '#64748b', flex: 1 }}>{label}</span>
+                    <span style={{ fontSize: 12, fontWeight: 500, color }}>{value}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </>
-        )}
+
+            {/* Estimated refund */}
+            <div
+              style={{
+                borderRadius: 10,
+                padding: '12px 14px',
+                background: '#eff6ff',
+                border: '0.5px solid #bfdbfe',
+                textAlign: 'center',
+              }}
+            >
+              <p style={{ ...labelStyle, color: '#93c5fd', marginBottom: 4 }}>Hoàn lại ước tính</p>
+              <p style={{ margin: 0, fontSize: 20, fontWeight: 500, color: '#1d4ed8', letterSpacing: '-0.01em' }}>
+                {fmtAmount(estimatedRefund)}
+              </p>
+              <p style={{ margin: '3px 0 0', fontSize: 11, color: '#60a5fa' }}>({refundPct}% số tiền cọc)</p>
+            </div>
+
+            {/* Refund history */}
+            <div>
+              <p style={{ ...labelStyle, marginBottom: 8 }}>Lịch sử yêu cầu</p>
+              <div style={{ border: '0.5px solid #e2e8f0', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr auto',
+                    padding: '7px 12px',
+                    borderBottom: '0.5px solid #e2e8f0',
+                    background: '#f8fafc',
+                  }}
+                >
+                  <span style={{ fontSize: 10, fontWeight: 500, letterSpacing: '0.07em', textTransform: 'uppercase', color: '#94a3b8' }}>
+                    Khoản cọc
+                  </span>
+                  <span style={{ fontSize: 10, fontWeight: 500, letterSpacing: '0.07em', textTransform: 'uppercase', color: '#94a3b8' }}>
+                    Trạng thái
+                  </span>
+                </div>
+                {MOCK_REFUND_HISTORY.map((row, i) => {
+                  const cfg = REFUND_STATUS_CFG[row.status];
+                  return (
+                    <div
+                      key={row.id}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr auto',
+                        alignItems: 'center',
+                        padding: '9px 12px',
+                        borderBottom: i < MOCK_REFUND_HISTORY.length - 1 ? '0.5px solid #f1f5f9' : 'none',
+                        gap: 8,
+                      }}
+                    >
+                      <div>
+                        <p style={{
+                          margin: 0, fontSize: 11, fontWeight: 500, color: '#334155',
+                          lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap', maxWidth: 130,
+                        }}>
+                          {row.property}
+                        </p>
+                        <p style={{ margin: '1px 0 0', fontSize: 10, color: '#94a3b8' }}>{row.date}</p>
+                      </div>
+                      <span style={{
+                        flexShrink: 0, fontSize: 10, fontWeight: 500,
+                        padding: '3px 8px', borderRadius: 20,
+                        background: cfg.bg, color: cfg.color, whiteSpace: 'nowrap',
+                      }}>
+                        {cfg.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -610,41 +505,73 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
   onDeposit,
   onRefund,
 }) => {
+  const navigate = useNavigate();
   const property = appointment.house || appointment.land;
   const thumb = property?.images?.[0]?.url;
   const apptStatus = APPOINTMENT_STATUS_CFG[appointment.status] ?? APPOINTMENT_STATUS_CFG[0];
 
   const isApproved = appointment.status === 1;
   const isCompleted = appointment.actualStatus !== null;
-  const isAfterViewing = isCompleted;
   const hasActiveDeposit = deposit && (deposit.status === 0 || deposit.status === 1);
   const canDeposit = (isApproved || isCompleted) && !hasActiveDeposit;
-  const canRefund = deposit?.status === 1 && deposit?.depositType === 'BEFORE_VIEWING';
+  const canRefund = deposit?.status === 1 && appointment.actualStatus !== 1;
+
+  const handleViewDetail = () => {
+    if (appointment.houseId) navigate(`/houses/${appointment.houseId}`);
+    else if (appointment.landId) navigate(`/lands/${appointment.landId}`);
+  };
+
+  // ── Fix: dùng button + window.location thay vì <a> để tránh lỗi TS ──
+  const handlePayment = () => {
+    const url = deposit?.payment?.paymentUrl;
+    if (url) window.location.href = url;
+  };
 
   return (
     <div className="group relative flex gap-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm transition-all hover:shadow-md">
+      {/* Thumbnail */}
       <div className="h-24 w-32 shrink-0 overflow-hidden rounded-xl bg-gray-100">
         {thumb ? (
-          <img src={thumb} alt="" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+          <img
+            src={thumb}
+            alt=""
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
             <svg className="h-8 w-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3.75h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008z" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3.75h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008z"
+              />
             </svg>
           </div>
         )}
       </div>
 
+      {/* Content */}
       <div className="min-w-0 flex-1">
         <div className="mb-2 flex flex-wrap items-center gap-2">
-          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${apptStatus.bg} ${apptStatus.text} ${apptStatus.border}`}>
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${apptStatus.bg} ${apptStatus.text} ${apptStatus.border}`}
+          >
             <span className={`h-1.5 w-1.5 rounded-full ${apptStatus.dot}`} />
             {apptStatus.label}
           </span>
           {deposit && <DepositBadge status={deposit.status} />}
+          {isCompleted && !hasActiveDeposit && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-2.5 py-0.5 text-xs font-medium text-purple-700">
+              Đã đi xem
+            </span>
+          )}
         </div>
 
-        <p className="truncate text-sm font-semibold text-gray-800">
+        <p
+          className="truncate text-sm font-semibold text-gray-800 cursor-pointer hover:text-blue-600 transition-colors"
+          onClick={handleViewDetail}
+        >
           {property?.title || `Bất động sản #${appointment.houseId || appointment.landId}`}
         </p>
 
@@ -661,9 +588,15 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
 
         {deposit && deposit.status === 1 && (
           <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-500">
-            <span>💰 Đã cọc: <strong className="text-gray-700">{fmtAmount(deposit.amount)}</strong></span>
+            <span>
+              💰 Đã cọc:{' '}
+              <strong className="text-gray-700">{fmtAmount(deposit.amount)}</strong>
+            </span>
             {deposit.expiresAt && (
-              <span>⏰ Hết hạn: <strong className="text-gray-700">{fmtDate(deposit.expiresAt)}</strong></span>
+              <span>
+                ⏰ Hết hạn:{' '}
+                <strong className="text-gray-700">{fmtDate(deposit.expiresAt)}</strong>
+              </span>
             )}
           </div>
         )}
@@ -675,32 +608,77 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
         )}
       </div>
 
-      <div className="flex shrink-0 flex-col items-end justify-between gap-2 self-stretch">
+      {/* Actions */}
+      <div className="flex shrink-0 flex-col items-end justify-end gap-2 self-stretch">
+        {/* Đặt cọc */}
         {canDeposit && (
           <button
+            type="button"
             onClick={onDeposit}
-            className={`whitespace-nowrap rounded-xl px-3 py-1.5 text-xs font-semibold text-white transition ${
-              isAfterViewing ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700'
-            }`}
+            className="whitespace-nowrap inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold text-white transition-all active:scale-95"
+            style={{
+              background: 'linear-gradient(135deg,#f97316,#ea6c0a)',
+              boxShadow: '0 2px 8px rgba(249,115,22,0.35)',
+            }}
           >
-            {isAfterViewing ? '🔒 Cọc chốt mua' : '💳 Đặt cọc ngay'}
+            <svg
+              width="12" height="12" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor"
+              strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+            >
+              <path d="M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2" />
+              <path d="M16 12h6v4h-6a2 2 0 0 1 0-4z" />
+            </svg>
+            Đặt cọc
           </button>
         )}
 
+        {/* Thanh toán — button thay vì <a> */}
         {deposit?.status === 0 && deposit.payment?.paymentUrl && (
-          <a
-            href={deposit.payment.paymentUrl}
-            className="whitespace-nowrap rounded-xl bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600 transition"
+          <button
+            type="button"
+            onClick={handlePayment}
+            className="whitespace-nowrap inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold text-white transition-all active:scale-95"
+            style={{
+              background: 'linear-gradient(135deg,#f59e0b,#d97706)',
+              boxShadow: '0 2px 8px rgba(245,158,11,0.35)',
+            }}
           >
-            ↗ Thanh toán
-          </a>
+            <svg
+              width="12" height="12" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor"
+              strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+            >
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+            Thanh toán
+          </button>
         )}
 
+        {/* Hoàn tiền */}
         {canRefund && (
           <button
+            type="button"
             onClick={onRefund}
-            className="whitespace-nowrap rounded-xl border border-orange-300 px-3 py-1.5 text-xs font-semibold text-orange-600 hover:bg-orange-50 transition"
+            className="whitespace-nowrap inline-flex items-center gap-1.5 rounded-xl border-2 px-3.5 py-1.5 text-xs font-bold transition-all active:scale-95"
+            style={{ borderColor: '#ef4444', color: '#ef4444', background: '#fff5f5' }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.background = '#ef4444';
+              (e.currentTarget as HTMLElement).style.color = '#fff';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.background = '#fff5f5';
+              (e.currentTarget as HTMLElement).style.color = '#ef4444';
+            }}
           >
+            <svg
+              width="12" height="12" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor"
+              strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+            >
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+              <path d="M3 3v5h5" />
+            </svg>
             Hoàn tiền
           </button>
         )}
@@ -720,11 +698,10 @@ const MyAppointmentsPage: React.FC = () => {
   const [appointments, setAppointments] = useState<any[]>([]);
   const [depositMap, setDepositMap] = useState<Record<number, Deposit>>({});
   const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState<number | 'all' | 'deposited'>('all');
 
   const [depositTarget, setDepositTarget] = useState<any | null>(null);
-  const [policyTarget, setPolicyTarget] = useState<any | null>(null);
   const [refundTarget, setRefundTarget] = useState<Deposit | null>(null);
-  const [statusFilter, setStatusFilter] = useState<number | 'all'>('all');
 
   const fetchAppointments = useCallback(async () => {
     setLoading(true);
@@ -745,9 +722,7 @@ const MyAppointmentsPage: React.FC = () => {
       const res = await depositApi.getMyDeposits(1, 100);
       const deposits: Deposit[] = res.data?.data || [];
       const map: Record<number, Deposit> = {};
-      deposits.forEach((d) => {
-        map[d.appointmentId] = d;
-      });
+      deposits.forEach((d) => { map[d.appointmentId] = d; });
       setDepositMap(map);
     } catch {
       // silent
@@ -757,12 +732,10 @@ const MyAppointmentsPage: React.FC = () => {
   useEffect(() => {
     void fetchAppointments();
     void fetchDeposits();
-
     const interval = setInterval(() => {
       void fetchAppointments();
       void fetchDeposits();
-    }, 30000);
-
+    }, 30_000);
     return () => clearInterval(interval);
   }, [fetchAppointments, fetchDeposits]);
 
@@ -773,8 +746,9 @@ const MyAppointmentsPage: React.FC = () => {
 
   const filtered = useMemo(() => {
     if (statusFilter === 'all') return appointments;
-    return appointments.filter((a) => a.status === statusFilter);
-  }, [appointments, statusFilter]);
+    if (statusFilter === 'deposited') return appointments.filter((a) => depositMap[a.id] && depositMap[a.id].status === 1);
+    return appointments.filter((a) => a.status === (statusFilter as number));
+  }, [appointments, statusFilter, depositMap]);
 
   const totalPage = Math.ceil(filtered.length / PAGE_SIZE);
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -786,12 +760,16 @@ const MyAppointmentsPage: React.FC = () => {
     pending: appointments.filter((a) => a.status === 0).length,
     approved: appointments.filter((a) => a.status === 1).length,
     rejected: appointments.filter((a) => a.status === 2).length,
-  }), [appointments]);
+    deposited: appointments.filter((a) => depositMap[a.id] && depositMap[a.id].status === 1).length,
+  }), [appointments, depositMap]);
+
+  
 
   return (
     <div className="min-h-screen bg-gray-50/70">
       <main className="mx-auto max-w-4xl px-4 py-10">
 
+        {/* Page header */}
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-extrabold tracking-tight text-gray-900">Lịch hẹn của tôi</h1>
@@ -808,6 +786,7 @@ const MyAppointmentsPage: React.FC = () => {
           </button>
         </div>
 
+        {/* Info banner */}
         <div className="mb-5 flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
           <svg className="mt-0.5 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -815,15 +794,22 @@ const MyAppointmentsPage: React.FC = () => {
           Sau khi lịch hẹn được duyệt, bạn có thể đặt cọc để giữ chỗ bất động sản.
         </div>
 
+        {/* Filter tabs */}
         <div className="mb-5 flex flex-wrap gap-2 rounded-2xl border border-gray-100 bg-white p-3 shadow-sm">
           {([
             { key: 'all' as const, label: 'Tất cả', count: counts.all },
             { key: 0, label: 'Chờ duyệt', count: counts.pending },
             { key: 1, label: 'Đã duyệt', count: counts.approved },
             { key: 2, label: 'Từ chối', count: counts.rejected },
+            { key: 'deposited' as const, label: 'Đã cọc', count: counts.deposited },
           ]).map((tab) => {
             const active = statusFilter === tab.key;
-            const dotCls = tab.key === 0 ? 'bg-amber-400' : tab.key === 1 ? 'bg-emerald-400' : tab.key === 2 ? 'bg-red-400' : 'bg-gray-300';
+            const dotCls =
+              tab.key === 0 ? 'bg-amber-400'
+              : tab.key === 1 ? 'bg-emerald-400'
+              : tab.key === 2 ? 'bg-red-400'
+              : tab.key === 'deposited' ? 'bg-blue-400'
+              : 'bg-gray-300';
             return (
               <button
                 key={String(tab.key)}
@@ -848,6 +834,7 @@ const MyAppointmentsPage: React.FC = () => {
           })}
         </div>
 
+        {/* List */}
         {loading ? (
           <div className="space-y-3">
             {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} />)}
@@ -862,12 +849,13 @@ const MyAppointmentsPage: React.FC = () => {
                   key={appt.id}
                   appointment={appt}
                   deposit={depositMap[appt.id] ?? null}
-                  onDeposit={() => setPolicyTarget(appt)}
+                  onDeposit={() => setDepositTarget(appt)}
                   onRefund={() => setRefundTarget(depositMap[appt.id] ?? null)}
                 />
               ))}
             </div>
 
+            {/* Pagination */}
             {totalPage > 1 && (
               <div className="mt-6 flex items-center justify-center gap-1.5">
                 <button
@@ -905,26 +893,9 @@ const MyAppointmentsPage: React.FC = () => {
         )}
       </main>
 
-      {/* ── Deposit Policy Modal ──────────────────── */}
-      {policyTarget && (
-        <DepositPolicyModal
-          isAfterViewing={policyTarget.actualStatus !== null}
-          propertyTitle={
-            policyTarget.house?.title ||
-            policyTarget.land?.title ||
-            'Bất động sản'
-          }
-          onAgree={() => {
-            setDepositTarget(policyTarget);
-            setPolicyTarget(null);
-          }}
-          onClose={() => setPolicyTarget(null)}
-        />
-      )}
-
-      {/* ── Deposit Modal ──────────────────────────── */}
+      {/* Deposit Modal */}
       {depositTarget && (
-        <DepositModal
+        <DepositFormSection
           appointmentId={depositTarget.id}
           appointmentDate={depositTarget.appointmentDate}
           propertyTitle={
@@ -932,13 +903,19 @@ const MyAppointmentsPage: React.FC = () => {
             depositTarget.land?.title ||
             'Bất động sản'
           }
-          isAfterViewing={depositTarget.actualStatus !== null}
+          propertyPrice={depositTarget.house?.price || depositTarget.land?.price}
+          propertyImage={
+            depositTarget.house?.images?.[0]?.url || depositTarget.land?.images?.[0]?.url || undefined
+          }
           onClose={() => setDepositTarget(null)}
-          onSuccess={refresh}
+          onSuccess={() => {
+            setDepositTarget(null);
+            refresh();
+          }}
         />
       )}
 
-      {/* ── Refund Modal ───────────────────────────── */}
+      {/* Refund Modal */}
       {refundTarget && (
         <RefundModal
           deposit={refundTarget}

@@ -11,6 +11,7 @@ import { MoMoService } from '../payment/services/momo.service';
 import { MailService } from '../../common/mail/mail.service';
 import { MailProducerService } from '../../common/mail/mail-producer.service';
 import { NotificationService } from '../notification/notification.service';
+import { RedisService } from '../../common/redis/redis.service';
 
 // ─── Hằng số ───────────────────────────────────────────────────────────────
 const AFTER_VIEWING_LOCK_DAYS = 3;
@@ -18,7 +19,8 @@ const CANCEL_BEFORE_VIEWING_REFUND_RATE = 0.95; // Huỷ trước ngày hẹn �
 const CANCEL_AFTER_VIEWING_REFUND_RATE = 0.50;  // Huỷ sau ngày hẹn  → hoàn 50%
 const PENDING_DEPOSIT_TTL_MINUTES = 30;          // Fix #2: Deposit pending quá 30 phút → tự cleanup
 const MIN_DEPOSIT_AMOUNT = 1_000_000;            // Fix #6: Tối thiểu 1 triệu VND
-const MAX_DEPOSIT_RATE = 0.30;                   // Fix #6: Tối đa 30% giá BĐS
+const DEPOSIT_RATE = 0.002;                // 0.2% giá trị BĐS
+const DEPOSIT_FLEX_AMOUNT = 500_000;       // Linh hoạt ±500k quanh giá đề xuất
 
 export interface ICreateDepositRequest {
   appointmentId: number;
@@ -56,7 +58,20 @@ export class DepositService {
     private readonly mailService: MailService,
     private readonly mailProducer: MailProducerService,
     private readonly notificationService: NotificationService,
+    private readonly redis: RedisService,
   ) {}
+
+  private readonly houseDetailKey = (id: number) => `house:${id}`;
+  private readonly landDetailKey = (id: number) => `land:${id}`;
+
+  private async invalidatePropertyDetailCache(houseId?: number, landId?: number) {
+    if (houseId) {
+      await this.redis.del(this.houseDetailKey(houseId)).catch(() => null);
+    }
+    if (landId) {
+      await this.redis.del(this.landDetailKey(landId)).catch(() => null);
+    }
+  }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -88,15 +103,8 @@ export class DepositService {
     return nowDay < appDay ? 'BEFORE_VIEWING' : 'AFTER_VIEWING';
   }
 
-  private computeExpiresAt(
-    depositType: 'BEFORE_VIEWING' | 'AFTER_VIEWING',
-    appointmentDate: Date,
-    now = new Date(),
-  ): Date {
-    if (depositType === 'BEFORE_VIEWING') {
-      return this.endOfDayVN(this.addDays(appointmentDate, 1));
-    }
-    return this.addDays(now, AFTER_VIEWING_LOCK_DAYS);
+  private computeExpiresAt(appointmentDate: Date, now = new Date()): Date {
+    return this.endOfDayVN(this.addDays(appointmentDate, 1));
   }
 
   private formatCurrency(amount: number): string {
@@ -323,24 +331,20 @@ export class DepositService {
       throw new BadRequestException('Lịch hẹn không gắn với bất động sản nào');
     }
 
-    // Fix #6: Validate amount tối đa (30% giá BĐS)
     const propertyPrice = Number(property.price || 0);
+
     if (propertyPrice > 0) {
-      const maxAmount = Math.round(propertyPrice * MAX_DEPOSIT_RATE);
-      if (amount > maxAmount) {
+      const suggestedAmount = Math.max(MIN_DEPOSIT_AMOUNT, Math.round(propertyPrice * DEPOSIT_RATE));
+      const minAmount = Math.max(MIN_DEPOSIT_AMOUNT, suggestedAmount - DEPOSIT_FLEX_AMOUNT);
+      const maxAmount = suggestedAmount + DEPOSIT_FLEX_AMOUNT;
+      if (amount < minAmount || amount > maxAmount) {
         throw new BadRequestException(
-          `Số tiền đặt cọc tối đa là ${this.formatCurrency(maxAmount)} (30% giá BĐS)`,
+          `Số tiền đặt cọc gợi ý là ${this.formatCurrency(suggestedAmount)} (0.2% giá trị BĐS). Cho phép linh hoạt trong khoảng ${this.formatCurrency(minAmount)} - ${this.formatCurrency(maxAmount)}`,
         );
       }
     }
 
-    // Fix #5: Di chuyển check depositStatus vào trong transaction + lock row
-    const depositType = this.resolveDepositType(appointment.appointmentDate, now);
-    const expiresAt = this.computeExpiresAt(
-      depositType,
-      appointment.appointmentDate,
-      now,
-    );
+    const expiresAt = this.computeExpiresAt(appointment.appointmentDate, now);
 
     const orderId = `DEP${Date.now()}${Math.random()
       .toString(36)
@@ -373,7 +377,7 @@ export class DepositService {
           appointmentId,
           userId,
           amount: Math.round(amount),
-          depositType,
+          depositType: 'BEFORE_VIEWING',
           expiresAt,
           status: 0,
         },
@@ -440,7 +444,7 @@ export class DepositService {
         data: {
           depositId: deposit.id,
           paymentId: payment.id,
-          depositType,
+          depositType: 'BEFORE_VIEWING',
           expiresAt,
           paymentUrl,
           transactionId: orderId,
@@ -468,14 +472,14 @@ export class DepositService {
       return { message: 'Giao dịch cọc đã được xử lý', alreadyDone: true };
     }
 
+    const houseId = deposit.appointment.house?.id;
+    const landId = deposit.appointment.land?.id;
+
     await this.prisma.$transaction(async (tx) => {
       await tx.propertyDeposit.update({
         where: { id: depositId },
         data: { status: 1 },
       });
-
-      const houseId = deposit.appointment.house?.id;
-      const landId = deposit.appointment.land?.id;
 
       if (houseId) {
         await tx.house.update({
@@ -490,6 +494,8 @@ export class DepositService {
       }
     });
 
+    await this.invalidatePropertyDetailCache(houseId, landId);
+
     return { message: 'Xác nhận đặt cọc thành công', depositId };
   }
 
@@ -500,7 +506,7 @@ export class DepositService {
     const deposit = await this.prisma.propertyDeposit.findUnique({
       where: { id: depositId },
       include: {
-        appointment: { select: { appointmentDate: true } },
+        appointment: { select: { appointmentDate: true, actualStatus: true } },
       },
     });
 
@@ -518,9 +524,9 @@ export class DepositService {
       );
     }
 
-    if (deposit.depositType === 'AFTER_VIEWING') {
+    if (deposit.appointment?.actualStatus === 1) {
       throw new BadRequestException(
-        'Tiền cọc sau khi xem không được hoàn lại. Bạn đã xem tận mắt bất động sản và xác nhận đặt cọc chốt mua.',
+        'Không thể hoàn tiền khi bạn đã xem bất động sản này.',
       );
     }
 
@@ -579,6 +585,9 @@ export class DepositService {
     const userId = deposit.user?.id;
 
     if (approve) {
+      const houseId = deposit.appointment.house?.id;
+      const landId = deposit.appointment.land?.id;
+
       await this.prisma.$transaction(async (tx) => {
         await tx.propertyDeposit.update({
           where: { id: depositId },
@@ -589,15 +598,14 @@ export class DepositService {
           },
         });
 
-        const houseId = deposit.appointment.house?.id;
-        const landId = deposit.appointment.land?.id;
-
         if (houseId) {
           await tx.house.update({ where: { id: houseId }, data: { depositStatus: 0 } });
         } else if (landId) {
           await tx.land.update({ where: { id: landId }, data: { depositStatus: 0 } });
         }
       });
+
+      await this.invalidatePropertyDetailCache(houseId, landId);
 
       // Fix #8: Gửi mail thông báo duyệt hoàn tiền
       if (userEmail) {
@@ -679,28 +687,28 @@ export class DepositService {
   }
 
   async expireDeposit(depositId: number) {
-    return await this.prisma.$transaction(async (tx) => {
-      const deposit = await tx.propertyDeposit.findUnique({
-        where: { id: depositId },
-        include: {
-          appointment: {
-            include: {
-              house: { select: { id: true } },
-              land: { select: { id: true } },
-            },
+    const deposit = await this.prisma.propertyDeposit.findUnique({
+      where: { id: depositId },
+      include: {
+        appointment: {
+          include: {
+            house: { select: { id: true } },
+            land: { select: { id: true } },
           },
         },
-      });
+      },
+    });
 
-      if (!deposit || deposit.status !== 1) return;
+    if (!deposit || deposit.status !== 1) return;
 
+    const houseId = deposit.appointment.house?.id;
+    const landId = deposit.appointment.land?.id;
+
+    await this.prisma.$transaction(async (tx) => {
       await tx.propertyDeposit.update({
         where: { id: depositId },
         data: { status: 5 },
       });
-
-      const houseId = deposit.appointment.house?.id;
-      const landId = deposit.appointment.land?.id;
 
       if (houseId) {
         await tx.house.update({
@@ -714,5 +722,7 @@ export class DepositService {
         });
       }
     });
+
+    await this.invalidatePropertyDetailCache(houseId, landId);
   }
 }

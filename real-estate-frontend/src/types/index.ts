@@ -102,6 +102,7 @@ export interface House {
     bedrooms?: number;
     bathrooms?: number;
     status: number;
+    depositStatus?: number;
     categoryId?: number;
     employeeId?: number;
     createdAt: string;
@@ -137,6 +138,7 @@ export interface Land {
     landType?: string;
     legalStatus?: string;
     status: number;
+    depositStatus?: number;
     categoryId?: number;
     employeeId?: number;
     createdAt: string;

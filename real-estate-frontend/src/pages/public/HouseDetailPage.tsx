@@ -1,14 +1,18 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { HeartOutlined, HeartFilled, CalendarOutlined } from '@ant-design/icons';
-import { houseApi, recommendationApi } from '@/api';
+import { appointmentApi, houseApi, recommendationApi } from '@/api';
+import { depositApi } from '@/api/deposit';
 import { PROPERTY_STATUS, PROPERTY_STATUS_LABELS } from '@/constants';
 import { useFavorites } from '@/context/FavoritesContext';
 import { Loading } from '@/components/common';
+import DepositFormSection from '@/components/common/DepositFormSection';
+import RefundRequestModal from '@/components/common/RefundRequestModal';
 import { formatCurrency, formatArea, getFullAddress, formatDateTime } from '@/utils';
 import { useAuthStore } from '@/stores/authStore';
 import { toast } from 'react-hot-toast';
-import type { House } from '@/types';
+import type { Appointment, House } from '@/types';
+import type { Deposit } from '@/types/deposit';
 
 const getImages = (house: House): string[] => {
     if (!house.images || house.images.length === 0) return [];
@@ -357,6 +361,12 @@ const HouseDetailPage: React.FC = () => {
     const { isFavoritedHouse, addHouseFavorite, removeFavoritedHouse } = useFavorites();
     const [house, setHouse] = useState<House | null>(null);
     const [loading, setLoading] = useState(true);
+    const [hasBookedProperty, setHasBookedProperty] = useState(false);
+    const [hasApprovedPropertyAppointment, setHasApprovedPropertyAppointment] = useState(false);
+    const [approvedAppointment, setApprovedAppointment] = useState<Appointment | null>(null);
+    const [propertyDeposit, setPropertyDeposit] = useState<Deposit | null>(null);
+    const [showDepositForm, setShowDepositForm] = useState(false);
+    const [showRefundModal, setShowRefundModal] = useState(false);
 
     // Quay lại đúng trang + filter (list có thể truyền ?from=...)
     const searchParams = new URLSearchParams(location.search);
@@ -373,6 +383,46 @@ const HouseDetailPage: React.FC = () => {
         if (id) loadHouse(Number(id));
     }, [id]);
 
+    useEffect(() => {
+        const loadMyPropertyAppointments = async () => {
+            if (!isAuthenticated || !house) {
+                setHasBookedProperty(false);
+                setHasApprovedPropertyAppointment(false);
+                setPropertyDeposit(null);
+                return;
+            }
+
+            try {
+                const res = await appointmentApi.getMyAppointments({ page: 1, limit: 100 });
+                const appointments: Appointment[] = res.data?.data || res.data || [];
+                const relatedAppointments = appointments.filter((appt) =>
+                    (appt.houseId === house.id || appt.landId === house.id) && appt.status !== 2
+                );
+                const booked = relatedAppointments.length > 0;
+                const approvedAppointment = relatedAppointments.find((appt) =>
+                    (appt.houseId === house.id || appt.landId === house.id) && appt.status === 1
+                ) || null;
+
+                const depositsRes = await depositApi.getMyDeposits(1, 100);
+                const deposits: Deposit[] = depositsRes.data?.data || [];
+                const refundableDeposit = deposits.find((d) =>
+                    d.status === 1 && relatedAppointments.some((appt) => appt.id === d.appointmentId && appt.actualStatus !== 1)
+                ) || null;
+
+                setHasBookedProperty(booked);
+                setHasApprovedPropertyAppointment(Boolean(approvedAppointment));
+                setApprovedAppointment(approvedAppointment);
+                setPropertyDeposit(refundableDeposit);
+            } catch {
+                setHasBookedProperty(false);
+                setHasApprovedPropertyAppointment(false);
+                setPropertyDeposit(null);
+            }
+        };
+
+        void loadMyPropertyAppointments();
+    }, [isAuthenticated, house]);
+
     const loadHouse = async (houseId: number) => {
         try {
             const res = await houseApi.getById(houseId);
@@ -387,7 +437,7 @@ const HouseDetailPage: React.FC = () => {
 
     const handleFavorite = async () => {
         if (!isAuthenticated) {
-            toast.error('Vui lòng đăng nhập để yêu thích');   // ← Chỉ sửa dòng này
+            toast.error('Vui lòng đăng nhập để yêu thích');
             navigate('/login');
             return;
         }
@@ -411,8 +461,13 @@ const HouseDetailPage: React.FC = () => {
 
     const images = getImages(house);
     const fullAddress = getFullAddress(house);
-    const houseStatusLabel = PROPERTY_STATUS_LABELS[house.status] || 'Không xác định';
-    const houseStatusTagClass = getPropertyStatusTagClass(house.status);
+    const isHeldByDeposit = house.depositStatus === 1;
+    const houseStatusLabel = isHeldByDeposit
+        ? 'Đã giữ cọc'
+        : PROPERTY_STATUS_LABELS[house.status] || 'Không xác định';
+    const houseStatusTagClass = isHeldByDeposit
+        ? 'bg-orange-50 text-orange-700 border-orange-200'
+        : getPropertyStatusTagClass(house.status);
 
     return (
         <div className="w-full pb-20" style={{ background: 'var(--pl-background, #f9fafb)' }}>
@@ -600,26 +655,116 @@ const HouseDetailPage: React.FC = () => {
                                     {isFavoritedHouse(house.id) ? 'Đã yêu thích' : 'Yêu thích'}
                                 </button>
 
-                                {/* Appointment button — hidden when sold */}
-                                {house.status === PROPERTY_STATUS.SOLD ? (
-                                    <div className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full bg-gray-100 text-gray-400 text-[13px] font-semibold border border-gray-200 cursor-not-allowed select-none">
-                                        <CalendarOutlined className="text-[15px]" />
-                                        Nhà đã được bán
+                                {propertyDeposit ? (
+                                    <div className="w-full rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 text-center mb-3">
+                                        Bạn đang giữ cọc bất động sản này.
                                     </div>
-                                ) : (
+                                ) : null}
+
+                                {/* Appointment button */}
+                                {!propertyDeposit && (
+                                    house.status === PROPERTY_STATUS.SOLD ? (
+                                        <div className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full bg-gray-100 text-gray-400 text-[13px] font-semibold border border-gray-200 cursor-not-allowed select-none">
+                                            <CalendarOutlined className="text-[15px]" />
+                                            Nhà đã được bán
+                                        </div>
+                                    ) : house.depositStatus === 1 ? (
+                                        <div className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full bg-orange-100 text-orange-700 text-[13px] font-semibold border border-orange-200">
+                                            <CalendarOutlined className="text-[15px]" />
+                                            Đã giữ cọc
+                                        </div>
+                                    ) : hasBookedProperty ? (
+                                        <button
+                                            onClick={() => navigate('/appointment')}
+                                            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full bg-gray-200 text-gray-500 text-[13px] font-semibold border border-gray-200 transition-opacity duration-200"
+                                        >
+                                            <CalendarOutlined className="text-[15px]" />
+                                            Bạn đã đặt lịch cho bất động sản này
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={() => {
+                                                if (!isAuthenticated) {
+                                                    navigate('/login');
+                                                } else {
+                                                    navigate(`/appointment/booking?houseId=${house.id}`);
+                                                }
+                                            }}
+                                            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full text-white text-[13px] font-semibold hover:opacity-90 transition-opacity duration-200"
+                                            style={{ background: 'linear-gradient(135deg, var(--pl-primary, #1e3a5f), var(--pl-accent, #0d9488))' }}
+                                        >
+                                            <CalendarOutlined className="text-[15px]" />
+                                            Đặt Lịch Hẹn
+                                        </button>
+                                    )
+                                )}
+
+                                {/* Deposit button */}
+                                {propertyDeposit ? (
                                     <button
-                                        onClick={() => navigate(`/appointment/booking?houseId=${house.id}`)}
-                                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full text-white text-[13px] font-semibold hover:opacity-90 transition-opacity duration-200"
-                                        style={{ background: 'linear-gradient(135deg, var(--pl-primary, #1e3a5f), var(--pl-accent, #0d9488))' }}
+                                        onClick={() => setShowRefundModal(true)}
+                                        className="w-full mt-3 flex items-center justify-center gap-2 py-2.5 rounded-full text-[13px] font-semibold transition-all duration-200 text-white bg-red-500 hover:opacity-90"
                                     >
                                         <CalendarOutlined className="text-[15px]" />
-                                        Đặt Lịch Hẹn
+                                        Hoàn tiền cọc
                                     </button>
+                                ) : house.depositStatus !== 1 && (
+                                    <>
+                                        <button
+                                            onClick={() => {
+                                                if (!isAuthenticated) {
+                                                    navigate('/login');
+                                                } else if (!hasApprovedPropertyAppointment || !approvedAppointment) {
+                                                    toast.error('Bạn cần có lịch hẹn đã duyệt để đặt cọc.');
+                                                } else {
+                                                    setShowDepositForm((open) => !open);
+                                                }
+                                            }}
+                                            disabled={!hasApprovedPropertyAppointment}
+                                            className={`w-full mt-3 flex items-center justify-center gap-2 py-2.5 rounded-full text-[13px] font-semibold transition-all duration-200 ${hasApprovedPropertyAppointment ? 'text-white bg-orange-500 hover:opacity-90' : 'text-gray-500 bg-gray-100 cursor-not-allowed'}`}
+                                        >
+                                            <CalendarOutlined className="text-[15px]" />
+                                            {hasApprovedPropertyAppointment
+                                                ? showDepositForm ? 'Đóng form đặt cọc' : 'Đặt Cọc'
+                                                : 'Đặt Cọc (cần lịch hẹn đã duyệt)'}
+                                        </button>
+
+                                        {showDepositForm && approvedAppointment && (
+                                            <div className="mt-4">
+                                                <DepositFormSection
+                                                    appointmentId={approvedAppointment.id}
+                                                    appointmentDate={approvedAppointment.appointmentDate}
+                                                    propertyTitle={house.title}
+                                                    propertyPrice={house.price}
+                                                    onClose={() => setShowDepositForm(false)}
+                                                    onSuccess={() => {
+                                                        setShowDepositForm(false);
+                                                        navigate('/appointment');
+                                                    }}
+                                                    disabled={!hasApprovedPropertyAppointment}
+                                                />
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+
+                                {showRefundModal && propertyDeposit && (
+                                    <RefundRequestModal
+                                        depositId={propertyDeposit.id}
+                                        amount={Number(propertyDeposit.amount)}
+                                        propertyTitle={house.title}
+                                        onClose={() => setShowRefundModal(false)}
+                                        onSuccess={() => {
+                                            setShowRefundModal(false);
+                                            setPropertyDeposit(null);
+                                            navigate('/appointment');
+                                        }}
+                                    />
                                 )}
 
                                 {/* Trust points */}
                                 <div className="mt-5 space-y-2 border-t pt-4 text-xs" style={{ borderColor: 'var(--pl-border, #e5e7eb)', color: 'var(--pl-muted-fg, #6b7280)' }}>
-                                    {['Tin thật, đã kiểm duyệt', 'Hỗ trợ vay ngân hàng tới 70%', 'Miễn phí tư vấn pháp lý'].map((t, i) => (
+                                    {['Tin thật, đã kiểm duyệt', 'Miễn phí tư vấn pháp lý'].map((t, i) => (
                                         <div key={i} className="flex items-center gap-2">
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--pl-success, #16a34a)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
                                             {t}
