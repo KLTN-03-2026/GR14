@@ -24,10 +24,15 @@ type PaymentTypeFilter = 'all' | 'ACCOUNT_VIP' | 'POST_VIP' | 'PROPERTY_DEPOSIT'
 const fmtMoney = (v: number) => {
   if (v >= 1_000_000_000) return (v / 1_000_000_000).toFixed(1) + ' tỷ';
   if (v >= 1_000_000)     return (v / 1_000_000).toFixed(1) + ' tr';
-  return v.toLocaleString('vi-VN') + ' đ';
+  const str = Math.round(v).toString();
+  return str.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' đ';
 };
 
-const fmtMoneyFull = (v: number) => v.toLocaleString('vi-VN') + ' đ';
+const fmtMoneyFull = (v: number) => {
+  const str = Math.round(v).toString();
+  const formatted = str.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return formatted + ' đ';
+};
 
 const fmtDate = (s: string) =>
   new Date(s).toLocaleDateString('vi-VN', {

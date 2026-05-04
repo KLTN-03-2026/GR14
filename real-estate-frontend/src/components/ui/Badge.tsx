@@ -19,7 +19,7 @@ const colorClasses: Record<BadgeColor, string> = {
 const Badge: React.FC<BadgeProps> = ({ color = 'primary', children, className = '' }) => {
     return (
         <span
-            className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold leading-none ${colorClasses[color]} ${className}`}
+            className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold leading-none whitespace-nowrap ${colorClasses[color]} ${className}`}
         >
             {children}
         </span>

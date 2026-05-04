@@ -11,6 +11,7 @@ import * as bcrypt from 'bcrypt';
 import ms from 'ms';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailProducerService } from '../../common/mail/mail-producer.service';
+import { MailService } from '../../common/mail/mail.service';
 import { generateOTP } from '../../common/utils/generate-otp';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto, ConfirmRegisterDto } from './dto/register.dto';
@@ -27,6 +28,7 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private mailProducer: MailProducerService,
+    private mailService: MailService,
   ) {
     this.googleClient = new OAuth2Client(
       this.configService.get('GOOGLE_CLIENT_ID'),
@@ -234,13 +236,12 @@ export class AuthService {
       data: { email, otp, expireAt, type: 'register' },
     });
 
-    const html = `
-            <p>Hello ${fullName || username},</p>
-            <p>Your OTP code is: <strong>${otp}</strong></p>
-            <p>This code expires in 5 minutes.</p>
-        `;
+    const html = this.mailService.getOtpRegisterEmailHtml(
+      fullName || username,
+      otp,
+    );
 
-    this.mailProducer.sendMail(email, 'Registration OTP Verification', html);
+    this.mailProducer.sendMail(email, 'Xác thực đăng ký tài khoản — Black\'S City', html);
 
     return {
       message:
@@ -317,13 +318,12 @@ export class AuthService {
       data: { email, otp, expireAt, type: 'reset' },
     });
 
-    const html = `
-            <p>Hello ${user.fullName || user.username},</p>
-            <p>Your OTP code is: <strong>${otp}</strong></p>
-            <p>This code expires in 5 minutes.</p>
-        `;
+    const html = this.mailService.getOtpResetPasswordEmailHtml(
+      user.fullName || user.username,
+      otp,
+    );
 
-    this.mailProducer.sendMail(email, 'Password Reset OTP', html);
+    this.mailProducer.sendMail(email, 'Đặt lại mật khẩu — Black\'S City', html);
 
     return { message: 'Mã OTP đã được gửi đến email' };
   }

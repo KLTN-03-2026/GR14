@@ -104,6 +104,12 @@ export class DepositService {
   }
 
   private computeExpiresAt(appointmentDate: Date, now = new Date()): Date {
+    const depositType = this.resolveDepositType(appointmentDate, now);
+    if (depositType === 'AFTER_VIEWING') {
+      // Cọc chốt mua sau khi xem → hết hạn sau AFTER_VIEWING_LOCK_DAYS ngày kể từ NOW
+      return this.endOfDayVN(this.addDays(now, AFTER_VIEWING_LOCK_DAYS));
+    }
+    // Giữ chỗ trước khi xem → hết hạn cuối ngày hôm sau ngày hẹn
     return this.endOfDayVN(this.addDays(appointmentDate, 1));
   }
 
@@ -372,12 +378,13 @@ export class DepositService {
       }
 
       // 1. Tạo deposit record
+      const depositType = this.resolveDepositType(appointment.appointmentDate, now);
       const deposit = await tx.propertyDeposit.create({
         data: {
           appointmentId,
           userId,
           amount: Math.round(amount),
-          depositType: 'BEFORE_VIEWING',
+          depositType,
           expiresAt,
           status: 0,
         },
@@ -457,10 +464,11 @@ export class DepositService {
     const deposit = await this.prisma.propertyDeposit.findUnique({
       where: { id: depositId },
       include: {
+        user: { select: { id: true, fullName: true, email: true } },
         appointment: {
           include: {
-            house: { select: { id: true } },
-            land: { select: { id: true } },
+            house: { select: { id: true, title: true } },
+            land: { select: { id: true, title: true } },
           },
         },
       },
@@ -495,6 +503,38 @@ export class DepositService {
     });
 
     await this.invalidatePropertyDetailCache(houseId, landId);
+
+    // Bug #3 Fix: Gửi email + notification xác nhận đặt cọc thành công
+    const propertyTitle =
+      deposit.appointment.house?.title ||
+      deposit.appointment.land?.title ||
+      'Bất động sản';
+    const userName = deposit.user?.fullName || 'Quý khách';
+    const userEmail = deposit.user?.email;
+    const userId = deposit.user?.id;
+    const expiresAtStr = deposit.expiresAt
+      ? new Date(deposit.expiresAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })
+      : 'Không xác định';
+
+    if (userEmail) {
+      const html = this.mailService.getDepositSuccessEmailHtml(
+        userName,
+        propertyTitle,
+        Number(deposit.amount),
+        expiresAtStr,
+        deposit.depositType,
+      );
+      this.mailProducer.sendMail(userEmail, 'Đặt cọc bất động sản thành công 🎉', html);
+    }
+
+    if (userId) {
+      this.notificationService.create({
+        userId,
+        type: 'SYSTEM',
+        title: 'Đặt cọc thành công 🎉',
+        message: `Đặt cọc "${propertyTitle}" thành công với số tiền ${this.formatCurrency(Number(deposit.amount))}. Hạn giữ chỗ: ${expiresAtStr}.`,
+      }).catch((err) => this.logger.warn(`Notification failed: ${err.message}`));
+    }
 
     return { message: 'Xác nhận đặt cọc thành công', depositId };
   }
@@ -598,6 +638,12 @@ export class DepositService {
           },
         });
 
+        // Bug #4 Fix: Cập nhật payment.status = 2 (refunded) để báo cáo chính xác
+        await tx.payment.updateMany({
+          where: { depositId },
+          data: { status: 2 },
+        });
+
         if (houseId) {
           await tx.house.update({ where: { id: houseId }, data: { depositStatus: 0 } });
         } else if (landId) {
@@ -610,12 +656,10 @@ export class DepositService {
       // Fix #8: Gửi mail thông báo duyệt hoàn tiền
       if (userEmail) {
         const refundAmount = Number(deposit.refundAmount || deposit.amount);
-        const html = this.mailService.getPaymentSuccessEmailHtml(
+        const html = this.mailService.getRefundApprovedEmailHtml(
           userName,
+          propertyTitle,
           refundAmount,
-          `Hoàn tiền đặt cọc - ${propertyTitle}`,
-          undefined,
-          undefined,
         );
         this.mailProducer.sendMail(userEmail, 'Yêu cầu hoàn tiền đã được duyệt ✅', html);
       }
@@ -642,16 +686,11 @@ export class DepositService {
 
       // Fix #8: Gửi mail thông báo từ chối hoàn tiền
       if (userEmail) {
-        const noteText = dto.adminNote ? `\nLý do: ${dto.adminNote}` : '';
-        const html = `
-          <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;border:1px solid #e8e8e8;border-radius:8px;">
-            <h2 style="color:#ff4d4f;">❌ Yêu cầu hoàn tiền bị từ chối</h2>
-            <p>Kính gửi <strong>${userName}</strong>,</p>
-            <p>Yêu cầu hoàn tiền đặt cọc cho "<strong>${propertyTitle}</strong>" đã bị từ chối.${noteText}</p>
-            <p>Giao dịch cọc của bạn vẫn đang trong trạng thái giữ chỗ. Nếu cần hỗ trợ, vui lòng liên hệ đội ngũ CSKH.</p>
-            <p style="color:#888;font-size:13px;">Trân trọng,<br/>Đội ngũ BĐS</p>
-          </div>
-        `;
+        const html = this.mailService.getRefundRejectedEmailHtml(
+          userName,
+          propertyTitle,
+          dto.adminNote,
+        );
         this.mailProducer.sendMail(userEmail, 'Yêu cầu hoàn tiền bị từ chối ❌', html);
       }
 

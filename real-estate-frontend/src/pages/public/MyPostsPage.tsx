@@ -8,8 +8,11 @@ import PostDetailPanel from '@/components/common/PostDetailPanel';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const fmtPrice = (price: number | null | undefined) =>
-    price ? price.toLocaleString('vi-VN') + ' đ' : null;
+const fmtPrice = (price: number | null | undefined) => {
+    if (!price) return null;
+    const str = Math.round(price).toString();
+    return str.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' đ';
+};
 
 /** Trả true chỉ khi VIP còn hiệu lực (vipExpiry > now) */
 const isVipActive = (post: any): boolean => {
@@ -415,7 +418,7 @@ const MyPostsPage: React.FC = () => {
                         {/* VIP account button */}
                         <button
                             onClick={() => navigate('/vip-upgrade?type=account')}
-                            className="inline-flex items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-100"
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-[#002f5e] bg-[#002f5e]/5 px-4 py-2 text-sm font-semibold text-[#002f5e] transition hover:bg-[#002f5e]/10"
                         >
                             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M2.5 19L5 10l4.5 4 2.5-6 2.5 6L19 10l2.5 9H2.5z" /></svg>
                             {user?.isVip ? 'Gia hạn VIP' : 'Nâng cấp VIP'}
@@ -423,7 +426,7 @@ const MyPostsPage: React.FC = () => {
                         {/* New post button */}
                         <button
                             onClick={() => navigate('/posts/new')}
-                            className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-200 transition hover:bg-blue-700 active:scale-95"
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-[#002f5e] px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-200 transition hover:bg-[#001d3a] active:scale-95"
                         >
                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
                             Đăng bài mới

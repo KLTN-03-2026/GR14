@@ -1,101 +1,76 @@
+/**
+ * ==================== RECOMMENDATION SERVICE (ORCHESTRATOR) ====================
+ * File chính điều phối toàn bộ hệ thống gợi ý BĐS.
+ * Gọi 3 sub-services: ScoringService, VectorService, UserProfileService.
+ *
+ * Luồng:
+ *   1. getAIRecommendations()    → Hybrid (AI + Rules), trả nhà + đất xen kẽ
+ *   2. getHouseRecommendations() → Rule-based, chỉ trả nhà
+ *   3. getLandRecommendations()   → Rule-based, chỉ trả đất
+ *   4. trackBehavior()           → Ghi hành vi user + xóa cache cũ
+ */
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
-import axios from 'axios';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
-
-const RECOMMENDATION_TTL = 300; // 5 minutes
-const EMBEDDING_CACHE_TTL = 3600; // 1 hour
-const houseRecommendationKey = (userId: number) =>
-  `recommendations:houses:${userId}`;
-const landRecommendationKey = (userId: number) =>
-  `recommendations:lands:${userId}`;
-const aiRecommendationKey = (userId: number) => `recommendations:ai:${userId}`;
-const userVectorKey = (userId: number) => `recommendations:uservec:${userId}`;
-
-// Qdrant ID offsets (must match ai.service.ts indexData)
-const HOUSE_ID_OFFSET = 1_000_000;
-const LAND_ID_OFFSET = 2_000_000;
-
-interface ScoredProperty {
-  id: number;
-  score: number;
-  reason: string;
-}
-
-interface HybridScoredProperty {
-  id: number;
-  type: 'house' | 'land';
-  district: string;
-  price: number;
-  embeddingScore: number;
-  ruleScore: number;
-  finalScore: number;
-  reasons: string[];
-}
-
-interface UserProfile {
-  avgPrice: number;
-  avgArea: number;
-  locationCounts: Record<string, number>;
-  categoryCounts: Record<number, number>;
-  totalWeight: number;
-}
-
-interface VectorSearchResult {
-  id: number;
-  score: number;
-  payload: Record<string, unknown>;
-}
-
-interface WeightedInteraction {
-  id: number;
-  type: 'house' | 'land';
-  qdrantId: number;
-  weight: number;
-}
+import { ScoringService } from './services/scoring.service';
+import { VectorService } from './services/vector.service';
+import { UserProfileService } from './services/user-profile.service';
+import {
+  WeightedInteraction,
+  HybridScoredProperty,
+  VectorSearchResult,
+} from './interfaces/recommendation.interfaces';
+import {
+  RECOMMENDATION_TTL,
+  HOUSE_ID_OFFSET,
+  LAND_ID_OFFSET,
+  BEHAVIOR_WEIGHTS,
+  SCORING_WEIGHTS,
+  EMBEDDING_CONFIG,
+  QUERY_LIMITS,
+  cacheKeys,
+} from './constants/recommendation.constants';
 
 @Injectable()
 export class RecommendationService {
   private readonly logger = new Logger(RecommendationService.name);
 
-  private readonly qdrantUrl =
-    process.env.QDRANT_URL || 'http://real-estate-qdrant:6333';
-  private readonly ollamaUrl =
-    process.env.OLLAMA_URL || 'http://host.docker.internal:11434';
-  private readonly ragCollection =
-    process.env.RAG_COLLECTION || 'real_estate_rag';
-  private readonly embedModel = process.env.EMBED_MODEL || 'nomic-embed-text';
-  private readonly qdrantTimeoutMs = Number(
-    process.env.QDRANT_TIMEOUT_MS || 2500,
-  );
-  private readonly embedTimeoutMs = Number(
-    process.env.EMBED_TIMEOUT_MS || 5000,
-  );
-
   constructor(
-    private prisma: PrismaService,
-    private redis: RedisService,
+    private readonly prisma: PrismaService,        // Truy vấn MySQL
+    private readonly redis: RedisService,           // Cache kết quả gợi ý
+    private readonly scoring: ScoringService,       // Chấm điểm BĐS (rule-based)
+    private readonly vector: VectorService,         // AI embedding + Qdrant search
+    private readonly userProfile: UserProfileService, // Phân tích sở thích user
   ) {}
 
   // ==================== HYBRID AI RECOMMENDATIONS ====================
 
-  async getAIRecommendations(userId: number, limit = 10) {
-    const cacheKey = aiRecommendationKey(userId);
+  /**
+   * LUỒNG CHÍNH: Gợi ý Hybrid AI — 14 bước.
+   * Kết hợp Embedding (Qdrant) + Rule-based scoring.
+   * Trả về cả nhà lẫn đất, xen kẽ, đa dạng.
+   */
+  async getAIRecommendations(userId: number, limit: number = QUERY_LIMITS.AI_DEFAULT_LIMIT) {
+    const cacheKey = cacheKeys.aiRecommendation(userId);
 
-    // 1. Check cache
+    // ═══ BƯỚC 1: Kiểm tra cache Redis (TTL = 5 phút) ═══
+    // Nếu cache HIT → trả ngay, không tính toán lại (~50ms)
     const cached = await this.redis.get(cacheKey).catch(() => null);
     if (cached) {
       this.logger.debug(`Cache HIT: ${cacheKey}`);
       return cached;
     }
 
-    // 2. Fetch user behaviors + favorites
+    // ═══ BƯỚC 2: Query 3 nguồn hành vi SONG SONG (Promise.all) ═══
+    // 1) behaviors: lịch sử click/save (100 gần nhất)
+    // 2) houseFavorites: danh sách nhà yêu thích
+    // 3) landFavorites: danh sách đất yêu thích
     const [behaviors, houseFavorites, landFavorites] = await Promise.all([
       this.prisma.userBehavior.findMany({
         where: { userId, action: { in: ['click', 'save'] } },
         select: { houseId: true, landId: true, action: true },
         orderBy: { createdAt: 'desc' },
-        take: 100,
+        take: QUERY_LIMITS.BEHAVIOR_LIMIT, // 100
       }),
       this.prisma.favorite.findMany({
         where: { userId, houseId: { not: null } },
@@ -107,11 +82,19 @@ export class RecommendationService {
       }),
     ]);
 
-    // 3. Build weighted interactions list
+    // ═══ BƯỚC 3: Gộp tương tác thành danh sách có trọng số ═══
+    // Dùng Map để gộp: nếu user click nhà A (w=2) rồi save nhà A (w=3)
+    // → tổng weight nhà A = 2 + 3 = 5 (quan tâm rất cao)
     const interactionMap = new Map<string, WeightedInteraction>();
 
+    // Duyệt behaviors: gán trọng số theo action
     for (const b of behaviors) {
-      const weight = b.action === 'save' ? 3 : b.action === 'click' ? 2 : 1;
+      const weight =
+        b.action === 'save'
+          ? BEHAVIOR_WEIGHTS.SAVE      // save → w=3
+          : b.action === 'click'
+            ? BEHAVIOR_WEIGHTS.CLICK   // click → w=2
+            : BEHAVIOR_WEIGHTS.DEFAULT; // khác → w=1
       if (b.houseId) {
         const key = `house:${b.houseId}`;
         const existing = interactionMap.get(key);
@@ -142,7 +125,7 @@ export class RecommendationService {
           id: f.houseId,
           type: 'house',
           qdrantId: HOUSE_ID_OFFSET + f.houseId,
-          weight: (existing?.weight || 0) + 3,
+          weight: (existing?.weight || 0) + BEHAVIOR_WEIGHTS.FAVORITE,
         });
       }
     }
@@ -154,7 +137,7 @@ export class RecommendationService {
           id: f.landId,
           type: 'land',
           qdrantId: LAND_ID_OFFSET + f.landId,
-          weight: (existing?.weight || 0) + 3,
+          weight: (existing?.weight || 0) + BEHAVIOR_WEIGHTS.FAVORITE,
         });
       }
     }
@@ -167,34 +150,44 @@ export class RecommendationService {
       interactions.filter((i) => i.type === 'land').map((i) => i.id),
     );
 
-    // 4. Fallback: no behavior → popular/recent mix
+    // ═══ BƯỚC 4: COLD-START — User mới chưa có hành vi ═══
+    // → Trả BĐS phổ biến (nhiều favorite) hoặc mới đăng nhất
     if (interactions.length === 0) {
-      const fallback = await this.getPopularMixed(limit);
+      const fallback = await this.userProfile.getPopularMixed(limit);
       await this.redis
         .set(cacheKey, fallback, RECOMMENDATION_TTL)
-        .catch(() => {});
+        .catch((err) => {
+          this.logger.warn(`Redis set failed for ${cacheKey}: ${err.message}`);
+        });
       return fallback;
     }
 
-    // 5. Build user embedding vector (weighted average of interacted property embeddings)
-    const userVector = await this.buildUserVector(userId, interactions);
+    // ═══ BƯỚC 5: Tạo User Vector (trung bình có trọng số từ Qdrant) ═══
+    const userVector = await this.vector.buildUserVector(userId, interactions);
 
+    // ═══ BƯỚC 6: Vector Search — tìm BĐS có vector gần user nhất ═══
     let vectorCandidates: VectorSearchResult[] = [];
     if (userVector) {
-      vectorCandidates = await this.vectorSearch(userVector, 100, interactions);
+      vectorCandidates = await this.vector.vectorSearch(
+        userVector,
+        QUERY_LIMITS.VECTOR_CANDIDATE_LIMIT, // top 100
+        interactions, // loại trừ BĐS đã xem
+      );
     }
 
-    // 7. Build user profile for rule-based scoring
+    // ═══ BƯỚC 7: Xây dựng User Profile (cho rule-based scoring) ═══
+    // Lấy thông tin BĐS đã tương tác → tính: giá TB, khu vực hay xem, loại BĐS
     const allInteractedProperties =
-      await this.fetchInteractedProperties(interactions);
-    const profile = this.buildUserProfile(
+      await this.userProfile.fetchInteractedProperties(interactions);
+    const profile = this.userProfile.buildUserProfile(
       allInteractedProperties.map((p) => ({
         ...p,
         weight: interactionMap.get(`${p.type}:${p.id}`)?.weight || 1,
       })),
     );
+    // profile = { avgPrice: 4.2 tỷ, locationCounts: {"HCM|Q7": 5}, ... }
 
-    // 8. Build land-type counts for land scoring
+    // Đếm loại đất user hay xem (VD: {"Thổ cư": 5, "Nông nghiệp": 2})
     const landTypeCounts: Record<string, number> = {};
     for (const p of allInteractedProperties) {
       if (p.type === 'land' && p.landType) {
@@ -203,69 +196,86 @@ export class RecommendationService {
       }
     }
 
-    // 9. Also fetch DB candidates (for properties not yet in Qdrant or vector search misses)
+    // ═══ BƯỚC 8: Query BĐS ứng viên từ MySQL ═══
+    // Lọc theo profile: giá ±50%, khu vực quen, loại BĐS quen
+    // Loại trừ BĐS user đã xem (notIn)
+    const candidateFilters = this.userProfile.buildCandidateFilters(profile);
     const [dbHouses, dbLands] = await Promise.all([
       this.prisma.house.findMany({
         where: {
           id: { notIn: Array.from(interactedHouseIds) },
           status: 1,
-          OR: this.buildCandidateFilters(profile),
+          OR: candidateFilters,
         },
         include: {
           images: { select: { id: true, url: true }, take: 1 },
           category: true,
         },
         orderBy: { createdAt: 'desc' },
-        take: 50,
+        take: QUERY_LIMITS.DB_CANDIDATE_LIMIT,
       }),
       this.prisma.land.findMany({
         where: {
           id: { notIn: Array.from(interactedLandIds) },
           status: 1,
-          OR: this.buildCandidateFilters(profile),
+          OR: candidateFilters,
         },
         include: {
           images: { select: { id: true, url: true }, take: 1 },
           category: true,
         },
         orderBy: { createdAt: 'desc' },
-        take: 50,
+        take: QUERY_LIMITS.DB_CANDIDATE_LIMIT,
       }),
     ]);
 
+    // ═══ BƯỚC 9: Tạo bảng điểm embedding cho mỗi BĐS ═══
+    // VD: embeddingScoreMap = { "house:99": 0.85, "land:42": 0.62 }
     const embeddingScoreMap = new Map<string, number>();
     for (const vc of vectorCandidates) {
       const source = String(vc.payload?.source || '');
       const sourceId = Number(vc.payload?.sourceId || 0);
       if (source && sourceId > 0) {
-        const normalized = this.normalizeEmbeddingScore(vc.score);
+        const normalized = this.scoring.normalizeEmbeddingScore(vc.score);
         embeddingScoreMap.set(`${source}:${sourceId}`, normalized);
       }
     }
 
-    const weightEmbedding = profile.totalWeight > 10 ? 0.7 : 0.4;
+    // ═══ Quyết định trọng số AI vs Rules ═══
+    // User nhiều tương tác (>10) → tin AI hơn (70% AI, 30% Rules)
+    // User ít tương tác (≤10)  → tin Rules hơn (40% AI, 60% Rules)
+    const weightEmbedding =
+      profile.totalWeight > EMBEDDING_CONFIG.HIGH_INTERACTION_THRESHOLD
+        ? EMBEDDING_CONFIG.HIGH_EMBEDDING_WEIGHT  // 0.7
+        : EMBEDDING_CONFIG.LOW_EMBEDDING_WEIGHT;  // 0.4
     const weightRule = 1 - weightEmbedding;
 
-    // 11. Hybrid scoring: combine embedding + rule-based scores
+    // ═══ BƯỚC 10: HYBRID SCORING — Kết hợp AI + Rules ═══
+    // Công thức: finalScore = AI_weight × embeddingScore + Rule_weight × ruleScore
+    // VD (user cũ): finalScore = 0.7 × 0.85 + 0.3 × 0.72 = 0.60 + 0.22 = 0.82
+    // VD (user mới): finalScore = 0.4 × 0.85 + 0.6 × 0.72 = 0.34 + 0.43 = 0.77
     const hybridScored: HybridScoredProperty[] = [];
 
+    // Chấm điểm từng NHÀ ứng viên
     for (const house of dbHouses) {
-      if (interactedHouseIds.has(house.id)) continue;
-      const { score: ruleScore, reasons } = this.calculateScore(house, profile);
+      if (interactedHouseIds.has(house.id)) continue; // Bỏ qua BĐS đã xem
+      const { score: ruleScore, reasons } = this.scoring.calculateScore(
+        house,
+        profile,
+      );
       const embeddingScore = embeddingScoreMap.get(`house:${house.id}`) || 0;
       const finalScore =
         weightEmbedding * embeddingScore + weightRule * ruleScore;
 
-      // Freshness boost
       const daysSinceCreated =
         (Date.now() - new Date(house.createdAt).getTime()) /
         (1000 * 60 * 60 * 24);
       let boostedScore = finalScore;
-      if (daysSinceCreated < 7) {
-        boostedScore += 0.03;
+      if (daysSinceCreated < SCORING_WEIGHTS.FRESHNESS_DAYS) {
+        boostedScore += SCORING_WEIGHTS.FRESHNESS_BOOST;
         reasons.push('Mới đăng');
       }
-      if (embeddingScore > 0.5) {
+      if (embeddingScore > EMBEDDING_CONFIG.AI_SUGGEST_THRESHOLD) {
         reasons.unshift('AI đề xuất phù hợp');
       }
 
@@ -283,7 +293,7 @@ export class RecommendationService {
 
     for (const land of dbLands) {
       if (interactedLandIds.has(land.id)) continue;
-      const { score: ruleScore, reasons } = this.calculateLandScore(
+      const { score: ruleScore, reasons } = this.scoring.calculateLandScore(
         land,
         profile,
         landTypeCounts,
@@ -296,11 +306,11 @@ export class RecommendationService {
         (Date.now() - new Date(land.createdAt).getTime()) /
         (1000 * 60 * 60 * 24);
       let boostedScore = finalScore;
-      if (daysSinceCreated < 7) {
-        boostedScore += 0.03;
+      if (daysSinceCreated < SCORING_WEIGHTS.FRESHNESS_DAYS) {
+        boostedScore += SCORING_WEIGHTS.FRESHNESS_BOOST;
         reasons.push('Mới đăng');
       }
-      if (embeddingScore > 0.5) {
+      if (embeddingScore > EMBEDDING_CONFIG.AI_SUGGEST_THRESHOLD) {
         reasons.unshift('AI đề xuất phù hợp');
       }
 
@@ -316,7 +326,8 @@ export class RecommendationService {
       });
     }
 
-    // Also include vector-only candidates (found by Qdrant but not in DB query results)
+    // Bổ sung: BĐS chỉ có trong Qdrant nhưng không nằm trong DB query
+    // (Qdrant có thể tìm thấy BĐS mà bộ lọc DB bỏ sót)
     for (const vc of vectorCandidates) {
       const source = String(vc.payload?.source || '') as 'house' | 'land';
       const sourceId = Number(vc.payload?.sourceId || 0);
@@ -326,7 +337,7 @@ export class RecommendationService {
       if (hybridScored.some((h) => h.id === sourceId && h.type === source))
         continue;
 
-      const rawEmbedding = this.normalizeEmbeddingScore(vc.score);
+      const rawEmbedding = this.scoring.normalizeEmbeddingScore(vc.score);
       const reasons: string[] = ['AI đề xuất phù hợp'];
       hybridScored.push({
         id: sourceId,
@@ -340,13 +351,13 @@ export class RecommendationService {
       });
     }
 
-    // 12. Sort by finalScore DESC
+    // ═══ BƯỚC 11: Sắp xếp theo điểm giảm dần ═══
     hybridScored.sort((a, b) => b.finalScore - a.finalScore);
 
-    // 13. Apply diversity: max 3 from same district
-    const diversified = this.applyDiversity(hybridScored, limit);
+    // ═══ BƯỚC 12: Đa dạng hóa — max 3 BĐS cùng (quận+giá+loại) ═══
+    const diversified = this.scoring.applyDiversity(hybridScored, limit);
 
-    // 14. Fetch full property data for top results
+    // ═══ BƯỚC 13: Lấy dữ liệu đầy đủ (ảnh, category, nhân viên) ═══
     const topHouseIds = diversified
       .filter((d) => d.type === 'house')
       .map((d) => d.id);
@@ -388,7 +399,7 @@ export class RecommendationService {
     const houseMap = new Map(fullHouses.map((h) => [h.id, h] as const));
     const landMap = new Map(fullLands.map((l) => [l.id, l] as const));
 
-    // 15. Build final output
+    // ═══ BƯỚC 14: Ghép điểm + lý do vào dữ liệu BĐS → trả về frontend ═══
     const result = diversified
       .map((item) => {
         const property =
@@ -406,7 +417,11 @@ export class RecommendationService {
       })
       .filter(Boolean);
 
-    await this.redis.set(cacheKey, result, RECOMMENDATION_TTL).catch(() => {});
+    await this.redis
+      .set(cacheKey, result, RECOMMENDATION_TTL)
+      .catch((err) => {
+        this.logger.warn(`Redis set failed for ${cacheKey}: ${err.message}`);
+      });
     this.logger.debug(
       `Generated ${result.length} AI hybrid recommendations for user ${userId}`,
     );
@@ -414,347 +429,227 @@ export class RecommendationService {
     return result;
   }
 
-  // ==================== USER VECTOR BUILDING ====================
+  // ==================== GỢI Ý NHÀ/ĐẤT RIÊNG (Rule-based, không dùng AI) ====================
 
-  private async buildUserVector(
+  /**
+   * Method dùng chung cho cả nhà và đất — chỉ dùng Rule-based scoring.
+   * Luồng đơn giản hơn AI: Hành vi → Profile → Lọc DB → Chấm điểm → Trả kết quả.
+   */
+  private async getPropertyRecommendations(
+    type: 'house' | 'land',
     userId: number,
-    interactions: WeightedInteraction[],
-  ): Promise<number[] | null> {
-    // Check cached user vector
-    const vecCacheKey = userVectorKey(userId);
-    const cachedVector = await this.redis
-      .get<number[]>(vecCacheKey)
-      .catch(() => null);
-    if (Array.isArray(cachedVector) && cachedVector.length > 0) {
-      this.logger.debug(`User vector cache HIT for user ${userId}`);
-      return cachedVector;
+    limit: number,
+  ) {
+    const cacheKey =
+      type === 'house'
+        ? cacheKeys.houseRecommendation(userId)
+        : cacheKeys.landRecommendation(userId);
+
+    const cached = await this.redis.get(cacheKey).catch(() => null);
+    if (cached) {
+      this.logger.debug(`Cache HIT: ${cacheKey}`);
+      return cached;
     }
 
-    // Fetch embeddings from Qdrant by point IDs
-    const qdrantIds = interactions.map((i) => i.qdrantId);
-    let pointVectors: Array<{ id: number; vector: number[] }> = [];
+    // 1. Get user behavior data
+    const idField = type === 'house' ? 'houseId' : 'landId';
+    const includeField = type === 'house' ? 'house' : 'land';
 
-    try {
-      const resp = await axios.post(
-        `${this.qdrantUrl}/collections/${this.ragCollection}/points`,
-        { ids: qdrantIds, with_vector: true },
-        { timeout: this.qdrantTimeoutMs },
-      );
+    const selectFields =
+      type === 'house'
+        ? {
+            id: true,
+            price: true,
+            city: true,
+            district: true,
+            ward: true,
+            area: true,
+            direction: true,
+            categoryId: true,
+            bedrooms: true,
+            bathrooms: true,
+          }
+        : {
+            id: true,
+            price: true,
+            city: true,
+            district: true,
+            ward: true,
+            area: true,
+            direction: true,
+            categoryId: true,
+            frontWidth: true,
+            landLength: true,
+            landType: true,
+          };
 
-      const points = resp.data?.result || [];
-      pointVectors = points
-        .filter((p: any) => Array.isArray(p.vector) && p.vector.length > 0)
-        .map((p: any) => ({ id: Number(p.id), vector: p.vector as number[] }));
-    } catch (error) {
-      this.logger.warn(
-        `Failed to fetch point vectors from Qdrant: ${this.stringifyError(error)}`,
-      );
+    const behaviors = await this.prisma.userBehavior.findMany({
+      where: {
+        userId,
+        [idField]: { not: null },
+        action: { in: ['click', 'save'] },
+      },
+      include: {
+        [includeField]: { select: selectFields },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: QUERY_LIMITS.LEGACY_BEHAVIOR_LIMIT,
+    });
+
+    const favorites = await this.prisma.favorite.findMany({
+      where: { userId, [idField]: { not: null } },
+      include: {
+        [includeField]: { select: selectFields },
+      },
+    });
+
+    // Build user profile from behavior
+    const interactedItems = [
+      ...behaviors
+        .filter((b: any) => b[includeField])
+        .map((b: any) => ({
+          ...b[includeField]!,
+          weight:
+            b.action === 'save'
+              ? BEHAVIOR_WEIGHTS.SAVE
+              : b.action === 'click'
+                ? BEHAVIOR_WEIGHTS.CLICK
+                : BEHAVIOR_WEIGHTS.DEFAULT,
+        })),
+      ...favorites
+        .filter((f: any) => f[includeField])
+        .map((f: any) => ({
+          ...f[includeField]!,
+          weight: BEHAVIOR_WEIGHTS.FAVORITE,
+        })),
+    ];
+
+    const interactedIds = new Set(interactedItems.map((h: any) => h.id));
+
+    // If no behavior data, return popular/recent
+    if (interactedItems.length === 0) {
+      const popular =
+        type === 'house'
+          ? await this.userProfile.getPopularHouses(limit)
+          : await this.userProfile.getPopularLands(limit);
+      await this.redis
+        .set(cacheKey, popular, RECOMMENDATION_TTL)
+        .catch((err) => {
+          this.logger.warn(`Redis set failed for ${cacheKey}: ${err.message}`);
+        });
+      return popular;
     }
 
-    // If no vectors found in Qdrant, try generating embedding from user's interaction text
-    if (pointVectors.length === 0) {
-      const fallbackVector = await this.buildUserVectorFromText(interactions);
-      if (fallbackVector) {
-        await this.redis
-          .set(vecCacheKey, fallbackVector, EMBEDDING_CACHE_TTL)
-          .catch(() => {});
-      }
-      return fallbackVector;
+    // 2. Build user preference profile
+    const profile = this.userProfile.buildUserProfile(interactedItems);
+
+    // Build land-specific profile if needed
+    const landTypeCounts: Record<string, number> = {};
+    if (type === 'land') {
+      interactedItems.forEach((item: any) => {
+        if (item.landType) {
+          landTypeCounts[item.landType] =
+            (landTypeCounts[item.landType] || 0) + item.weight;
+        }
+      });
     }
 
-    // Compute weighted average vector
-    const weightMap = new Map(interactions.map((i) => [i.qdrantId, i.weight]));
-    const vectorDim = pointVectors[0].vector.length;
-    const avgVector = new Array<number>(vectorDim).fill(0);
-    let totalWeight = 0;
+    // 3. Get candidate properties
+    const candidateFilters = this.userProfile.buildCandidateFilters(profile);
+    const model = type === 'house' ? this.prisma.house : this.prisma.land;
+    const candidates = await (model as any).findMany({
+      where: {
+        id: { notIn: Array.from(interactedIds) },
+        status: 1,
+        OR: candidateFilters,
+      },
+      include: {
+        images: { select: { id: true, url: true }, take: 1 },
+        category: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: QUERY_LIMITS.CANDIDATE_LIMIT,
+    });
 
-    for (const pv of pointVectors) {
-      const w = weightMap.get(pv.id) || 1;
-      totalWeight += w;
-      for (let i = 0; i < vectorDim; i++) {
-        avgVector[i] += pv.vector[i] * w;
-      }
-    }
+    // 4. Score each candidate
+    const scored = candidates.map((candidate: any) => {
+      const { score, reasons } =
+        type === 'land'
+          ? this.scoring.calculateLandScore(candidate, profile, landTypeCounts)
+          : this.scoring.calculateScore(candidate, profile);
+      return {
+        id: candidate.id,
+        score: Math.round(score * 100) / 100,
+        reason: reasons.join(', '),
+      };
+    });
 
-    if (totalWeight > 0) {
-      for (let i = 0; i < vectorDim; i++) {
-        avgVector[i] /= totalWeight;
-      }
-    }
+    // 5. Sort by score descending, take top N
+    scored.sort((a: any, b: any) => b.score - a.score);
+    const topIds = scored.slice(0, limit);
+
+    // 6. Fetch full data for top results
+    const topProperties = await (model as any).findMany({
+      where: { id: { in: topIds.map((t: any) => t.id) } },
+      include: {
+        images: { select: { id: true, url: true } },
+        category: true,
+        employee: {
+          include: {
+            user: { select: { id: true, fullName: true, phone: true } },
+          },
+        },
+      },
+    });
+
+    const result = topIds
+      .map((item: any) => {
+        const property = topProperties.find((p: any) => p.id === item.id);
+        return {
+          ...property,
+          recommendationScore: item.score,
+          recommendationReason: item.reason,
+        };
+      })
+      .filter(Boolean);
 
     await this.redis
-      .set(vecCacheKey, avgVector, EMBEDDING_CACHE_TTL)
-      .catch(() => {});
+      .set(cacheKey, result, RECOMMENDATION_TTL)
+      .catch((err) => {
+        this.logger.warn(`Redis set failed for ${cacheKey}: ${err.message}`);
+      });
     this.logger.debug(
-      `Built user vector from ${pointVectors.length} embeddings (${interactions.length} interactions)`,
+      `Generated ${result.length} ${type} recommendations for user ${userId}`,
     );
 
-    return avgVector;
-  }
-
-  private async buildUserVectorFromText(
-    interactions: WeightedInteraction[],
-  ): Promise<number[] | null> {
-    // Fallback: build a text summary from user interactions and embed it
-    const topInteractions = interactions
-      .sort((a, b) => b.weight - a.weight)
-      .slice(0, 10);
-
-    const houseIds = topInteractions
-      .filter((i) => i.type === 'house')
-      .map((i) => i.id);
-    const landIds = topInteractions
-      .filter((i) => i.type === 'land')
-      .map((i) => i.id);
-
-    const [houses, lands] = await Promise.all([
-      houseIds.length > 0
-        ? this.prisma.house.findMany({
-            where: { id: { in: houseIds } },
-            select: {
-              title: true,
-              city: true,
-              district: true,
-              price: true,
-              area: true,
-            },
-          })
-        : Promise.resolve([]),
-      landIds.length > 0
-        ? this.prisma.land.findMany({
-            where: { id: { in: landIds } },
-            select: {
-              title: true,
-              city: true,
-              district: true,
-              price: true,
-              area: true,
-            },
-          })
-        : Promise.resolve([]),
-    ]);
-
-    const parts = [
-      ...houses.map(
-        (h) =>
-          `Nha: ${h.title}, ${h.district} ${h.city}, gia ${h.price}, dt ${h.area}`,
-      ),
-      ...lands.map(
-        (l) =>
-          `Dat: ${l.title}, ${l.district} ${l.city}, gia ${l.price}, dt ${l.area}`,
-      ),
-    ];
-
-    if (parts.length === 0) return null;
-
-    const text = `Nguoi dung quan tam: ${parts.join('. ')}`;
-
-    try {
-      const resp = await axios.post(
-        `${this.ollamaUrl}/api/embed`,
-        { model: this.embedModel, input: text },
-        { timeout: this.embedTimeoutMs },
-      );
-      const vector = resp.data?.embeddings?.[0] || resp.data?.embedding;
-      if (Array.isArray(vector) && vector.length > 0) return vector;
-    } catch (error) {
-      this.logger.warn(
-        `Fallback embedding failed: ${this.stringifyError(error)}`,
-      );
-    }
-
-    return null;
-  }
-
-  // ==================== VECTOR SEARCH ====================
-
-  private async vectorSearch(
-    userVector: number[],
-    candidateLimit: number,
-    excludeInteractions: WeightedInteraction[],
-  ): Promise<VectorSearchResult[]> {
-    try {
-      const excludeIds = excludeInteractions.map((i) => i.qdrantId);
-
-      const resp = await axios.post(
-        `${this.qdrantUrl}/collections/${this.ragCollection}/points/search`,
-        {
-          vector: userVector,
-          limit: candidateLimit,
-          with_payload: true,
-          filter:
-            excludeIds.length > 0
-              ? { must_not: [{ has_id: excludeIds }] }
-              : undefined,
-        },
-        { timeout: this.qdrantTimeoutMs },
-      );
-
-      const results = (resp.data?.result || []) as Array<{
-        id: number;
-        score: number;
-        payload: Record<string, unknown>;
-      }>;
-
-      // Only keep house/land results with reasonable scores
-      return results
-        .filter((r) => {
-          const source = String(r.payload?.source || '');
-          return (source === 'house' || source === 'land') && r.score > 0.1;
-        })
-        .map((r) => ({ id: r.id, score: r.score, payload: r.payload }));
-    } catch (error) {
-      this.logger.warn(`Vector search failed: ${this.stringifyError(error)}`);
-      return [];
-    }
-  }
-
-  // ==================== HYBRID SCORING ====================
-
-  private normalizeEmbeddingScore(raw: number): number {
-    return Math.max(0, (raw - 0.2) / (1 - 0.2));
-  }
-
-  // ==================== DIVERSITY ====================
-
-  private applyDiversity(
-    scored: HybridScoredProperty[],
-    limit: number,
-  ): HybridScoredProperty[] {
-    const result: HybridScoredProperty[] = [];
-    const bucketCount = new Map<string, number>();
-    const maxPerBucket = 2;
-    const deferred: HybridScoredProperty[] = [];
-
-    for (const item of scored) {
-      if (result.length >= limit) break;
-
-      const bucket = this.diversityBucket(item);
-      const count = bucketCount.get(bucket) || 0;
-      if (count >= maxPerBucket) {
-        deferred.push(item);
-        continue;
-      }
-      bucketCount.set(bucket, count + 1);
-      result.push(item);
-    }
-
-    // Fill remaining slots with deferred items
-    for (const item of deferred) {
-      if (result.length >= limit) break;
-      result.push(item);
-    }
-
     return result;
   }
 
-  private diversityBucket(item: HybridScoredProperty): string {
-    const district = item.district || 'unknown';
-    const priceBucket = this.priceBucket(item.price);
-    return `${district}|${priceBucket}|${item.type}`;
+  // ==================== PUBLIC METHODS (preserve API contract) ====================
+
+  async getHouseRecommendations(
+    userId: number,
+    limit: number = QUERY_LIMITS.LEGACY_DEFAULT_LIMIT,
+  ) {
+    return this.getPropertyRecommendations('house', userId, limit);
   }
 
-  private priceBucket(price: number): string {
-    if (price <= 0) return 'na';
-    if (price < 1_000_000_000) return 'under1ty';
-    if (price < 3_000_000_000) return '1-3ty';
-    if (price < 5_000_000_000) return '3-5ty';
-    if (price < 10_000_000_000) return '5-10ty';
-    return 'over10ty';
+  async getLandRecommendations(
+    userId: number,
+    limit: number = QUERY_LIMITS.LEGACY_DEFAULT_LIMIT,
+  ) {
+    return this.getPropertyRecommendations('land', userId, limit);
   }
 
-  // ==================== FETCH INTERACTED PROPERTIES ====================
+  // ==================== GHI HÀNH VI USER ====================
 
-  private async fetchInteractedProperties(
-    interactions: WeightedInteraction[],
-  ): Promise<
-    Array<{
-      id: number;
-      type: 'house' | 'land';
-      price: any;
-      city: string | null;
-      district: string | null;
-      area: number | null;
-      categoryId: number | null;
-      landType?: string | null;
-    }>
-  > {
-    const houseIds = interactions
-      .filter((i) => i.type === 'house')
-      .map((i) => i.id);
-    const landIds = interactions
-      .filter((i) => i.type === 'land')
-      .map((i) => i.id);
-
-    const [houses, lands] = await Promise.all([
-      houseIds.length > 0
-        ? this.prisma.house.findMany({
-            where: { id: { in: houseIds } },
-            select: {
-              id: true,
-              price: true,
-              city: true,
-              district: true,
-              area: true,
-              categoryId: true,
-            },
-          })
-        : Promise.resolve([]),
-      landIds.length > 0
-        ? this.prisma.land.findMany({
-            where: { id: { in: landIds } },
-            select: {
-              id: true,
-              price: true,
-              city: true,
-              district: true,
-              area: true,
-              categoryId: true,
-              landType: true,
-            },
-          })
-        : Promise.resolve([]),
-    ]);
-
-    return [
-      ...houses.map((h) => ({ ...h, type: 'house' as const })),
-      ...lands.map((l) => ({ ...l, type: 'land' as const })),
-    ];
-  }
-
-  // ==================== POPULAR MIXED FALLBACK ====================
-
-  private async getPopularMixed(limit: number) {
-    const houseLimit = Math.ceil(limit / 2);
-    const landLimit = limit - houseLimit;
-
-    const [houses, lands] = await Promise.all([
-      this.getPopularHouses(houseLimit),
-      this.getPopularLands(landLimit),
-    ]);
-
-    const mixed = [
-      ...houses.map((h: any) => ({ ...h, propertyType: 'house' })),
-      ...lands.map((l: any) => ({ ...l, propertyType: 'land' })),
-    ];
-
-    // Interleave houses and lands
-    const result: any[] = [];
-    let hi = 0,
-      li = 0;
-    const hList = mixed.filter((m) => m.propertyType === 'house');
-    const lList = mixed.filter((m) => m.propertyType === 'land');
-
-    while (result.length < limit && (hi < hList.length || li < lList.length)) {
-      if (hi < hList.length) result.push(hList[hi++]);
-      if (li < lList.length && result.length < limit) result.push(lList[li++]);
-    }
-
-    return result;
-  }
-
-  // ==================== TRACK BEHAVIOR ====================
-
+  /**
+   * Ghi lại hành vi user (click/save) vào DB.
+   * Sau khi ghi → xóa cache gợi ý cũ → lần request tiếp sẽ tính lại.
+   *
+   * Eventual consistency: có thể có 1 khoảng ngắn cache cũ còn tồn tại
+   * nhưng lần request sau sẽ luôn có data mới.
+   */
   async trackBehavior(
     userId: number,
     action: string,
@@ -771,653 +666,22 @@ export class RecommendationService {
       data: { userId, houseId, landId, action },
     });
 
-    // Invalidate all recommendation caches for this user
-    await Promise.all([
-      houseId
-        ? this.redis.del(houseRecommendationKey(userId)).catch(() => {})
-        : Promise.resolve(),
-      landId
-        ? this.redis.del(landRecommendationKey(userId)).catch(() => {})
-        : Promise.resolve(),
-      this.redis.del(aiRecommendationKey(userId)).catch(() => {}),
-      this.redis.del(userVectorKey(userId)).catch(() => {}),
-    ]);
+    // Xóa tất cả cache gợi ý của user này để lần sau tính lại
+    const keysToDelete = [
+      cacheKeys.aiRecommendation(userId),
+      cacheKeys.userVector(userId),
+      ...(houseId ? [cacheKeys.houseRecommendation(userId)] : []),
+      ...(landId ? [cacheKeys.landRecommendation(userId)] : []),
+    ];
+
+    await Promise.all(
+      keysToDelete.map((key) =>
+        this.redis.del(key).catch((err) => {
+          this.logger.warn(`Redis del failed for ${key}: ${err.message}`);
+        }),
+      ),
+    );
 
     return { message: 'Behavior tracked' };
-  }
-
-  // ==================== HOUSE RECOMMENDATIONS (existing) ====================
-
-  async getHouseRecommendations(userId: number, limit = 5) {
-    const cacheKey = houseRecommendationKey(userId);
-
-    const cached = await this.redis.get(cacheKey).catch(() => null);
-    if (cached) {
-      this.logger.debug(`Cache HIT: ${cacheKey}`);
-      return cached;
-    }
-
-    // 1. Get user behavior data
-    const behaviors = await this.prisma.userBehavior.findMany({
-      where: {
-        userId,
-        houseId: { not: null },
-        action: { in: ['click', 'save'] },
-      },
-      include: {
-        house: {
-          select: {
-            id: true,
-            price: true,
-            city: true,
-            district: true,
-            ward: true,
-            area: true,
-            direction: true,
-            categoryId: true,
-            bedrooms: true,
-            bathrooms: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
-
-    // 2. Get user favorites
-    const favorites = await this.prisma.favorite.findMany({
-      where: { userId, houseId: { not: null } },
-      include: {
-        house: {
-          select: {
-            id: true,
-            price: true,
-            city: true,
-            district: true,
-            ward: true,
-            area: true,
-            direction: true,
-            categoryId: true,
-            bedrooms: true,
-            bathrooms: true,
-          },
-        },
-      },
-    });
-
-    // Build user profile from behavior
-    const interactedItems = [
-      ...behaviors
-        .filter((b) => b.house)
-        .map((b) => ({
-          ...b.house!,
-          weight: b.action === 'save' ? 3 : b.action === 'click' ? 2 : 1,
-        })),
-      ...favorites
-        .filter((f) => f.house)
-        .map((f) => ({
-          ...f.house!,
-          weight: 3,
-        })),
-    ];
-
-    const interactedIds = new Set(interactedItems.map((h) => h.id));
-
-    // If no behavior data, return popular/recent
-    if (interactedItems.length === 0) {
-      const popular = await this.getPopularHouses(limit);
-      await this.redis
-        .set(cacheKey, popular, RECOMMENDATION_TTL)
-        .catch(() => {});
-      return popular;
-    }
-
-    // 3. Build user preference profile
-    const profile = this.buildUserProfile(interactedItems);
-
-    // 4. Get candidate houses (pre-filtered by user preferences)
-    const candidates = await this.prisma.house.findMany({
-      where: {
-        id: { notIn: Array.from(interactedIds) },
-        status: 1,
-        OR: this.buildCandidateFilters(profile),
-      },
-      include: {
-        images: { select: { id: true, url: true }, take: 1 },
-        category: true,
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 200,
-    });
-
-    // 5. Score each candidate
-    const scored: ScoredProperty[] = candidates.map((house) => {
-      const { score, reasons } = this.calculateScore(house, profile);
-      return {
-        id: house.id,
-        score: Math.round(score * 100) / 100,
-        reason: reasons.join(', '),
-      };
-    });
-
-    // 6. Sort by score descending, take top N
-    scored.sort((a, b) => b.score - a.score);
-    const topIds = scored.slice(0, limit);
-
-    // 7. Fetch full data for top results
-    const topHouses = await this.prisma.house.findMany({
-      where: { id: { in: topIds.map((t) => t.id) } },
-      include: {
-        images: { select: { id: true, url: true } },
-        category: true,
-        employee: {
-          include: {
-            user: { select: { id: true, fullName: true, phone: true } },
-          },
-        },
-      },
-    });
-
-    const result = topIds
-      .map((item) => {
-        const house = topHouses.find((h) => h.id === item.id);
-        return {
-          ...house,
-          recommendationScore: item.score,
-          recommendationReason: item.reason,
-        };
-      })
-      .filter(Boolean);
-
-    await this.redis.set(cacheKey, result, RECOMMENDATION_TTL).catch(() => {});
-    this.logger.debug(
-      `Generated ${result.length} house recommendations for user ${userId}`,
-    );
-
-    return result;
-  }
-
-  // ==================== LAND RECOMMENDATIONS (existing) ====================
-
-  async getLandRecommendations(userId: number, limit = 5) {
-    const cacheKey = landRecommendationKey(userId);
-
-    const cached = await this.redis.get(cacheKey).catch(() => null);
-    if (cached) {
-      this.logger.debug(`Cache HIT: ${cacheKey}`);
-      return cached;
-    }
-
-    // 1. Get user behavior data for lands
-    const behaviors = await this.prisma.userBehavior.findMany({
-      where: {
-        userId,
-        landId: { not: null },
-        action: { in: ['click', 'save'] },
-      },
-      include: {
-        land: {
-          select: {
-            id: true,
-            price: true,
-            city: true,
-            district: true,
-            ward: true,
-            area: true,
-            direction: true,
-            categoryId: true,
-            frontWidth: true,
-            landLength: true,
-            landType: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
-
-    // 2. Get user favorites for lands
-    const favorites = await this.prisma.favorite.findMany({
-      where: { userId, landId: { not: null } },
-      include: {
-        land: {
-          select: {
-            id: true,
-            price: true,
-            city: true,
-            district: true,
-            ward: true,
-            area: true,
-            direction: true,
-            categoryId: true,
-            frontWidth: true,
-            landLength: true,
-            landType: true,
-          },
-        },
-      },
-    });
-
-    // Build user profile from behavior
-    const interactedItems = [
-      ...behaviors
-        .filter((b) => b.land)
-        .map((b) => ({
-          ...b.land!,
-          weight: b.action === 'save' ? 3 : b.action === 'click' ? 2 : 1,
-        })),
-      ...favorites
-        .filter((f) => f.land)
-        .map((f) => ({
-          ...f.land!,
-          weight: 3,
-        })),
-    ];
-
-    const interactedIds = new Set(interactedItems.map((l) => l.id));
-
-    // If no behavior data, return popular/recent
-    if (interactedItems.length === 0) {
-      const popular = await this.getPopularLands(limit);
-      await this.redis
-        .set(cacheKey, popular, RECOMMENDATION_TTL)
-        .catch(() => {});
-      return popular;
-    }
-
-    // 3. Build user preference profile
-    const profile = this.buildUserProfile(interactedItems);
-
-    // Build land-specific profile (landType preferences)
-    const landTypeCounts: Record<string, number> = {};
-    interactedItems.forEach((item) => {
-      const land = item as any;
-      if (land.landType) {
-        landTypeCounts[land.landType] =
-          (landTypeCounts[land.landType] || 0) + item.weight;
-      }
-    });
-
-    // 4. Get candidate lands (pre-filtered by user preferences)
-    const candidates = await this.prisma.land.findMany({
-      where: {
-        id: { notIn: Array.from(interactedIds) },
-        status: 1,
-        OR: this.buildCandidateFilters(profile),
-      },
-      include: {
-        images: { select: { id: true, url: true }, take: 1 },
-        category: true,
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 200,
-    });
-
-    // 5. Score each candidate
-    const scored: ScoredProperty[] = candidates.map((land) => {
-      const { score, reasons } = this.calculateLandScore(
-        land,
-        profile,
-        landTypeCounts,
-      );
-      return {
-        id: land.id,
-        score: Math.round(score * 100) / 100,
-        reason: reasons.join(', '),
-      };
-    });
-
-    // 6. Sort by score descending, take top N
-    scored.sort((a, b) => b.score - a.score);
-    const topIds = scored.slice(0, limit);
-
-    // 7. Fetch full data for top results
-    const topLands = await this.prisma.land.findMany({
-      where: { id: { in: topIds.map((t) => t.id) } },
-      include: {
-        images: { select: { id: true, url: true } },
-        category: true,
-        employee: {
-          include: {
-            user: { select: { id: true, fullName: true, phone: true } },
-          },
-        },
-      },
-    });
-
-    const result = topIds
-      .map((item) => {
-        const land = topLands.find((l) => l.id === item.id);
-        return {
-          ...land,
-          recommendationScore: item.score,
-          recommendationReason: item.reason,
-        };
-      })
-      .filter(Boolean);
-
-    await this.redis.set(cacheKey, result, RECOMMENDATION_TTL).catch(() => {});
-    this.logger.debug(
-      `Generated ${result.length} land recommendations for user ${userId}`,
-    );
-
-    return result;
-  }
-
-  // ==================== SHARED HELPERS ====================
-
-  private buildCandidateFilters(profile: UserProfile): any[] {
-    const filters: any[] = [];
-
-    // Price range: ±50% of user's average price
-    if (profile.avgPrice > 0) {
-      filters.push({
-        price: {
-          gte: Math.round(profile.avgPrice * 0.5),
-          lte: Math.round(profile.avgPrice * 1.5),
-        },
-      });
-    }
-
-    // Preferred locations (top locations by weight)
-    const topLocations = Object.entries(profile.locationCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5);
-    for (const [key] of topLocations) {
-      const [city, district] = key.split('|');
-      filters.push({ city, district });
-    }
-
-    // Preferred categories
-    const topCategories = Object.entries(profile.categoryCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([id]) => Number(id));
-    if (topCategories.length > 0) {
-      filters.push({ categoryId: { in: topCategories } });
-    }
-
-    // Area range: ±50% of user's average area
-    if (profile.avgArea > 0) {
-      filters.push({
-        area: {
-          gte: Math.round(profile.avgArea * 0.5),
-          lte: Math.round(profile.avgArea * 1.5),
-        },
-      });
-    }
-
-    // Fallback: if no filters could be built, don't restrict
-    return filters.length > 0 ? filters : [{}];
-  }
-
-  private buildUserProfile(
-    items: Array<any & { weight: number }>,
-  ): UserProfile {
-    const totalWeight = items.reduce((sum, h) => sum + h.weight, 0);
-
-    // Weighted average price
-    const prices = items
-      .filter((h) => h.price)
-      .map((h) => ({
-        value: Number(h.price),
-        weight: h.weight,
-      }));
-    const avgPrice =
-      prices.length > 0
-        ? prices.reduce((sum, p) => sum + p.value * p.weight, 0) /
-          prices.reduce((sum, p) => sum + p.weight, 0)
-        : 0;
-
-    // Most frequent city/district (weighted)
-    const locationCounts: Record<string, number> = {};
-    items.forEach((h) => {
-      if (h.city && h.district) {
-        const key = `${h.city}|${h.district}`;
-        locationCounts[key] = (locationCounts[key] || 0) + h.weight;
-      }
-    });
-
-    // Most frequent categories
-    const categoryCounts: Record<number, number> = {};
-    items.forEach((h) => {
-      if (h.categoryId) {
-        categoryCounts[h.categoryId] =
-          (categoryCounts[h.categoryId] || 0) + h.weight;
-      }
-    });
-
-    // Average area
-    const areas = items
-      .filter((h) => h.area)
-      .map((h) => ({
-        value: Number(h.area),
-        weight: h.weight,
-      }));
-    const avgArea =
-      areas.length > 0
-        ? areas.reduce((sum, a) => sum + a.value * a.weight, 0) /
-          areas.reduce((sum, a) => sum + a.weight, 0)
-        : 0;
-
-    return { avgPrice, avgArea, locationCounts, categoryCounts, totalWeight };
-  }
-
-  private calculateScore(
-    property: any,
-    profile: UserProfile,
-  ): { score: number; reasons: string[] } {
-    let score = 0;
-    const reasons: string[] = [];
-
-    // --- Price match (30%) ---
-    if (profile.avgPrice > 0 && property.price) {
-      const propPrice = Number(property.price);
-      const priceDiff =
-        Math.abs(propPrice - profile.avgPrice) / profile.avgPrice;
-      const priceScore = Math.max(0, 1 - priceDiff);
-      score += priceScore * 0.3;
-      if (priceScore > 0.6) reasons.push('Mức giá phù hợp');
-    }
-
-    // --- Location match (30%) ---
-    if (property.city && property.district) {
-      const locationKey = `${property.city}|${property.district}`;
-      const maxLocationWeight = Math.max(
-        ...Object.values(profile.locationCounts),
-        1,
-      );
-      const locationWeight = profile.locationCounts[locationKey] || 0;
-      const locationScore = locationWeight / maxLocationWeight;
-      score += locationScore * 0.3;
-      if (locationScore > 0.5) reasons.push('Khu vực bạn quan tâm');
-    }
-
-    // --- Similarity to viewed/clicked (30%) ---
-    let similarityScore = 0;
-    let similarityCount = 0;
-
-    // Category match
-    if (property.categoryId && profile.categoryCounts[property.categoryId]) {
-      const maxCatWeight = Math.max(
-        ...Object.values(profile.categoryCounts),
-        1,
-      );
-      similarityScore +=
-        (profile.categoryCounts[property.categoryId] / maxCatWeight) * 0.4;
-      similarityCount++;
-    }
-
-    // Area similarity
-    if (profile.avgArea > 0 && property.area) {
-      const areaDiff =
-        Math.abs(Number(property.area) - profile.avgArea) / profile.avgArea;
-      similarityScore += Math.max(0, 1 - areaDiff) * 0.3;
-      similarityCount++;
-    }
-
-    if (similarityCount > 0) {
-      score += (similarityScore / similarityCount) * similarityCount * 0.3;
-      if (similarityScore > 0.3) reasons.push('Giống các BĐS bạn đã xem');
-    }
-
-    // --- Diversity bonus (10%) ---
-    if (property.city && property.district) {
-      const locationKey = `${property.city}|${property.district}`;
-      if (!profile.locationCounts[locationKey]) {
-        score += 0.05;
-        reasons.push('Khám phá khu vực mới');
-      }
-    }
-    const daysSinceCreated =
-      (Date.now() - new Date(property.createdAt).getTime()) /
-      (1000 * 60 * 60 * 24);
-    if (daysSinceCreated < 7) {
-      score += 0.05;
-      reasons.push('Mới đăng');
-    }
-
-    if (reasons.length === 0) reasons.push('Có thể phù hợp với bạn');
-
-    return { score: Math.min(score, 1), reasons };
-  }
-
-  private calculateLandScore(
-    land: any,
-    profile: UserProfile,
-    landTypeCounts: Record<string, number>,
-  ): { score: number; reasons: string[] } {
-    // Base scoring same as house
-    const { score: baseScore, reasons } = this.calculateScore(land, profile);
-    let score = baseScore;
-
-    // Bonus: landType match (borrow from similarity weight)
-    if (land.landType && Object.keys(landTypeCounts).length > 0) {
-      const maxTypeWeight = Math.max(...Object.values(landTypeCounts), 1);
-      const typeWeight = landTypeCounts[land.landType] || 0;
-      if (typeWeight > 0) {
-        score += (typeWeight / maxTypeWeight) * 0.1;
-        reasons.push('Loại đất phù hợp');
-      }
-    }
-
-    return { score: Math.min(score, 1), reasons };
-  }
-
-  // ==================== FALLBACK: POPULAR / RECENT ====================
-
-  private async getPopularHouses(limit: number) {
-    const popularIds = await this.prisma.favorite.groupBy({
-      by: ['houseId'],
-      where: { houseId: { not: null } },
-      _count: { houseId: true },
-      orderBy: { _count: { houseId: 'desc' } },
-      take: limit,
-    });
-
-    if (popularIds.length > 0) {
-      const houses = await this.prisma.house.findMany({
-        where: {
-          id: { in: popularIds.map((p) => p.houseId!).filter(Boolean) },
-          status: 1,
-        },
-        include: {
-          images: { select: { id: true, url: true } },
-          category: true,
-          employee: {
-            include: {
-              user: { select: { id: true, fullName: true, phone: true } },
-            },
-          },
-        },
-      });
-      return houses.map((h) => ({
-        ...h,
-        recommendationScore: 0.5,
-        recommendationReason: 'Được nhiều người quan tâm',
-      }));
-    }
-
-    const houses = await this.prisma.house.findMany({
-      where: { status: 1 },
-      take: limit,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        images: { select: { id: true, url: true } },
-        category: true,
-        employee: {
-          include: {
-            user: { select: { id: true, fullName: true, phone: true } },
-          },
-        },
-      },
-    });
-    return houses.map((h) => ({
-      ...h,
-      recommendationScore: 0.4,
-      recommendationReason: 'Mới đăng gần đây',
-    }));
-  }
-
-  private async getPopularLands(limit: number) {
-    const popularIds = await this.prisma.favorite.groupBy({
-      by: ['landId'],
-      where: { landId: { not: null } },
-      _count: { landId: true },
-      orderBy: { _count: { landId: 'desc' } },
-      take: limit,
-    });
-
-    if (popularIds.length > 0) {
-      const lands = await this.prisma.land.findMany({
-        where: {
-          id: { in: popularIds.map((p) => p.landId!).filter(Boolean) },
-          status: 1,
-        },
-        include: {
-          images: { select: { id: true, url: true } },
-          category: true,
-          employee: {
-            include: {
-              user: { select: { id: true, fullName: true, phone: true } },
-            },
-          },
-        },
-      });
-      return lands.map((l) => ({
-        ...l,
-        recommendationScore: 0.5,
-        recommendationReason: 'Được nhiều người quan tâm',
-      }));
-    }
-
-    const lands = await this.prisma.land.findMany({
-      where: { status: 1 },
-      take: limit,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        images: { select: { id: true, url: true } },
-        category: true,
-        employee: {
-          include: {
-            user: { select: { id: true, fullName: true, phone: true } },
-          },
-        },
-      },
-    });
-    return lands.map((l) => ({
-      ...l,
-      recommendationScore: 0.4,
-      recommendationReason: 'Mới đăng gần đây',
-    }));
-  }
-
-  private stringifyError(error: unknown): string {
-    if (error instanceof Error) return error.message;
-    try {
-      return JSON.stringify(error);
-    } catch {
-      return String(error);
-    }
   }
 }

@@ -51,6 +51,7 @@ async function bootstrap() {
     options: {
       urls: [rmqUrl],
       queue: 'mail_queue',
+      noAck: false, // Consumer sẽ tự ack sau khi xử lý xong (tránh mất message)
       queueOptions: {
         durable: true,
       },

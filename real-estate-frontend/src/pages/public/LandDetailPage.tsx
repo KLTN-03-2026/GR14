@@ -763,7 +763,7 @@ const LandDetailPage: React.FC = () => {
 
                                 {/* Trust points */}
                                 <div className="mt-5 space-y-2 border-t pt-4 text-xs" style={{ borderColor: 'var(--pl-border, #e5e7eb)', color: 'var(--pl-muted-fg, #6b7280)' }}>
-                                    {['Tin thật, đã kiểm duyệt', , 'Miễn phí tư vấn pháp lý'].map((t, i) => (
+                                    {['Tin thật, đã kiểm duyệt', 'Miễn phí tư vấn pháp lý'].map((t, i) => (
                                         <div key={i} className="flex items-center gap-2">
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--pl-success, #16a34a)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
                                             {t}
