@@ -36,7 +36,7 @@ const DepositFormSection = ({
   const propertyPrice = propertyPriceProp ? Number(propertyPriceProp) : 0;
 
   const depositMode = 'Giữ chỗ trước khi xem';
-  const depositDescription = 'Đặt cọc trước ngày hẹn xem. Có thể hoàn tiền theo điều kiện.';
+  const depositDescription = 'Đặt cọc trước ng� y hẹn xem. Có thể ho� n tiền theo điều kiện.';
 
   const amountBounds = useMemo(() => {
     // Single exact suggestion: 0.2% of property price (rounded), with minimum 1.000.000 đ
@@ -188,7 +188,7 @@ const DepositFormSection = ({
             >
               {depositMode}
             </span>
-            <h3 className="text-[17px] font-medium text-slate-900">Hoàn tất đặt cọc bất động sản</h3>
+            <h3 className="text-[17px] font-medium text-slate-900">Ho� n tất đặt cọc bất động sản</h3>
           </div>
           <button
             type="button"
@@ -207,7 +207,7 @@ const DepositFormSection = ({
         {/* ── Body (scrollable) ── */}
         <div className="overflow-y-auto flex-1" style={{ minHeight: 0, maxHeight: 'calc(100vh - 190px)' }}>
 
-          {/* Bug #5: Cảnh báo cọc chốt mua không hoàn tiền */}
+          {/* Bug #5: Cảnh báo cọc chốt mua không ho� n tiền */}
           {isAfterViewing && (
             <div className="mx-4 mt-3 flex items-start gap-2.5 rounded-xl px-3 py-2.5"
               style={{ background: '#fef3c7', border: '0.5px solid #f59e0b' }}>
@@ -217,7 +217,7 @@ const DepositFormSection = ({
                 <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
               </svg>
               <span className="text-[11px] leading-snug" style={{ color: '#92400e' }}>
-                <strong>Cọc chốt mua sau khi xem.</strong> Bạn đã đến xem bất động sản này. Số tiền cọc lần này <strong>không được hoàn trả</strong> nếu bạn hủy.
+                <strong>Cọc chốt mua sau khi xem.</strong> Bạn đã đến xem bất động sản n� y. Số tiền cọc lần n� y� <strong>không được ho� n trả</strong>� nếu bạn hủy.
               </span>
             </div>
           )}
@@ -257,11 +257,11 @@ const DepositFormSection = ({
               <div>
                 <div className="flex items-center gap-1.5 mb-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-                  <p className="text-[10px] font-medium uppercase tracking-widest text-slate-400">Chính sách hoàn tiền</p>
+                  <p className="text-[10px] font-medium uppercase tracking-widest text-slate-400">Chính sách ho� n tiền</p>
                 </div>
                 <div className="flex flex-col gap-1">
                   {[
-                    { label: 'Hủy trước ngày hẹn xem', pct: '95%', color: '#16a34a' },
+                    { label: 'Hủy trước ng� y hẹn xem', pct: '95%', color: '#16a34a' },
                     { label: 'Hủy sau hẹn (chưa xem)', pct: '50%', color: '#f97316' },
                     { label: 'Sau khi xem bất động sản', pct: '0%', color: '#dc2626' },
                   ].map(({ label, pct, color }) => (
@@ -363,7 +363,7 @@ const DepositFormSection = ({
                 <div>
                   <p className="text-[12px] font-medium text-slate-800 mb-0.5">Bảo mật thanh toán</p>
                   <p className="text-[11px] text-slate-500 leading-snug">
-                    Bạn sẽ được chuyển tới cổng thanh toán chính thức để hoàn tất yêu cầu đặt cọc an toàn.
+                    Bạn sẽ được chuyển tới cổng thanh toán chính thức để ho� n tất yêu cầu đặt cọc an to� n.
                   </p>
                 </div>
               </div>
@@ -400,7 +400,7 @@ const DepositFormSection = ({
               )}
             </span>
             <span className="text-[11px] leading-snug" style={{ color: agreed ? '#c2410c' : '#64748b' }}>
-              Tôi đã đọc, hiểu rõ và <strong>đồng ý</strong> với chính sách đặt cọc bất động sản trên đây.
+              Tôi đã đọc, hiểu rõ v�  <strong>đồng ý</strong> với chính sách đặt cọc bất động sản trên đây.
             </span>
           </button>
 
@@ -408,9 +408,9 @@ const DepositFormSection = ({
           {!canSubmit && (
             <p className="text-[11px] text-amber-600 mb-2 text-center">
               {!paymentMethod
-                ? '⚠ Vui lòng chọn phương thức thanh toán'
+                ? '�  Vui lòng chọn phương thức thanh toán'
                 : !agreed
-                ? '⚠ Vui lòng tích chọn đồng ý chính sách ở trên'
+                ? '�  Vui lòng tích chọn đồng ý chính sách ở trên'
                 : ''}
             </p>
           )}
