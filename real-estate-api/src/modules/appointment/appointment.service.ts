@@ -39,6 +39,7 @@ const appointmentInclude = {
     select: {
       id: true,
       title: true,
+      price: true,
       city: true,
       district: true,
       images: {
@@ -52,6 +53,7 @@ const appointmentInclude = {
     select: {
       id: true,
       title: true,
+      price: true,
       city: true,
       district: true,
       images: {
@@ -684,6 +686,31 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     this.assertBookingDateWithinLimit(appointmentDate, now);
     this.assertWorkingSlot(appointmentDate, durationMinutes);
 
+    if (dto.houseId) {
+      const selectedHouse = await this.prisma.house.findUnique({
+        where: { id: dto.houseId },
+        select: { depositStatus: true },
+      });
+      if (!selectedHouse) {
+        throw new NotFoundException('Bất động sản không tồn tại');
+      }
+      if (selectedHouse.depositStatus === 1) {
+        throw new BadRequestException('Bất động sản đang được giữ cọc, không thể đặt lịch hẹn');
+      }
+    }
+    if (dto.landId) {
+      const selectedLand = await this.prisma.land.findUnique({
+        where: { id: dto.landId },
+        select: { depositStatus: true },
+      });
+      if (!selectedLand) {
+        throw new NotFoundException('Bất động sản không tồn tại');
+      }
+      if (selectedLand.depositStatus === 1) {
+        throw new BadRequestException('Bất động sản đang được giữ cọc, không thể đặt lịch hẹn');
+      }
+    }
+
     const slaBaseline = this.getSlaBaseline(now);
 
     const appointment = await this.prisma.appointment.create({
@@ -802,6 +829,31 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     // [ADD] Admin cũng bị chặn nếu đặt lịch quá 10 ngày
     this.assertBookingDateWithinLimit(appointmentDate, now);
     this.assertWorkingSlot(appointmentDate, durationMinutes);
+
+    if (dto.houseId) {
+      const selectedHouse = await this.prisma.house.findUnique({
+        where: { id: dto.houseId },
+        select: { depositStatus: true },
+      });
+      if (!selectedHouse) {
+        throw new NotFoundException('Bất động sản không tồn tại');
+      }
+      if (selectedHouse.depositStatus === 1) {
+        throw new BadRequestException('Bất động sản đang được giữ cọc, không thể đặt lịch hẹn');
+      }
+    }
+    if (dto.landId) {
+      const selectedLand = await this.prisma.land.findUnique({
+        where: { id: dto.landId },
+        select: { depositStatus: true },
+      });
+      if (!selectedLand) {
+        throw new NotFoundException('Bất động sản không tồn tại');
+      }
+      if (selectedLand.depositStatus === 1) {
+        throw new BadRequestException('Bất động sản đang được giữ cọc, không thể đặt lịch hẹn');
+      }
+    }
 
     const slaBaseline = this.getSlaBaseline(now);
 

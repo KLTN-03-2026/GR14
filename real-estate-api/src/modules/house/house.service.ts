@@ -163,7 +163,28 @@ export class HouseService {
     this.logger.debug(`Cache MISS: ${cacheKey}`);
     const house = await this.prisma.house.findUnique({
       where: { id },
-      include: {
+      select: {
+        id: true,
+        code: true,
+        title: true,
+        city: true,
+        district: true,
+        ward: true,
+        street: true,
+        houseNumber: true,
+        description: true,
+        price: true,
+        area: true,
+        direction: true,
+        floors: true,
+        bedrooms: true,
+        bathrooms: true,
+        status: true,
+        depositStatus: true,
+        categoryId: true,
+        employeeId: true,
+        createdAt: true,
+        updatedAt: true,
         category: true,
         images: { select: { id: true, url: true } },
         employee: {

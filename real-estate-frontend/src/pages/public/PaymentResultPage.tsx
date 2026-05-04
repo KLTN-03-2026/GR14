@@ -123,28 +123,33 @@ const PaymentResultPage = () => {
                 ? `Giao dịch cọc #${deposit?.id || ''} đã được xác nhận thành công.`
                 : errorMsg || 'Vui lòng kiểm tra lại hoặc liên hệ hỗ trợ.'
             }
-            extra={[
-              <Button
-                key="my-appointments"
-                type="primary"
-                size="large"
-                icon={<CalendarOutlined />}
-                onClick={() => navigate('/appointment')}
-              >
-                Xem lịch hẹn của tôi
-              </Button>,
-              <Button
-                key="home"
-                size="large"
-                icon={<HomeOutlined />}
-                onClick={() => navigate('/')}
-              >
-                Về trang chủ
-              </Button>,
-            ]}
+            extra={
+              isDepositSuccess
+                ? []
+                : [
+                    <Button
+                      key="my-appointments"
+                      type="primary"
+                      size="large"
+                      icon={<CalendarOutlined />}
+                      onClick={() => navigate('/appointment')}
+                    >
+                      Xem lịch hẹn của tôi
+                    </Button>,
+                    <Button
+                      key="home"
+                      size="large"
+                      icon={<HomeOutlined />}
+                      onClick={() => navigate('/')}
+                    >
+                      Về trang chủ
+                    </Button>,
+                  ]
+            }
           />
 
           {isDepositSuccess && deposit && (
+            <>
             <Card className="mt-8 shadow-sm" style={{ borderRadius: 16 }}>
               <div className="space-y-5 p-2">
                 <div className="flex items-center justify-between">
@@ -156,6 +161,35 @@ const PaymentResultPage = () => {
 
                 <Divider />
 
+
+            <Card className="mt-4 shadow-sm" style={{ borderRadius: 16 }}>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">Đi tiếp</p>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Bạn có thể quay về trang chủ hoặc mở lịch hẹn để xem chi tiết giao dịch vừa đặt cọc.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Button
+                    type="primary"
+                    size="large"
+                    icon={<HomeOutlined />}
+                    onClick={() => navigate('/')}
+                  >
+                    Về trang chủ
+                  </Button>
+                  <Button
+                    size="large"
+                    icon={<CalendarOutlined />}
+                    onClick={() => navigate('/appointment')}
+                  >
+                    Xem lịch hẹn của tôi
+                  </Button>
+                </div>
+              </div>
+            </Card>
+            </>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <p className="text-gray-500">Trạng thái</p>

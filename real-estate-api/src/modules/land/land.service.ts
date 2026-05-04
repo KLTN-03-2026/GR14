@@ -166,7 +166,29 @@ export class LandService {
     this.logger.debug(`Cache MISS: ${cacheKey}`);
     const land = await this.prisma.land.findUnique({
       where: { id },
-      include: {
+      select: {
+        id: true,
+        code: true,
+        title: true,
+        city: true,
+        district: true,
+        ward: true,
+        street: true,
+        plotNumber: true,
+        description: true,
+        price: true,
+        area: true,
+        direction: true,
+        frontWidth: true,
+        landLength: true,
+        landType: true,
+        legalStatus: true,
+        status: true,
+        depositStatus: true,
+        categoryId: true,
+        employeeId: true,
+        createdAt: true,
+        updatedAt: true,
         category: true,
         images: { select: { id: true, url: true } },
         employee: {

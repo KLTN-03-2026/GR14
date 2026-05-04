@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Result, Button, Card, Statistic, Spin } from 'antd';
 import toast from 'react-hot-toast';
 import { CheckCircleOutlined, CalendarOutlined, GiftOutlined } from '@ant-design/icons';
@@ -12,6 +12,8 @@ const POST_DRAFT_KEY = 'pendingPostDraft';
 
 const PaymentSuccessPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
   const [paymentData, setPaymentData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -31,8 +33,20 @@ const PaymentSuccessPage = () => {
   };
 
   useEffect(() => {
+    const hasDepositContext = Boolean(
+      sessionStorage.getItem('lastDepositId') ||
+      searchParams.get('depositId') ||
+      searchParams.get('vnp_ResponseCode') ||
+      searchParams.get('resultCode')
+    );
+
+    if (hasDepositContext) {
+      navigate(`/payment/result${location.search}`, { replace: true });
+      return;
+    }
+
     fetchPaymentDetails();
-  }, []);
+  }, [navigate, location.search, searchParams]);
 
   useEffect(() => {
     if (!draftRaw) return;
