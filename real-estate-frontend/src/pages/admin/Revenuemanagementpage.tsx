@@ -1,5 +1,6 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { revenueApi } from '@/api';
 import type { RevenueStats, PaymentItem, RevenueGroupBy } from '@/api/revenue';
@@ -261,6 +262,7 @@ const TYPE_BADGE: Record<Exclude<PaymentTypeFilter, 'all'>, string> = {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 const RevenueManagementPage: React.FC = () => {
+  const navigate = useNavigate();
 
   // ── date / groupBy filter (pending — chỉ apply khi bấm nút) ───────────────
   const [groupBy,   setGroupBy]   = useState<RevenueGroupBy>('month');
@@ -440,9 +442,28 @@ const RevenueManagementPage: React.FC = () => {
   return (
     <div className="space-y-5">
 
+      {/* ── Breadcrumb ──────────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-2 text-sm">
+        <button
+          id="btn-back-to-analytics"
+          onClick={() => navigate('/admin', { state: { tab: 'revenue' } })}
+          className="flex items-center gap-1.5 text-gray-400 hover:text-brand-600 transition-colors duration-150"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+          Thống kê doanh thu
+        </button>
+        <span className="text-gray-300">/</span>
+        <span className="font-medium text-gray-700">Quản lý doanh thu</span>
+      </div>
+
       {/* ── Header + date filter ──────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h3 className="text-xl font-semibold text-gray-900">Quản lý doanh thu</h3>
+        <div>
+          <h3 className="text-xl font-semibold text-gray-900">Quản lý doanh thu</h3>
+          <p className="text-xs text-gray-400 mt-0.5">Tra cứu, lọc và xuất danh sách giao dịch chi tiết</p>
+        </div>
 
         <div className="flex flex-wrap items-center gap-2">
           {/* GroupBy */}
@@ -497,54 +518,73 @@ const RevenueManagementPage: React.FC = () => {
         </div>
       )}
 
-      {/* ── KPI Cards ────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {/* Tổng — không clickable */}
-        <KpiCard
-          label="Tổng doanh thu"
-          value={fmtMoney(s?.summary.totalRevenue ?? 0)}
-          change={s?.comparison.revenueChange}
-          sub="so với kỳ trước"
-          highlight={typeFilter === 'all'}
-        />
+      {/* ── Compact summary strip (clickable filter pills) ──────────────── */}
+      <div className="flex flex-wrap gap-2">
+        {/* Tổng */}
+        <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3.5 py-2.5">
+          <span className="text-xs text-gray-400">Tổng</span>
+          <span className="text-sm font-semibold text-gray-900">{fmtMoney(s?.summary.totalRevenue ?? 0)}</span>
+          {s?.comparison.revenueChange != null && (
+            <span className={`text-xs font-medium rounded-full px-1.5 py-0.5 ${
+              (s.comparison.revenueChange ?? 0) > 0 ? 'bg-green-50 text-green-700' :
+              (s.comparison.revenueChange ?? 0) < 0 ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-500'
+            }`}>
+              {(s.comparison.revenueChange ?? 0) > 0 ? '↑' : (s.comparison.revenueChange ?? 0) < 0 ? '↓' : '—'} {Math.abs(s.comparison.revenueChange ?? 0)}%
+            </span>
+          )}
+        </div>
 
-        {/* Account VIP */}
-        <KpiCard
-          label="Account VIP"
-          value={fmtMoney(s?.summary.accountVip.revenue ?? 0)}
-          sub={`${s?.summary.accountVip.count ?? 0} giao dịch`}
-          active={typeFilter === 'ACCOUNT_VIP'}
-          clickable
+        {/* Account VIP pill */}
+        <button
           onClick={() => handleKpiClick('ACCOUNT_VIP')}
-        />
+          className={`flex items-center gap-1.5 rounded-xl border px-3.5 py-2.5 text-sm transition-all ${
+            typeFilter === 'ACCOUNT_VIP'
+              ? 'border-purple-400 bg-purple-50 ring-1 ring-purple-300'
+              : 'border-gray-200 bg-white hover:border-purple-200'
+          }`}
+        >
+          <span className="w-2 h-2 rounded-full bg-purple-500 flex-shrink-0" />
+          <span className="text-xs text-gray-500">Account VIP</span>
+          <span className="font-semibold text-gray-900">{fmtMoney(s?.summary.accountVip.revenue ?? 0)}</span>
+          <span className="text-xs text-gray-400">({s?.summary.accountVip.count ?? 0})</span>
+        </button>
 
-        {/* Post VIP */}
-        <KpiCard
-          label="Post VIP"
-          value={fmtMoney(s?.summary.postVip.revenue ?? 0)}
-          sub={`${s?.summary.postVip.count ?? 0} giao dịch`}
-          active={typeFilter === 'POST_VIP'}
-          clickable
+        {/* Post VIP pill */}
+        <button
           onClick={() => handleKpiClick('POST_VIP')}
-        />
+          className={`flex items-center gap-1.5 rounded-xl border px-3.5 py-2.5 text-sm transition-all ${
+            typeFilter === 'POST_VIP'
+              ? 'border-teal-400 bg-teal-50 ring-1 ring-teal-300'
+              : 'border-gray-200 bg-white hover:border-teal-200'
+          }`}
+        >
+          <span className="w-2 h-2 rounded-full bg-teal-500 flex-shrink-0" />
+          <span className="text-xs text-gray-500">Post VIP</span>
+          <span className="font-semibold text-gray-900">{fmtMoney(s?.summary.postVip.revenue ?? 0)}</span>
+          <span className="text-xs text-gray-400">({s?.summary.postVip.count ?? 0})</span>
+        </button>
 
-        {/* Đặt cọc */}
-        <KpiCard
-          label="Đặt cọc"
-          value={fmtMoney(s?.summary.deposit.revenue ?? 0)}
-          sub={`${s?.summary.deposit.count ?? 0} giao dịch`}
-          active={typeFilter === 'PROPERTY_DEPOSIT'}
-          clickable
+        {/* Đặt cọc pill */}
+        <button
           onClick={() => handleKpiClick('PROPERTY_DEPOSIT')}
-        />
+          className={`flex items-center gap-1.5 rounded-xl border px-3.5 py-2.5 text-sm transition-all ${
+            typeFilter === 'PROPERTY_DEPOSIT'
+              ? 'border-orange-400 bg-orange-50 ring-1 ring-orange-300'
+              : 'border-gray-200 bg-white hover:border-orange-200'
+          }`}
+        >
+          <span className="w-2 h-2 rounded-full bg-orange-400 flex-shrink-0" />
+          <span className="text-xs text-gray-500">Đặt cọc</span>
+          <span className="font-semibold text-gray-900">{fmtMoney(s?.summary.deposit.revenue ?? 0)}</span>
+          <span className="text-xs text-gray-400">({s?.summary.deposit.count ?? 0})</span>
+        </button>
 
         {/* Tỉ lệ thành công */}
-        <KpiCard
-          label="Tỉ lệ thành công"
-          value={`${s?.transactionStatus.successRate ?? 0}%`}
-          sub={`${s?.transactionStatus.success ?? 0} / ${s?.transactionStatus.total ?? 0} GD`}
-          change={s?.comparison.countChange}
-        />
+        <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 ml-auto">
+          <span className="text-xs text-gray-400">Tỉ lệ thành công</span>
+          <span className="text-sm font-semibold text-green-600">{s?.transactionStatus.successRate ?? 0}%</span>
+          <span className="text-xs text-gray-400">{s?.transactionStatus.success ?? 0}/{s?.transactionStatus.total ?? 0} GD</span>
+        </div>
       </div>
 
       {/* ── Chart row ────────────────────────────────────────────────────── */}

@@ -1,4 +1,5 @@
 import { useEffect, useState, createContext, useContext } from "react";
+import { useLocation } from "react-router-dom";
 import {
   TrendingUp,
   FileText,
@@ -727,7 +728,10 @@ function OverviewAnalyticsSection({
 
 // ─── Main Dashboard Page ───────────────────────────────────────────────────────
 const DashboardPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<TabKey>("overview");
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState<TabKey>(
+    (location.state as { tab?: TabKey } | null)?.tab ?? "overview"
+  );
   const [timeType, setTimeType] = useState<TimeType>("month");
 
   const [stats, setStats] = useState({
