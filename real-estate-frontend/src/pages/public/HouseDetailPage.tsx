@@ -622,18 +622,17 @@ const HouseDetailPage: React.FC = () => {
                                 {/* Status badge */}
                                 <div className="mb-4 flex justify-center">
                                     <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold ${houseStatusTagClass}`}>
-                                        Trạng thái: {houseStatusLabel}
+                                        {houseStatusLabel}
                                     </span>
                                 </div>
 
                                 {/* Favorite button */}
                                 <button
                                     onClick={handleFavorite}
-                                    className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-full border text-[13px] font-semibold mb-3 transition-all duration-200 ${
-                                        isFavoritedHouse(house.id)
+                                    className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-full border text-[13px] font-semibold mb-3 transition-all duration-200 ${isFavoritedHouse(house.id)
                                             ? 'text-white'
                                             : ''
-                                    }`}
+                                        }`}
                                     style={isFavoritedHouse(house.id)
                                         ? { background: '#ef4444', borderColor: '#ef4444', color: '#fff' }
                                         : { background: 'var(--pl-card, #fff)', borderColor: 'var(--pl-border, #e5e7eb)', color: 'var(--pl-foreground, #111827)' }

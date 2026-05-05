@@ -189,12 +189,17 @@ const VIPUpgradePage = () => {
 
         try {
             setIsProcessing(true);
+            const apiBaseUrl =
+                import.meta.env.VITE_API_BASE_URL ||
+                import.meta.env.VITE_API_URL ||
+                `${window.location.origin}/api`;
+
             const payload: any = {
                 packageId: checkoutData.packageId,
                 paymentType: mode === 'post' ? 'POST_VIP' : 'ACCOUNT_VIP',
                 paymentMethod: paymentMethod as 'vnpay' | 'momo',
                 returnUrl: paymentMethod === 'momo'
-                    ? `${import.meta.env.VITE_API_URL}/payment/momo/callback`
+                    ? `${apiBaseUrl}/payment/momo/callback`
                     : window.location.origin + '/payment/vnpay-callback',
             };
             if (mode === 'post' && postId) payload.postId = postId;
@@ -371,15 +376,15 @@ const VIPUpgradePage = () => {
                         const tier = TIER_STYLE[pkg.priorityLevel] ?? TIER_STYLE[1];
                         const isPopular = pkg.priorityLevel === 3;
                         const price = Number(pkg.price);
-                        
+
                         let features: string[] = DEFAULT_FEATURES;
                         try {
                             if (pkg.features && typeof pkg.features === 'string') {
                                 const parsed = JSON.parse(pkg.features);
                                 const isAccount = pkg.packageType === 'ACCOUNT_VIP';
                                 features = [
-                                    parsed.highlight 
-                                        ? (isAccount ? 'Nổi bật TẤT CẢ bài đăng' : 'Làm nổi bật bài đăng') 
+                                    parsed.highlight
+                                        ? (isAccount ? 'Nổi bật TẤT CẢ bài đăng' : 'Làm nổi bật bài đăng')
                                         : null,
                                     isAccount ? 'Đăng tin không giới hạn' : null,
                                     isAccount ? 'Định giá bất động sản bằng AI' : null,

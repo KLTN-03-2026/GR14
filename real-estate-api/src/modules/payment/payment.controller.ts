@@ -24,7 +24,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('payment')
 export class PaymentController {
-  constructor(private paymentService: PaymentService) {}
+  constructor(private paymentService: PaymentService) { }
 
   // ── Public callbacks ──────────────────────────────────────────────────────
 

@@ -2,6 +2,7 @@
 real-estate-AI/.env
 real-estate-frontend/.env
 node_modules
+docs_temp/
 .claude/
 
 # Python cache

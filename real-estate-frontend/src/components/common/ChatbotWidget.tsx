@@ -82,20 +82,23 @@ const toCompareRows = (sources: ChatSource[]): CompareRow[] =>
         });
 
 /* ─── Typing Indicator ─────────────────────────────────────────────────── */
-const TypingIndicator: React.FC = () => (
+const TypingIndicator: React.FC<{ message?: string }> = ({ message }) => (
     <div className="flex max-w-[85%] items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3">
-        <span className="text-xs font-semibold text-slate-400">AI</span>
-        <span className="flex gap-1">
-            {[0, 1, 2].map((i) => (
-                <span
-                    key={i}
-                    className="inline-block h-2 w-2 rounded-full bg-blue-400"
-                    style={{
-                        animation: 'chatbot-bounce 1.2s infinite ease-in-out',
-                        animationDelay: `${i * 0.2}s`,
-                    }}
-                />
-            ))}
+        <span className="text-xs font-semibold text-indigo-500">🤖</span>
+        <span className="flex items-center gap-2">
+            <span className="flex gap-1">
+                {[0, 1, 2].map((i) => (
+                    <span
+                        key={i}
+                        className="inline-block h-2 w-2 rounded-full bg-blue-400"
+                        style={{
+                            animation: 'chatbot-bounce 1.2s infinite ease-in-out',
+                            animationDelay: `${i * 0.2}s`,
+                        }}
+                    />
+                ))}
+            </span>
+            {message && <span className="text-[11px] text-slate-500 italic">{message}</span>}
         </span>
     </div>
 );
@@ -182,6 +185,7 @@ const generateFallbackId = () => {
 /* ─── Main Widget ──────────────────────────────────────────────────────── */
 const ChatbotWidget: React.FC = () => {
     const [isOpen, setIsOpen] = useState(false);
+    const [isExpanded, setIsExpanded] = useState(false);
     const [query, setQuery] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -609,6 +613,9 @@ const ChatbotWidget: React.FC = () => {
         );
     };
 
+    // Detect query type for contextual typing indicator
+    const [loadingLabel, setLoadingLabel] = useState<string | undefined>();
+
     const sendMessage = useCallback(
         async (text: string) => {
             const trimmed = text.trim();
@@ -625,6 +632,16 @@ const ChatbotWidget: React.FC = () => {
             setError(null);
             setLoading(true);
 
+            // Set contextual loading label based on keywords
+            const lower = trimmed.toLowerCase();
+            if (/so sánh|compare/.test(lower)) {
+                setLoadingLabel('Đang phân tích so sánh...');
+            } else if (/tìm|search|mua|bán|thuê/.test(lower)) {
+                setLoadingLabel('Đang tìm kiếm...');
+            } else {
+                setLoadingLabel('Đang suy nghĩ...');
+            }
+
             try {
                 const payload = await aiApi.chat(trimmed, sessionId);
 
@@ -635,7 +652,9 @@ const ChatbotWidget: React.FC = () => {
                     intent: payload?.intent,
                     sources: payload?.sources || [],
                     relatedSources: payload?.relatedSources || [],
-                    suggestedQuestions: payload?.suggestedQuestions,
+                    suggestedQuestions: payload?.suggestedQuestions?.filter(
+                        (q) => typeof q === 'string' && q.trim().length > 0,
+                    ),
                 };
 
                 setMessages((prev) => [...prev, assistantMessage]);
@@ -644,6 +663,7 @@ const ChatbotWidget: React.FC = () => {
                 setError('Không thể kết nối AI lúc này. Vui lòng thử lại sau.');
             } finally {
                 setLoading(false);
+                setLoadingLabel(undefined);
             }
         },
         [loading, sessionId],
@@ -664,8 +684,14 @@ const ChatbotWidget: React.FC = () => {
 
             <div className="fixed bottom-6 right-4 z-[120] sm:right-6">
                 {isOpen && (
-                    <div className="mb-3 flex w-[calc(100vw-2rem)] max-w-sm flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
-                        style={{ height: '32rem' }}
+                    <div
+                        className="mb-3 flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl origin-bottom-right transition-all duration-300 ease-out"
+                        style={{
+                            width: isExpanded ? '700px' : '384px',
+                            maxWidth: 'calc(100vw - 2rem)',
+                            height: isExpanded ? '760px' : '512px',
+                            maxHeight: '85vh'
+                        }}
                     >
                         {/* Header — gradient design */}
                         <div className="flex shrink-0 items-center justify-between bg-gradient-to-r from-indigo-600 via-blue-600 to-cyan-500 px-4 py-3 text-white shadow-md">
@@ -679,14 +705,31 @@ const ChatbotWidget: React.FC = () => {
                                     </div>
                                 </div>
                             </div>
-                            <button
-                                type="button"
-                                onClick={() => setIsOpen(false)}
-                                className="rounded-md px-2 py-1 text-xs text-slate-100 hover:bg-slate-700"
-                                aria-label="Đóng chatbot"
-                            >
-                                ✕
-                            </button>
+                            <div className="flex items-center gap-1">
+                                {/* Expand / Collapse toggle */}
+                                <button
+                                    type="button"
+                                    onClick={() => setIsExpanded((prev) => !prev)}
+                                    className="hidden rounded-md px-2 py-1 text-xs text-white/80 transition hover:bg-white/20 hover:text-white sm:inline-flex"
+                                    aria-label={isExpanded ? 'Thu nhỏ' : 'Mở rộng'}
+                                    title={isExpanded ? 'Thu nhỏ' : 'Mở rộng'}
+                                >
+                                    {isExpanded ? (
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+                                    ) : (
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+                                    )}
+                                </button>
+                                {/* Close button */}
+                                <button
+                                    type="button"
+                                    onClick={() => { setIsOpen(false); setIsExpanded(false); }}
+                                    className="rounded-md px-2 py-1 text-xs text-slate-100 hover:bg-white/20"
+                                    aria-label="Đóng chatbot"
+                                >
+                                    ✕
+                                </button>
+                            </div>
                         </div>
 
                         {/* Messages area */}
@@ -754,8 +797,9 @@ const ChatbotWidget: React.FC = () => {
                                                     )}
                                                 </div>
 
-                                                {/* Quick reply chips — shown only on last assistant message */}
+                                                {/* Quick reply chips — shown ONLY on the LAST assistant message to avoid stale clicks */}
                                                 {msg.sender === 'assistant' &&
+                                                    msg.id === messages.filter((m) => m.sender === 'assistant').at(-1)?.id &&
                                                     msg.suggestedQuestions &&
                                                     msg.suggestedQuestions.length > 0 && (
                                                         <div className="mt-2 flex flex-wrap gap-1.5 pl-1">
@@ -773,8 +817,8 @@ const ChatbotWidget: React.FC = () => {
                                         )
                                     })}
 
-                                    {/* Typing indicator */}
-                                    {loading && <TypingIndicator />}
+                                    {/* Typing indicator with contextual message */}
+                                    {loading && <TypingIndicator message={loadingLabel} />}
                                 </div>
                             )}
 
