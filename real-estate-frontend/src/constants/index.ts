@@ -6,8 +6,8 @@ export const PROPERTY_STATUS = {
 } as const;
 
 export const PROPERTY_STATUS_LABELS: Record<number, string> = {
-    0: 'Đã bán',
-    1: 'Đang bán',
+    0: 'Không hoạt động',
+    1: 'Hoạt động',
 };
 
 export const APPOINTMENT_STATUS = {

@@ -89,13 +89,18 @@ const DepositFormSection = ({
 
     setLoading(true);
     try {
+      const apiBaseUrl =
+        import.meta.env.VITE_API_BASE_URL ||
+        import.meta.env.VITE_API_URL ||
+        `${window.location.origin}/api`;
+
       const payload = {
         appointmentId,
         amount: numericAmount,
         paymentMethod,
         returnUrl:
           paymentMethod === 'momo'
-            ? `${import.meta.env.VITE_API_URL}/payment/momo/callback`
+            ? `${apiBaseUrl}/payment/momo/callback`
             : `${window.location.origin}/payment/vnpay-callback`,
       };
 
@@ -410,8 +415,8 @@ const DepositFormSection = ({
               {!paymentMethod
                 ? '⚠ Vui lòng chọn phương thức thanh toán'
                 : !agreed
-                ? '⚠ Vui lòng tích chọn đồng ý chính sách ở trên'
-                : ''}
+                  ? '⚠ Vui lòng tích chọn đồng ý chính sách ở trên'
+                  : ''}
             </p>
           )}
 
