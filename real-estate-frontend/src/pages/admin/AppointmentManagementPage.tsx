@@ -270,7 +270,14 @@ const AppointmentManagementPage: React.FC = () => {
         }`;
 
     const columns: Column<Appointment>[] = [
-        { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
+        {
+            title: 'STT',
+            key: 'stt',
+            width: 60,
+            render: (_: unknown, __: Appointment, index: number) => (
+                <span className="font-mono text-xs text-gray-500">{(page - 1) * DEFAULT_PAGE_SIZE + index + 1}</span>
+            ),
+        },
         {
             title: 'Bất động sản',
             key: 'property',

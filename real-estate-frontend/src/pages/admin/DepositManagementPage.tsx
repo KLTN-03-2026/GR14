@@ -351,7 +351,7 @@ const DepositManagementPage: React.FC = () => {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/80">
-                {['Mã', 'Khách hàng', 'Bất động sản', 'Số tiền', 'Loại cọc', 'Trạng thái', 'Hết hạn', 'Ngày tạo', 'Hành động'].map((h) => (
+                {['STT', 'Khách hàng', 'Bất động sản', 'Số tiền', 'Loại cọc', 'Trạng thái', 'Hết hạn', 'Ngày tạo', 'Hành động'].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">
                     {h}
                   </th>
@@ -368,16 +368,16 @@ const DepositManagementPage: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                filtered.map((row) => {
+                filtered.map((row, idx) => {
                   const cfg = STATUS_CFG[row.status];
                   const typeCfg = DEPOSIT_TYPE_CFG[row.depositType];
                   const property = row.appointment?.house || row.appointment?.land;
 
                   return (
                     <tr key={row.id} className="group transition hover:bg-gray-50/60 cursor-pointer" onClick={() => setDetailItem(row)}>
-                      {/* Mã */}
+                      {/* STT */}
                       <td className="px-4 py-3">
-                        <span className="font-mono text-xs text-gray-400">#{row.id}</span>
+                        <span className="font-mono text-xs text-gray-500">{(meta.page - 1) * 10 + idx + 1}</span>
                       </td>
 
                       {/* Khách hàng */}
@@ -399,7 +399,7 @@ const DepositManagementPage: React.FC = () => {
                       {/* Loại cọc */}
                       <td className="px-4 py-3">
                         {typeCfg && (
-                          <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${typeCfg.bg} ${typeCfg.text} ${typeCfg.border}`}>
+                          <span className={`inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-medium ${typeCfg.bg} ${typeCfg.text} ${typeCfg.border}`}>
                             {typeCfg.label}
                           </span>
                         )}
@@ -408,7 +408,7 @@ const DepositManagementPage: React.FC = () => {
                       {/* Trạng thái */}
                       <td className="px-4 py-3">
                         {cfg && (
-                          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${cfg.bg} ${cfg.text} ${cfg.border}`}>
+                          <span className={`inline-flex items-center whitespace-nowrap gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${cfg.bg} ${cfg.text} ${cfg.border}`}>
                             <span className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
                             {cfg.label}
                           </span>
@@ -416,12 +416,12 @@ const DepositManagementPage: React.FC = () => {
                       </td>
 
                       {/* Hết hạn */}
-                      <td className="px-4 py-3 text-xs text-gray-500">
+                      <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
                         {fmtDate(row.expiresAt)}
                       </td>
 
                       {/* Ngày tạo */}
-                      <td className="px-4 py-3 text-xs text-gray-500">
+                      <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
                         {fmtDate(row.createdAt)}
                       </td>
 

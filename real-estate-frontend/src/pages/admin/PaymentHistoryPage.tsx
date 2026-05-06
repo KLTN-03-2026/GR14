@@ -71,9 +71,12 @@ const PaymentHistoryPage: React.FC = () => {
 
     const columns: Column<PaymentRow>[] = [
         {
-            title: 'ID',
-            dataIndex: 'id',
+            title: 'STT',
+            key: 'stt',
             width: 60,
+            render: (_: unknown, __: PaymentRow, index: number) => (
+                <span className="font-mono text-xs text-gray-500">{(page - 1) * 10 + index + 1}</span>
+            ),
         },
         {
             title: 'Khách hàng',

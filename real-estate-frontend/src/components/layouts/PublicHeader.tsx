@@ -13,7 +13,7 @@ import {
 } from '@ant-design/icons';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '@/stores/authStore';
-import group from "../../assets/logo.png";
+import group from "../../assets/logo.webp";
 import NotificationDropdown from '@/components/common/NotificationDropdown';
 
 const navigationItems = [

@@ -473,7 +473,7 @@ const RefundManagementPage: React.FC = () => {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/80">
-                {['Mã', 'Khách hàng', 'Tiền cọc', 'Được hoàn', 'Lịch hẹn', 'Ngày gửi', 'Trạng thái', 'Hành động'].map((h) => (
+                {['STT', 'Khách hàng', 'Tiền cọc', 'Được hoàn', 'Lịch hẹn', 'Ngày gửi', 'Trạng thái', 'Hành động'].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">
                     {h}
                   </th>
@@ -490,16 +490,16 @@ const RefundManagementPage: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                filtered.map((row) => {
+                filtered.map((row, idx) => {
                   const cfg = STATUS_CFG[row.status];
                   const refund = calcRefund(row);
                   const met = row.appointment?.actualStatus === 1;
 
                   return (
                     <tr key={row.id} className="group transition hover:bg-gray-50/60">
-                      {/* Mã */}
+                      {/* STT */}
                       <td className="px-4 py-3">
-                        <span className="font-mono text-xs text-gray-400">#{row.id}</span>
+                        <span className="font-mono text-xs text-gray-500">{(meta.page - 1) * 10 + idx + 1}</span>
                       </td>
 
                       {/* Khách hàng */}
