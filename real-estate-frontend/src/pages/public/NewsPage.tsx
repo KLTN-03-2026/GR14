@@ -4,11 +4,11 @@ import { useNavigate } from "react-router-dom";
 import type { Post } from "@/types/post";
 
 // ── Local slide images (bundled by Vite, safe for VPS deploy) ──
-import imgBinhDuong from "@/assets/binh-duong-industrial-park-modern-city.jpg";
-import imgVilla from "@/assets/luxury-vietnamese-villa-with-garden-pool-thao-dien.jpg";
-import imgDaNang from "@/assets/da-nang-dragon-bridge-coastal-city.jpg";
-import imgHanoi from "@/assets/hanoi-skyline-with-west-lake-modern-buildings.jpg";
-import imgHCMC from "@/assets/cityscape-of-ho-chi-minh-city-skyline-at-dusk.jpg";
+import imgBinhDuong from "@/assets/binh-duong-industrial-park-modern-city.webp";
+import imgVilla from "@/assets/luxury-vietnamese-villa-with-garden-pool-thao-dien.webp";
+import imgDaNang from "@/assets/da-nang-dragon-bridge-coastal-city.webp";
+import imgHanoi from "@/assets/hanoi-skyline-with-west-lake-modern-buildings.webp";
+import imgHCMC from "@/assets/cityscape-of-ho-chi-minh-city-skyline-at-dusk.webp";
 
 
 interface PostImage { url: string; position: number; }

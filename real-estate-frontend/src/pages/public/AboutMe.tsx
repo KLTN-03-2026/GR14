@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 
-import banner1 from "../../assets/ABbn1.jpg";
-import banner2 from "../../assets/ABbn2.jpg";
-import banner3 from "../../assets/ABbn3.jpg";
+import banner1 from "../../assets/ABbn1.webp";
+import banner2 from "../../assets/ABbn2.webp";
+import banner3 from "../../assets/ABbn3.webp";
 
-import iconMinhBach from "../../assets/muctieu.png";
-import iconTienPhong from "../../assets/tamnhin.png";
-import iconTanTam from "../../assets/giatri.png";
+import iconMinhBach from "../../assets/muctieu.webp";
+import iconTienPhong from "../../assets/tamnhin.webp";
+import iconTanTam from "../../assets/giatri.webp";
 
-import anhCauChuyen from "../../assets/imggiatri.jpg";
+import anhCauChuyen from "../../assets/imggiatri.webp";
 
 const anhSuMenh =
   "https://images.unsplash.com/photo-1486325212027-8081e485255e?w=800&q=80";

@@ -6,9 +6,9 @@ import { useAuthStore } from '@/stores/authStore';
 import { useFavorites } from '@/context/FavoritesContext';
 import { formatCurrency } from '@/utils';
 import type { House, Land } from '@/types';
-import bedIcon from '@/assets/double-bed.png';
-import bathIcon from '@/assets/bathroom.png';
-import stairsIcon from '@/assets/stairs.png';
+import bedIcon from '@/assets/double-bed.webp';
+import bathIcon from '@/assets/bathroom.webp';
+import stairsIcon from '@/assets/stairs.webp';
 
 interface PropertyCardProps {
     property: House | Land;
@@ -113,6 +113,7 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ property, type = 'house' })
                         alt={property.title || (isHouse ? 'Nhà' : 'Đất')}
                         onError={() => setImgError(true)}
                         className="w-full h-full object-cover rounded-tl-3xl transition-transform duration-500 group-hover:scale-105"
+                        loading="lazy"
                     />
                 )}
 

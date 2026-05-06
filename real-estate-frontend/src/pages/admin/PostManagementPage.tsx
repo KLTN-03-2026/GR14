@@ -217,21 +217,47 @@ const PostManagementPage: React.FC = () => {
     const columns: Column<Post>[] = [
         {
             title: 'Ảnh',
-            width: 80,
-            render: (_, record) =>
-                record.images?.length ? (
-                    <img
-                        src={record.images[0].url}
-                        alt="thumb"
-                        className="h-[50px] w-[60px] cursor-pointer rounded object-cover"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setPreviewImages(record.images?.map((img) => img.url) || []);
-                            setPreviewIndex(0);
-                            setPreviewOpen(true);
-                        }}
-                    />
-                ) : '—',
+            width: 160,
+            render: (_, record) => {
+                const images = record.images || [];
+                if (!images.length) return <span className="text-gray-400">—</span>;
+
+                const MAX_SHOW = 4;
+                const shown = images.slice(0, MAX_SHOW);
+                const extra = images.length - MAX_SHOW;
+
+                const openAt = (idx: number, e: React.MouseEvent) => {
+                    e.stopPropagation();
+                    setPreviewImages(images.map((img) => img.url));
+                    setPreviewIndex(idx);
+                    setPreviewOpen(true);
+                };
+
+                return (
+                    <div className="flex flex-wrap gap-1" onClick={(e) => e.stopPropagation()}>
+                        {shown.map((img, idx) => (
+                            <div key={img.url + idx} className="relative flex-shrink-0">
+                                <img
+                                    src={img.url}
+                                    alt={`ảnh ${idx + 1}`}
+                                    className="h-[44px] w-[52px] cursor-pointer rounded object-cover border border-gray-200 hover:opacity-80 transition-opacity"
+                                    onClick={(e) => openAt(idx, e)}
+                                    title={`Ảnh ${idx + 1}/${images.length} – click để xem tất cả`}
+                                />
+                                {/* Badge "+N" chỉ hiện trên ảnh cuối nếu còn dư */}
+                                {idx === MAX_SHOW - 1 && extra > 0 && (
+                                    <div
+                                        className="absolute inset-0 flex items-center justify-center rounded bg-black/55 cursor-pointer"
+                                        onClick={(e) => openAt(idx, e)}
+                                    >
+                                        <span className="text-xs font-bold text-white">+{extra}</span>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                );
+            },
         },
         {
             title: 'Tiêu đề',

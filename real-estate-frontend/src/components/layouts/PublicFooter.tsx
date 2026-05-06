@@ -1,9 +1,9 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import group from "../../assets/logo.png";
-import gps from "../../assets/icons8-gps-16.png";
-import phone from "../../assets/icons8-phone-16.png";
-import email from "../../assets/icons8-mail-16.png";
+import group from "../../assets/logo.webp";
+import gps from "../../assets/icons8-gps-16.webp";
+import phone from "../../assets/icons8-phone-16.webp";
+import email from "../../assets/icons8-mail-16.webp";
 
 /* ─── Inline social SVG icons ─── */
 const IconFacebook = () => (

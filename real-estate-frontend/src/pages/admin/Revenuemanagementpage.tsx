@@ -386,8 +386,10 @@ const RevenueManagementPage: React.FC = () => {
   // ── columns ───────────────────────────────────────────────────────────────
   const columns: Column<PaymentItem>[] = [
     {
-      title: 'ID', dataIndex: 'id', key: 'id', width: 70,
-      render: (v: number) => <span className="font-mono text-xs text-gray-400">#{v}</span>,
+      title: 'STT', key: 'stt', width: 60,
+      render: (_: unknown, __: PaymentItem, index: number) => (
+        <span className="font-mono text-xs text-gray-500">{(page - 1) * PAGE_SIZE + index + 1}</span>
+      ),
     },
     {
       title: 'Khách hàng', key: 'user',

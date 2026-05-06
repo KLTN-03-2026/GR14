@@ -140,7 +140,14 @@ const UserManagementPage: React.FC = () => {
     };
 
     const columns: Column<User>[] = [
-        { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
+        {
+            title: 'STT',
+            key: 'stt',
+            width: 60,
+            render: (_: unknown, __: User, index: number) => (
+                <span className="font-mono text-xs text-gray-500">{(page - 1) * DEFAULT_PAGE_SIZE + index + 1}</span>
+            ),
+        },
         { title: 'Username', dataIndex: 'username', key: 'username' },
         { title: 'Họ tên', dataIndex: 'fullName', key: 'fullName' },
         { title: 'Email', dataIndex: 'email', key: 'email', ellipsis: true },

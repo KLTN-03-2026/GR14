@@ -82,7 +82,14 @@ const CategoryManagementPage: React.FC = () => {
     };
 
     const columns: Column<PropertyCategory>[] = [
-        { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
+        {
+            title: 'STT',
+            key: 'stt',
+            width: 60,
+            render: (_: unknown, __: PropertyCategory, index: number) => (
+                <span className="font-mono text-xs text-gray-500">{index + 1}</span>
+            ),
+        },
         { title: 'Mã', dataIndex: 'code', key: 'code' },
         { title: 'Tên danh mục', dataIndex: 'name', key: 'name' },
         {

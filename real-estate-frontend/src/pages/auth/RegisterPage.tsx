@@ -7,11 +7,11 @@ import { message } from "antd";
 // Import authApi (bạn hãy điều chỉnh lại đường dẫn cho khớp với cấu trúc thư mục thực tế)
 import { authApi } from "@/api/auth"; 
 
-import userIcon from "../../assets/user.png";
-import addressIcon from "../../assets/location (1).png";
-import lockIcon from "../../assets/unlock.png";
-import mailIcon from "../../assets/email.png";
-import phoneIcon from "../../assets/phone-call.png";
+import userIcon from "../../assets/user.webp";
+import addressIcon from "../../assets/location (1).webp";
+import lockIcon from "../../assets/unlock.webp";
+import mailIcon from "../../assets/email.webp";
+import phoneIcon from "../../assets/phone-call.webp";
 
 const buildingImg = "https://images.unsplash.com/photo-1722421492323-eaf9c401befe?q=80&w=802&auto=format&fit=crop";
 const eyeOpen = "https://cdn-icons-png.flaticon.com/512/159/159604.png";

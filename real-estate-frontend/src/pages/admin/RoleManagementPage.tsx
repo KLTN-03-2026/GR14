@@ -80,7 +80,14 @@ const RoleManagementPage: React.FC = () => {
     };
 
     const columns: Column<Role>[] = [
-        { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
+        {
+            title: 'STT',
+            key: 'stt',
+            width: 60,
+            render: (_: unknown, __: Role, index: number) => (
+                <span className="font-mono text-xs text-gray-500">{index + 1}</span>
+            ),
+        },
         { title: 'Mã', dataIndex: 'code', key: 'code' },
         { title: 'Tên', dataIndex: 'name', key: 'name' },
         { title: 'Mô tả', dataIndex: 'description', key: 'description', ellipsis: true },
