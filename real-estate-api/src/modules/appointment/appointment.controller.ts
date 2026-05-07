@@ -49,6 +49,13 @@ export class AppointmentController {
     return this.appointmentService.create(dto, userId);
   }
 
+  /** Nhân viên xem các lịch hẹn được phân công cho mình — PHẢI đặt TRƯỚC me/:id */
+  @Get('me/assigned')
+  @Roles('EMPLOYEE')
+  findMyAssignedAppointments(@Req() req: any) {
+    return this.appointmentService.findMyAssignedAppointments(req.user);
+  }
+
   /** Khách hàng xem danh sách lịch hẹn cá nhân (có thể lọc theo status) */
   @Get('me')
   @Roles('CUSTOMER')
@@ -164,7 +171,7 @@ export class AppointmentController {
   }
 
   @Get('calendar/events')
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'EMPLOYEE')
   getCalendarEvents(@Query() query: AppointmentCalendarQueryDto) {
     return this.appointmentService.getCalendarEvents(query);
   }
@@ -201,11 +208,7 @@ export class AppointmentController {
     return this.appointmentService.findByEmployee(id, req.user);
   }
 
-  @Get('me/assigned')
-  @Roles('EMPLOYEE')
-  findMyAssignedAppointments(@Req() req: any) {
-    return this.appointmentService.findMyAssignedAppointments(req.user);
-  }
+  // NOTE: findMyAssignedAppointments đã được chuyển lên đầu section (trước me/:id) để tránh route conflict
 
   @Put(':id/actual-status')
   @Roles('ADMIN', 'EMPLOYEE')

@@ -11,3 +11,6 @@ __pycache__/
 
 # V0 design files (local only)
 v0-design/
+
+# Understand Anything Plugin
+.understand-anything/
