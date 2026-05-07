@@ -22,7 +22,7 @@ export enum PaymentMethod {
 export class CreatePaymentDto {
   @IsNotEmpty()
   @IsEnum(PaymentType)
-  paymentType: PaymentType;
+  paymentType!: PaymentType;
 
   @IsOptional()
   @IsNumber({}, { message: 'postId phải là số' })
@@ -32,15 +32,15 @@ export class CreatePaymentDto {
   @IsNotEmpty()
   @IsNumber({}, { message: 'packageId phải là số' })
   @Type(() => Number)
-  packageId: number;
+  packageId!: number;
 
   @IsNotEmpty()
   @IsEnum(PaymentMethod)
-  paymentMethod: PaymentMethod;
+  paymentMethod!: PaymentMethod;
 
   @IsNotEmpty()
   @IsString()
-  returnUrl: string;
+  returnUrl!: string;
 }
 
 // ==================== VNPAY CALLBACK DTO ====================

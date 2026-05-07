@@ -405,14 +405,20 @@ const HouseDetailPage: React.FC = () => {
 
                 const depositsRes = await depositApi.getMyDeposits(1, 100);
                 const deposits: Deposit[] = depositsRes.data?.data || [];
-                const refundableDeposit = deposits.find((d) =>
-                    d.status === 1 && relatedAppointments.some((appt) => appt.id === d.appointmentId && appt.actualStatus !== 1)
-                ) || null;
+                const relatedAppointmentIds = relatedAppointments.map((appt) => appt.id);
+                const propertyDepositCandidate = deposits
+                    .filter((d) => relatedAppointmentIds.includes(d.appointmentId) && [1, 4].includes(d.status))
+                    .sort((a, b) => {
+                        if (a.status === 4 && b.status !== 4) return -1;
+                        if (a.status !== 4 && b.status === 4) return 1;
+                        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+                    });
+                const selectedDeposit = propertyDepositCandidate[0] || null;
 
                 setHasBookedProperty(booked);
                 setHasApprovedPropertyAppointment(Boolean(approvedAppointment));
                 setApprovedAppointment(approvedAppointment);
-                setPropertyDeposit(refundableDeposit);
+                setPropertyDeposit(selectedDeposit);
             } catch {
                 setHasBookedProperty(false);
                 setHasApprovedPropertyAppointment(false);
@@ -468,6 +474,14 @@ const HouseDetailPage: React.FC = () => {
     const houseStatusTagClass = isHeldByDeposit
         ? 'bg-orange-50 text-orange-700 border-orange-200'
         : getPropertyStatusTagClass(house.status);
+    const depositPaidAmount = propertyDeposit ? Number(propertyDeposit.amount) : 0;
+    const remainingAmount = house.price && depositPaidAmount > 0 ? Math.max(house.price - depositPaidAmount, 0) : 0;
+    const depositSummaryLabel = propertyDeposit
+        ? propertyDeposit.status === 4
+            ? 'Đã thanh toán cọc'
+            : 'Đang giữ cọc'
+        : '';
+    const showRefundButton = Boolean(propertyDeposit && propertyDeposit.status === 1 && propertyDeposit.appointment?.actualStatus !== 1);
 
     return (
         <div className="w-full pb-20" style={{ background: 'var(--pl-background, #f9fafb)' }}>
@@ -655,8 +669,18 @@ const HouseDetailPage: React.FC = () => {
                                 </button>
 
                                 {propertyDeposit ? (
-                                    <div className="w-full rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 text-center mb-3">
-                                        Bạn đang giữ cọc bất động sản này.
+                                    <div className="w-full rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 mb-3">
+                                        <div className="mb-2 text-center">{depositSummaryLabel}</div>
+                                        <div className="grid grid-cols-2 gap-2 text-left text-[13px]">
+                                            <div className="rounded-xl bg-white p-3 border border-emerald-100">
+                                                <div className="text-[11px] text-slate-500">Số tiền cọc</div>
+                                                <div className="font-semibold text-slate-900">{formatCurrency(depositPaidAmount)}</div>
+                                            </div>
+                                            <div className="rounded-xl bg-white p-3 border border-emerald-100">
+                                                <div className="text-[11px] text-slate-500">Còn lại phải thanh toán</div>
+                                                <div className="font-semibold text-slate-900">{formatCurrency(remainingAmount)}</div>
+                                            </div>
+                                        </div>
                                     </div>
                                 ) : null}
 
@@ -699,7 +723,7 @@ const HouseDetailPage: React.FC = () => {
                                 )}
 
                                 {/* Deposit button */}
-                                {propertyDeposit ? (
+                                {showRefundButton ? (
                                     <button
                                         onClick={() => setShowRefundModal(true)}
                                         className="w-full mt-3 flex items-center justify-center gap-2 py-2.5 rounded-full text-[13px] font-semibold transition-all duration-200 text-white bg-red-500 hover:opacity-90"
@@ -707,7 +731,18 @@ const HouseDetailPage: React.FC = () => {
                                         <CalendarOutlined className="text-[15px]" />
                                         Hoàn tiền cọc
                                     </button>
-                                ) : house.depositStatus !== 1 && (
+                                ) : null}
+                                {!showRefundButton && propertyDeposit && propertyDeposit.status === 1 && propertyDeposit.appointment?.actualStatus === 1 ? (
+                                    <div className="w-full mt-3 rounded-full bg-yellow-50 px-4 py-3 text-center text-sm font-semibold text-yellow-700 border border-yellow-200">
+                                        Cọc chốt mua sau khi gặp khách hàng — không thể hoàn tiền.
+                                    </div>
+                                ) : null}
+                                {!showRefundButton && propertyDeposit && propertyDeposit.status === 4 ? (
+                                    <div className="w-full mt-3 rounded-full bg-purple-50 px-4 py-3 text-center text-sm font-semibold text-purple-700 border border-purple-200">
+                                        Đã chốt mua, không thể hoàn tiền cọc.
+                                    </div>
+                                ) : null}
+                                {!propertyDeposit && house.depositStatus !== 1 && (
                                     <>
                                         <button
                                             onClick={() => {

@@ -35,8 +35,10 @@ const DepositFormSection = ({
   const numericAmount = Number(amount.replace(/[^0-9]/g, ''));
   const propertyPrice = propertyPriceProp ? Number(propertyPriceProp) : 0;
 
-  const depositMode = 'Giữ chỗ trước khi xem';
-  const depositDescription = 'Đặt cọc trước ngày hẹn xem. Có thể hoàn tiền theo điều kiện.';
+  const depositMode = isAfterViewing ? 'Cọc chốt mua sau khi xem' : 'Giữ chỗ trước khi xem';
+  const depositDescription = isAfterViewing
+    ? 'Cọc chốt mua sau khi khách hàng đã xem bất động sản. Số tiền này không được hoàn trả nếu bạn hủy.'
+    : 'Đặt cọc trước ngày hẹn xem. Có thể hoàn tiền theo điều kiện.';
 
   const amountBounds = useMemo(() => {
     // Single exact suggestion: 0.2% of property price (rounded), with minimum 1.000.000 đ
