@@ -82,12 +82,19 @@ const EmptyState = ({ onBook }: { onBook: () => void }) => (
 
 // ─── Deposit Badge ─────────────────────────────────────────────────────────────
 
-const DepositBadge = ({ status }: { status: DepositStatus }) => {
+const DepositBadge = ({ status, isAfterViewing }: { status: DepositStatus; isAfterViewing?: boolean }) => {
   const cfg = DEPOSIT_STATUS_CFG[status];
+  const override = isAfterViewing && status === 1 ? {
+    label: 'Cọc chốt mua',
+    dot: 'bg-orange-400',
+    text: 'text-orange-700',
+    bg: 'bg-orange-50',
+    border: 'border-orange-200',
+  } : cfg;
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${cfg.bg} ${cfg.text} ${cfg.border}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
-      {cfg.label}
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${override.bg} ${override.text} ${override.border}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${override.dot}`} />
+      {override.label}
     </span>
   );
 };
@@ -513,9 +520,9 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
   const apptStatus = APPOINTMENT_STATUS_CFG[appointment.status] ?? APPOINTMENT_STATUS_CFG[0];
 
   const isApproved = appointment.status === 1;
-  const isCompleted = appointment.actualStatus !== null;
-  const hasActiveDeposit = deposit && (deposit.status === 0 || deposit.status === 1);
-  const canDeposit = (isApproved || isCompleted) && !hasActiveDeposit;
+  const isCompleted = appointment.actualStatus !== null && appointment.actualStatus !== undefined;
+  const hasActiveDeposit = deposit && [0, 1, 4].includes(deposit.status);
+  const canDeposit = (isApproved || appointment.actualStatus === 1) && !hasActiveDeposit;
   const canRefund = deposit?.status === 1 && appointment.actualStatus !== 1;
 
   const handleViewDetail = () => {
@@ -562,7 +569,7 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
             <span className={`h-1.5 w-1.5 rounded-full ${apptStatus.dot}`} />
             {apptStatus.label}
           </span>
-          {deposit && <DepositBadge status={deposit.status} />}
+          {deposit && <DepositBadge status={deposit.status} isAfterViewing={appointment.actualStatus === 1} />}
           {isCompleted && !hasActiveDeposit && (
             <span className="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-2.5 py-0.5 text-xs font-medium text-purple-700">
               Đã đi xem

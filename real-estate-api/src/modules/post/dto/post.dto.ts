@@ -149,7 +149,11 @@ export class CreatePostDto {
   discountCode?: string;
 }
 
-export class UpdatePostDto extends PartialType(CreatePostDto) {}
+export class UpdatePostDto extends PartialType(CreatePostDto) {
+  @IsOptional()
+  @IsString()
+  keepImageIds?: string; // Comma-separated image IDs to keep (e.g., "1,2,3")
+}
 
 export class PostResponseDto {
   id!: number;

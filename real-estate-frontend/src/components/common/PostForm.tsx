@@ -248,6 +248,16 @@ const PostForm: React.FC<PostFormProps> = ({
         // Add postType
         submitData.append('postType', postType);
 
+        // Add image IDs to keep (existing images without originFileObj)
+        const existingImageIds = fileList
+            .filter((file) => !file.originFileObj && file.uid) // Has uid but no originFileObj = existing image
+            .map((file) => file.uid)
+            .join(',');
+        
+        if (existingImageIds) {
+            submitData.append('keepImageIds', existingImageIds);
+        }
+
         // Add new images
         fileList
             .filter((file) => file.originFileObj)
