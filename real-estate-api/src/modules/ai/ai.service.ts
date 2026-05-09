@@ -5,83 +5,17 @@ import { RedisService } from '../../common/redis/redis.service';
 import { ChatDto } from './dto/chat.dto';
 import { GenerateDescriptionDto } from './dto/generate-description.dto';
 import { AiChatCompareService } from './ai-chat-compare.service';
-import { DescriptionGeneratorService } from './services';
+import {
+  DescriptionGeneratorService,
+  AiQAService,
+  UserProfileService,
+  MarketInsightService,
+  ConsultationFlowService,
+  FinancingAdvisorService,
+} from './services';
+import { IndexedDoc, ChatTurn, IntentType, ParsedIntent, VectorHit, ChatSourcePayload, ConversationState, ChatResponsePayload, ChatResult } from "./types/ai.types";
+import { AiUtils } from "./utils/ai.utils";
 
-type IndexedDoc = {
-  id: number;
-  text: string;
-  payload: Record<string, unknown>;
-};
-
-type ChatTurn = {
-  role: 'user' | 'assistant';
-  text: string;
-  at: string;
-};
-
-type IntentType =
-  | 'search_property'
-  | 'recommend_property'
-  | 'qa_real_estate'
-  | 'compare_property'
-  | 'generate_content'
-  | 'booking'
-  | 'upgrade_account'
-  | 'upgrade_listing'
-  | 'post_guide'
-  | 'greeting'
-  | 'unknown';
-
-type ParsedIntent = {
-  type: IntentType;
-  minPrice?: number;
-  maxPrice?: number;
-  location?: string;
-  locationTokens?: string[];
-  sourceType?: 'house' | 'land' | 'post';
-  requiredKeyword?: string;
-  compareIds?: number[];
-  compareDescriptions?: string[]; // named property descriptions to search separately
-  transactionType?: 'sale' | 'rent';
-};
-
-type VectorHit = {
-  id: number;
-  score: number;
-  payload: Record<string, unknown>;
-};
-
-type ChatSourcePayload = Record<string, unknown>;
-
-type ConversationState = {
-  memoryKey: string;
-  summaryKey: string;
-  memory: ChatTurn[];
-  summaryMemory: string;
-};
-
-type ChatResponsePayload = {
-  answer: string;
-  structured: Record<string, unknown> | null;
-  intent: ParsedIntent;
-  confidence: number;
-  sources: ChatSourcePayload[];
-  relatedSources: ChatSourcePayload[];
-  suggestedQuestions: string[];
-};
-
-type ChatResult = {
-  ok: true;
-  sessionId: string;
-  answer: string;
-  structured: Record<string, unknown> | null;
-  intent: ParsedIntent;
-  confidence: number;
-  sources: ChatSourcePayload[];
-  relatedSources: ChatSourcePayload[];
-  suggestedQuestions: string[];
-  memoryTurns: number;
-};
 
 @Injectable()
 export class AiService {
@@ -105,7 +39,7 @@ export class AiService {
   private readonly embedModel = process.env.EMBED_MODEL || 'nomic-embed-text';
   private readonly retrievalTopK = Number(process.env.RAG_TOP_K || 8);
   private readonly contextTopK = Number(process.env.RAG_CONTEXT_K || 5);
-  private readonly minScore = Number(process.env.RAG_MIN_SCORE || 0.15);
+  private readonly minScore = Number(process.env.RAG_MIN_SCORE || 0.35);
   private readonly embedConcurrency = Number(
     process.env.EMBED_CONCURRENCY || 8,
   );
@@ -130,6 +64,11 @@ export class AiService {
   private readonly responseCacheTtlSec = Number(
     process.env.RAG_RESPONSE_CACHE_TTL || 120,
   );
+  private readonly lastSourcesTtlSec = Number(
+    process.env.RAG_LAST_SOURCES_TTL || 1800,
+  );
+  private readonly enableChatCache = false;
+  private readonly enableLastSources = true;
   private readonly enableLlm =
     String(process.env.RAG_ENABLE_LLM || 'true').toLowerCase() !== 'false';
   // Fast mode disabled by default — Gemini needs to reason for accurate results
@@ -152,6 +91,11 @@ export class AiService {
     private readonly redis: RedisService,
     private readonly compareService: AiChatCompareService,
     private readonly descriptionGeneratorService: DescriptionGeneratorService,
+    private readonly qaService: AiQAService,
+    private readonly userProfileService: UserProfileService,
+    private readonly marketInsightService: MarketInsightService,
+    private readonly consultationFlowService: ConsultationFlowService,
+    private readonly financingAdvisorService: FinancingAdvisorService,
   ) { }
 
   async indexOne(type: 'house' | 'land' | 'post', id: number): Promise<void> {
@@ -183,7 +127,7 @@ export class AiService {
       this.logger.log(`Indexed ${type}:${id} (qdrant id=${doc.id})`);
     } catch (error) {
       this.logger.warn(
-        `indexOne(${type}:${id}) failed: ${this.stringifyError(error)}`,
+        `indexOne(${type}:${id}) failed: ${AiUtils.stringifyError(error)}`,
       );
     }
   }
@@ -264,7 +208,9 @@ export class AiService {
     const timings: Record<string, number> = {};
     const question = dto.question.trim();
     const sessionId = dto.sessionId.trim();
-    const intent = this.parseIntent(question);
+    const intent = AiUtils.parseIntent(question);
+    this.logger.log(`[INTENT] "${question.slice(0, 60)}" → ${intent.type} | loc=${intent.location} | max=${intent.maxPrice} | purpose=${intent.purpose}`);
+    const normalizedQuestion = AiUtils.normalizeText(question);
     const hasIntentFilter =
       Boolean(intent.location) ||
       intent.minPrice !== undefined ||
@@ -272,21 +218,40 @@ export class AiService {
       Boolean(intent.sourceType);
     const noDataAnswer =
       'Hiện tại mình chưa tìm thấy bất động sản nào phù hợp với yêu cầu của bạn.';
+    const isContextualCompare = intent.type === 'compare_property';
+    const isContextualFollowUp = /\b(vua tim|vua xem)\b/.test(normalizedQuestion);
+    const shouldUseCache =
+      this.enableChatCache &&
+      (intent.type === 'qa_real_estate' || intent.type === 'greeting') &&
+      !isContextualCompare &&
+      !isContextualFollowUp;
+    const shouldStoreLastSources =
+      this.enableLastSources &&
+      (intent.type === 'search_property' || intent.type === 'recommend_property');
 
     // Fetch conversation state early (needed for multi-turn flows)
     const conversationEarly = await this.getConversationState(sessionId);
 
-    const generateContentResponse = await this.handleGenerateContentFlow(
+    // Handle consultation flow FIRST (multi-step wizard)
+    // Must run before content generation to avoid consultation answers being
+    // intercepted by the generate-content follow-up detector.
+    const consultationResponse = await this.handleConsultationFlow(
       sessionId,
       question,
       intent,
       conversationEarly,
     );
-    if (generateContentResponse) return generateContentResponse;
+    if (consultationResponse) return consultationResponse;
+
+
+    // Detect user dislike and mark properties
+    await this.handleDislikeDetection(sessionId, question, conversationEarly);
 
     // Handle intents that don't need RAG lookup
-    const directResponse = await this.handleDirectIntent(intent, question);
+    const directResponse = await this.handleDirectIntent(intent, question, sessionId);
     if (directResponse) {
+      // Learn from interaction
+      await this.userProfileService.learnFromInteraction(sessionId, intent, [], question);
       return this.returnChatWithMemory(sessionId, question, conversationEarly, {
         answer: directResponse.answer,
         structured: null,
@@ -306,7 +271,6 @@ export class AiService {
     );
     if (compareResponse) return compareResponse;
 
-    const normalizedQuestion = this.normalizeText(question);
     // Follow-up questions depend on conversation context, so they must not share
     // a global cache key with other sessions that asked the same literal question.
     const isFollowUp =
@@ -320,16 +284,18 @@ export class AiService {
     const recentMemory = conversation.memory.slice(
       -Math.max(0, this.chatHistoryTurns),
     );
-    const cachedResponse = await this.tryCachedChatResponse(
-      sessionId,
-      question,
-      intent,
-      responseCacheKey,
-      conversation,
-      timings,
-      chatStartedAt,
-    );
-    if (cachedResponse) return cachedResponse;
+    if (shouldUseCache) {
+      const cachedResponse = await this.tryCachedChatResponse(
+        sessionId,
+        question,
+        intent,
+        responseCacheKey,
+        conversation,
+        timings,
+        chatStartedAt,
+      );
+      if (cachedResponse) return cachedResponse;
+    }
 
     const candidateLimit = hasIntentFilter
       ? Math.max(
@@ -364,14 +330,15 @@ export class AiService {
       relatedPool.push(...rawHits);
     } catch (error) {
       this.logger.warn(
-        `Vector search failed, fallback to DB intent search: ${this.stringifyError(error)}`,
+        `Vector search failed, fallback to DB intent search: ${AiUtils.stringifyError(error)}`,
       );
     }
 
     const filterStartedAt = Date.now();
     const intentFilteredHits = this.applyIntentFilter(rawHits, intent);
+    const minScoreSafe = Math.max(this.minScore, 0.25);
     const strongHits = intentFilteredHits.filter(
-      (h) => Number(h.score || 0) >= this.minScore,
+      (h) => Number(h.score || 0) >= minScoreSafe,
     );
     timings.filterMs = Date.now() - filterStartedAt;
 
@@ -394,9 +361,9 @@ export class AiService {
       }
     }
 
-    // Secondary DB fallback: even without intent filter, if we still have 0 results
-    // (Ollama down, Qdrant empty, collection not indexed), grab recent active listings.
-    if (hits.length === 0) {
+    // Secondary DB fallback: only when no location constraint is present.
+    // Otherwise we would pollute results with unrelated cities.
+    if (hits.length === 0 && !intent.location) {
       this.logger.warn(
         `All retrieval paths returned 0 hits for "${question.slice(0, 60)}", using recent DB fallback`,
       );
@@ -422,6 +389,10 @@ export class AiService {
       );
       relatedSources = [...relatedSources, ...dbRelated].slice(0, 3);
     }
+
+    // Filter out disliked properties from user profile
+    const userProfile = await this.userProfileService.getProfile(sessionId);
+    hits = this.userProfileService.filterSeenProperties(hits, userProfile);
 
     // Keep prompt context compact for latency and stable generation quality.
     hits = hits
@@ -454,19 +425,25 @@ export class AiService {
     // Fast mode skips LLM generation for better UX latency.
     if (this.fastMode || !this.enableLlm) {
       const fastAnswerStartedAt = Date.now();
-      const answer = this.toFastAnswer(hits);
+      const answer = AiUtils.toFastAnswer(hits, intent);
       timings.fastAnswerMs = Date.now() - fastAnswerStartedAt;
-      await this.redis.set(
-        responseCacheKey,
-        {
-          answer,
-          sources: hits.map((h) => ({ ...h.payload, score: h.score })),
-          relatedSources,
-          suggestedQuestions: defaultSuggestions,
-          confidence: hits[0]?.score || 0,
-        },
-        this.responseCacheTtlSec,
-      );
+      const sources = hits.map((h) => ({ ...h.payload, score: h.score }));
+      if (shouldStoreLastSources && sources.length > 0) {
+        await this.storeLastSources(sessionId, sources);
+      }
+      if (shouldUseCache) {
+        await this.redis.set(
+          responseCacheKey,
+          {
+            answer,
+            sources,
+            relatedSources,
+            suggestedQuestions: defaultSuggestions,
+            confidence: hits[0]?.score || 0,
+          },
+          this.responseCacheTtlSec,
+        );
+      }
 
       if (this.logTimings) {
         this.logger.log(
@@ -479,7 +456,7 @@ export class AiService {
         structured: null,
         intent,
         confidence: hits[0]?.score || 0,
-        sources: hits.map((h) => ({ ...h.payload, score: h.score })),
+        sources,
         relatedSources,
         suggestedQuestions: defaultSuggestions,
       });
@@ -503,8 +480,8 @@ export class AiService {
           `id=${String(p.sourceId || '')}`,
           `tieu_de=${String(p.title || '')}`,
           `dia_chi=${[p.street, p.ward, p.district, p.city].filter(Boolean).join(', ')}`,
-          `gia=${String(p.price || 0)}`,
-          `dien_tich=${String(p.area || 0)}m2`,
+          `gia=${AiUtils.formatVnd(p.price)}`,
+          `dien_tich=${AiUtils.formatArea(p.area)}`,
         ];
         if (bedrooms > 0) details.push(`phong_ngu=${bedrooms}`);
         if (floors > 0) details.push(`so_tang=${floors}`);
@@ -516,29 +493,32 @@ export class AiService {
       })
       .join('\n');
 
-    const intentInstructions = this.buildIntentInstructions(intent);
+    const intentInstructions = AiUtils.buildIntentInstructions(intent);
 
     // Build system instruction (proper Vietnamese, separated from user content)
+    const profileContext = this.userProfileService.buildProfileContext(userProfile);
     const systemInstruction = [
       'Bạn là trợ lý AI tư vấn bất động sản CHUYÊN NGHIỆP cho nền tảng Real Estate Việt Nam.',
       'LUÔN trả lời bằng TIẾNG VIỆT có dấu. Giọng điệu thân thiện, chuyên nghiệp.',
       '',
+      profileContext ? `=== THÔNG TIN KHÁCH HÀNG ===\n${profileContext}\nHãy cá nhân hóa tư vấn dựa trên thông tin này.` : '',
+      '',
       `Nhiệm vụ: ${intent.type}`,
       intentInstructions,
       '',
-      '=== QUY TẮC BẮT BUỘC ===',
-      '1. CHỈ sử dụng dữ liệu từ CONTEXT. TUYỆT ĐỐI không bịa thông tin.',
-      '2. KIỂM TRA GIÁ: nếu yêu cầu "dưới X tỷ" → CHỈ gợi ý BĐS giá ≤ X tỷ.',
+      '=== QUY TẮC ƯU TIÊN ===',
+      '1. Ưu tiên dữ liệu từ CONTEXT. Không bịa chi tiết cụ thể (giá/diện tích/địa chỉ/ID).',
+      '2. KIỂM TRA GIÁ: nếu yêu cầu "dưới X tỷ" → chỉ gợi ý BĐS giá ≤ X tỷ.',
       '3. KIỂM TRA LOẠI: "đất nền" → loại=land, "nhà" → loại=house.',
       '4. KIỂM TRA VỊ TRÍ: ưu tiên BĐS đúng khu vực yêu cầu.',
-      '5. Nếu KHÔNG có BĐS phù hợp → summary nói rõ, recommendations rỗng [].',
-      '6. Mỗi recommendation PHẢI có "reason" giải thích CỤ THỂ.',
-      '7. Mỗi recommendation PHẢI copy đúng sourceId và source từ CONTEXT.',
-      '8. suggestedQuestions PHẢI liên quan đến nhu cầu hiện tại.',
+      '5. Nếu thiếu BĐS phù hợp → summary nói rõ + hỏi lại 1-2 tiêu chí để làm rõ hơn, recommendations rỗng [].',
+      '6. Mỗi recommendation có "reason" là một mô tả cực kỳ ngắn gọn và thuyết phục, nêu bật lý do tại sao khách nên chọn BĐS này (ưu điểm vượt trội).',
+      '7. Mỗi recommendation giữ đúng sourceId và source từ CONTEXT.',
+      '8. suggestedQuestions liên quan nhu cầu hiện tại.',
       '',
       '=== ĐỊNH DẠNG JSON ===',
       '{"summary":"string","recommendations":[{"title":"string","location":"string","price":number,"area":number,"bedrooms":number,"floors":number,"direction":"string","reason":"string","source":"string","sourceId":number,"url":"string"}],"followUp":"string","suggestedQuestions":["string"]}',
-    ].join('\n');
+    ].filter(Boolean).join('\n');
 
     // Build multi-turn contents for proper Gemini conversation context
     const contents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
@@ -548,7 +528,7 @@ export class AiService {
       for (const turn of recentMemory) {
         const geminiRole = turn.role === 'assistant' ? 'model' : 'user';
         // Compact history turns to save tokens
-        const compactText = this.compactMemoryText(turn.text, 300);
+        const compactText = AiUtils.compactMemoryText(turn.text, 300);
         contents.push({ role: geminiRole, parts: [{ text: compactText }] });
       }
     }
@@ -570,52 +550,41 @@ export class AiService {
     let structured: Record<string, unknown> | null = null;
     try {
       const llmStartedAt = Date.now();
-      const geminiResp = await axios.post(
-        `${this.geminiApiBase}/models/${this.geminiChatModel}:generateContent?key=${this.geminiApiKey}`,
+      const text = await AiUtils.generateLlmResponse(
+        contents,
+        systemInstruction,
         {
-          systemInstruction: { parts: [{ text: systemInstruction }] },
-          contents,
-          generationConfig: {
-            temperature: 0.2,
-            maxOutputTokens: 2048,
-            responseMimeType: 'application/json',
-          },
-          safetySettings: [
-            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
-            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
-            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
-            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
-          ],
-        },
-        { timeout: this.geminiTimeoutMs },
+          temperature: 0.1,
+          maxTokens: 2048,
+          timeout: this.geminiTimeoutMs,
+          isJson: true,
+        }
       );
+
       timings.llmMs = Date.now() - llmStartedAt;
 
-      const candidate = geminiResp.data?.candidates?.[0];
-      const finishReason = candidate?.finishReason;
-
-      // Handle blocked / empty response from Gemini
-      if (!candidate || finishReason === 'SAFETY' || finishReason === 'RECITATION' || !candidate.content) {
-        this.logger.warn(`Gemini response blocked (finishReason=${finishReason}), fallback to fast answer`);
+      // Handle blocked / empty response from LLM
+      if (!text) {
+        this.logger.warn(`LLM response blocked or empty, fallback to fast answer`);
         structured = null;
-        answer = this.toFastAnswer(hits);
+        answer = AiUtils.toFastAnswer(hits, intent);
       } else {
-        const rawAnswer = String(candidate.content?.parts?.[0]?.text || noDataAnswer);
-        structured = this.tryParseJson(rawAnswer);
+        const rawAnswer = String(text || noDataAnswer);
+        structured = AiUtils.tryParseJson(rawAnswer);
         if (structured) {
-          answer = this.toDisplayAnswer(structured);
+          answer = AiUtils.toDisplayAnswer(structured);
         } else {
           // Parse failed (truncated/malformed JSON) — use clean fast answer from vector hits
-          this.logger.warn(`Gemini JSON parse failed, using fast answer. Raw (first 150 chars): ${rawAnswer.slice(0, 150)}`);
-          answer = this.toFastAnswer(hits);
+          this.logger.warn(`LLM JSON parse failed, using fast answer. Raw (first 150 chars): ${rawAnswer.slice(0, 150)}`);
+          answer = AiUtils.toFastAnswer(hits, intent);
         }
       }
     } catch (error) {
       this.logger.warn(
-        `Gemini LLM timeout/error, fallback to fast answer: ${this.stringifyError(error)}`,
+        `Gemini LLM timeout/error, fallback to fast answer: ${AiUtils.stringifyError(error)}`,
       );
       structured = null;
-      answer = this.toFastAnswer(hits);
+      answer = AiUtils.toFastAnswer(hits, intent);
     }
 
     // Extract suggestedQuestions from LLM structured output if available
@@ -627,17 +596,23 @@ export class AiService {
     const suggestedQuestions =
       llmSuggestions.length > 0 ? llmSuggestions : defaultSuggestions;
 
-    await this.redis.set(
-      responseCacheKey,
-      {
-        answer,
-        sources: hits.map((h) => ({ ...h.payload, score: h.score })),
-        relatedSources,
-        suggestedQuestions,
-        confidence: hits[0]?.score || 0,
-      },
-      this.responseCacheTtlSec,
-    );
+    const sources = hits.map((h) => ({ ...h.payload, score: h.score }));
+    if (shouldStoreLastSources && sources.length > 0) {
+      await this.storeLastSources(sessionId, sources);
+    }
+    if (shouldUseCache) {
+      await this.redis.set(
+        responseCacheKey,
+        {
+          answer,
+          sources,
+          relatedSources,
+          suggestedQuestions,
+          confidence: hits[0]?.score || 0,
+        },
+        this.responseCacheTtlSec,
+      );
+    }
 
     if (this.logTimings) {
       this.logger.log(
@@ -645,15 +620,61 @@ export class AiService {
       );
     }
 
+    // Learn from this interaction for personalization
+    const viewedIds = sources
+      .map((s) => Number(s['sourceId']))
+      .filter((id) => Number.isFinite(id) && id > 0);
+    await this.userProfileService.learnFromInteraction(sessionId, intent, viewedIds, question);
+
     return this.returnChatWithMemory(sessionId, question, conversation, {
       answer,
       structured,
       intent,
       confidence: hits[0]?.score || 0,
-      sources: hits.map((h) => ({ ...h.payload, score: h.score })),
+      sources,
       relatedSources,
       suggestedQuestions,
     });
+  }
+
+  private lastSourcesKey(sessionId: string): string {
+    return `ai:chat:lastSources:${sessionId}`;
+  }
+
+  private async storeLastSources(
+    sessionId: string,
+    sources: ChatSourcePayload[],
+  ): Promise<void> {
+    const compact = sources
+      .map((s) => ({
+        source: s.source,
+        sourceId: s.sourceId,
+        title: s.title,
+        price: s.price,
+        area: s.area,
+        city: s.city,
+        district: s.district,
+        ward: s.ward,
+        street: s.street,
+        url: s.url,
+      }))
+      .filter((s) => Number.isFinite(Number(s.sourceId)) && Number(s.sourceId) > 0)
+      .slice(0, 5);
+
+    if (compact.length === 0) return;
+
+    await this.redis.set(
+      this.lastSourcesKey(sessionId),
+      { at: new Date().toISOString(), sources: compact },
+      this.lastSourcesTtlSec,
+    );
+  }
+
+  private async getLastSources(sessionId: string): Promise<ChatSourcePayload[]> {
+    const cached = await this.redis.get<{ sources?: ChatSourcePayload[] }>(
+      this.lastSourcesKey(sessionId),
+    );
+    return cached?.sources ?? [];
   }
 
   private async getConversationState(
@@ -715,102 +736,8 @@ export class AiService {
     };
   }
 
-  private async handleGenerateContentFlow(
-    sessionId: string,
-    question: string,
-    intent: ParsedIntent,
-    conversation: ConversationState,
-  ): Promise<ChatResult | null> {
-    const shouldBypassContentFollowUp = [
-      'compare_property',
-      'booking',
-      'upgrade_account',
-      'upgrade_listing',
-      'post_guide',
-      'qa_real_estate',
-      'greeting',
-    ].includes(intent.type);
 
-    if (
-      this.isFollowUpToContentGeneration(conversation.memory) &&
-      intent.type !== 'generate_content'
-    ) {
-      if (shouldBypassContentFollowUp) {
-        return null;
-      }
 
-      const genAnswer =
-        await this.descriptionGeneratorService.generatePropertyDescription(
-          question,
-          conversation,
-        );
-      return this.returnChatWithMemory(sessionId, question, conversation, {
-        answer: genAnswer,
-        structured: null,
-        intent: { type: 'generate_content' },
-        confidence: 1,
-        sources: [],
-        relatedSources: [],
-        suggestedQuestions: [
-          'Chỉnh sửa thêm mô tả này',
-          'Tìm nhà dưới 3 tỷ',
-          'So sánh 2 bất động sản phù hợp nhất',
-        ],
-      });
-    }
-
-    if (intent.type !== 'generate_content') return null;
-
-    if (!this.hasPropertyDetails(question)) {
-      const askAnswer = [
-        'Mình sẽ giúp bạn soạn bài đăng bất động sản chuyên nghiệp!',
-        '',
-        'Bạn vui lòng cung cấp thông tin sau:',
-        '- **Loại BĐS**: nhà phố / căn hộ / biệt thự / đất nền...',
-        '- **Địa chỉ**: số nhà, đường, phường/xã, quận/huyện, tỉnh/thành',
-        '- **Diện tích**: diện tích đất, diện tích sàn (m²)',
-        '- **Giá**: giá bán hoặc giá cho thuê',
-        '- **Số phòng ngủ, phòng tắm, số tầng** (nếu có)',
-        '- **Hướng nhà/đất** (nếu biết)',
-        '- **Pháp lý**: sổ hồng, sổ đỏ, đang chờ sổ...',
-        '- **Điểm nổi bật**: tiện ích xung quanh, đặc điểm đặc biệt...',
-        '',
-        'Chỉ cần cung cấp thông tin trên, mình sẽ soạn bài đăng chất lượng cho bạn ngay!',
-      ].join('\n');
-      return this.returnChatWithMemory(sessionId, question, conversation, {
-        answer: askAnswer,
-        structured: null,
-        intent,
-        confidence: 1,
-        sources: [],
-        relatedSources: [],
-        suggestedQuestions: [
-          'Nhà phố 3PN 80m2 quận 7 TP.HCM giá 5 tỷ, sổ hồng',
-          'Đất nền 120m2 Bình Dương 2 tỷ',
-          'Căn hộ 2PN 65m2 Đà Nẵng 2.5 tỷ',
-        ],
-      });
-    }
-
-    const genAnswer =
-      await this.descriptionGeneratorService.generatePropertyDescription(
-        question,
-        conversation,
-      );
-    return this.returnChatWithMemory(sessionId, question, conversation, {
-      answer: genAnswer,
-      structured: null,
-      intent,
-      confidence: 1,
-      sources: [],
-      relatedSources: [],
-      suggestedQuestions: [
-        'Chỉnh sửa thêm mô tả này',
-        'Tìm nhà dưới 3 tỷ',
-        'So sánh 2 bất động sản phù hợp nhất',
-      ],
-    });
-  }
 
   private async handleCompareFlow(
     sessionId: string,
@@ -822,7 +749,28 @@ export class AiService {
 
     // Helper to return compare result with AI reasoning
     const returnCompare = async (ids: number[]) => {
-      const compareAnswer = await this.compareService.buildCompareAnswer(ids);
+      const { active, stale } = await this.compareService.filterActiveIds(ids);
+      if (active.length < 2) {
+        const staleAnswer = stale.length > 0
+          ? 'Một số bất động sản đã hết hoặc đã bị xóa. Bạn vui lòng tìm lại để mình so sánh chính xác hơn.'
+          : 'Mình chưa tìm thấy đủ bất động sản để so sánh. Bạn có thể gửi link chi tiết hoặc mô tả ngắn từng BĐS.';
+
+        return this.returnChatWithMemory(sessionId, question, conversation, {
+          answer: staleAnswer,
+          structured: null,
+          intent,
+          confidence: 0,
+          sources: [],
+          relatedSources: [],
+          suggestedQuestions: [
+            'Tìm nhà dưới 3 tỷ',
+            'Tìm đất nền giá rẻ',
+            'So sánh 2 bất động sản vừa tìm',
+          ],
+        });
+      }
+
+      const compareAnswer = await this.compareService.buildCompareAnswer(active);
 
       // Enrich with AI reasoning via Gemini for expert analysis
       let enrichedAnswer = compareAnswer.answer;
@@ -843,6 +791,18 @@ export class AiService {
         suggestedQuestions: compareAnswer.suggestedQuestions,
       });
     };
+
+    if (this.enableLastSources && (!intent.compareIds || intent.compareIds.length === 0) && (!intent.compareDescriptions || intent.compareDescriptions.length === 0)) {
+      // Strategy -1: compare from last search sources (recently returned results)
+      const lastSources = await this.getLastSources(sessionId);
+      const lastIds = lastSources
+        .map((s) => Number(s.sourceId))
+        .filter((id) => Number.isFinite(id) && id > 0);
+
+      if (lastIds.length >= 2) {
+        return returnCompare(lastIds.slice(0, 5));
+      }
+    }
 
     // Strategy 0: explicit IDs parsed from the question
     if (intent.compareIds && intent.compareIds.length >= 2) {
@@ -872,7 +832,7 @@ export class AiService {
 
     // Strategy 1.5: Extract all prices from the full question and find matching properties
     {
-      const allPrices = this.extractAllPricesFromText(question);
+      const allPrices = AiUtils.extractAllPricesFromText(question);
       if (allPrices.length >= 2) {
         const sourceType = this.compareService.extractSourceTypeFromText(question);
         const locationTokens = this.compareService.extractLocationTokens(question);
@@ -944,7 +904,7 @@ export class AiService {
     // Strategy 4: last resort — extract any prices from the full question
     // and search broadly for properties matching those prices
     {
-      const allPrices = this.extractAllPricesFromText(question);
+      const allPrices = AiUtils.extractAllPricesFromText(question);
       const sourceType = this.compareService.extractSourceTypeFromText(question);
 
       if (allPrices.length >= 1 || sourceType) {
@@ -1058,15 +1018,15 @@ export class AiService {
       -Math.max(2, this.chatHistoryMaxTurns),
     );
 
-    const compactUser = this.compactMemoryText(question, 120);
-    const compactAssistant = this.compactMemoryText(answer, 180);
+    const compactUser = AiUtils.compactMemoryText(question, 120);
+    const compactAssistant = AiUtils.compactMemoryText(answer, 180);
     const newSummaryPiece = `U: ${compactUser} | A: ${compactAssistant}`;
 
     let newSummary = summaryMemory
       ? `${summaryMemory} || ${newSummaryPiece}`
       : newSummaryPiece;
     if (newSummary.length > this.chatSummaryMaxChars) {
-      newSummary = `...${newSummary.slice(-(this.chatSummaryMaxChars - 3))}`;
+      newSummary = `${newSummary.slice(0, this.chatSummaryMaxChars - 3)}...`;
     }
 
     await this.redis.set(memoryKey, newMemory, 24 * 60 * 60);
@@ -1075,121 +1035,98 @@ export class AiService {
     return { newMemory, newSummary };
   }
 
-  /**
-   * Parse "so sánh <A> với <B>" into two property description strings.
-   * Works on the raw (non-normalized) question to preserve property names.
-   * Returns [] if the parts look like referential words ("nhà này", "cái đó", etc.)
-   * rather than actual property descriptions.
-   *
-   * Handles patterns like:
-   * - "so sánh A với B"
-   * - "A so sánh với B"
-   * - "so sánh A và B"
-   * - "Đất - Huyện Hòa Vang 2.050.000.000 đ so sánh với Đất - Huyện Hòa Vang 2.100.000.000 đ"
-   */
-  private parseCompareDescriptions(question: string): string[] {
-    // Remove leading compare trigger words
-    let stripped = question
-      .replace(
-        /^(so\s+s[aá]nh|compare|so\s+v[oớ]i|h[aã]y\s+so\s+s[aá]nh)\s*/i,
-        '',
-      )
-      .trim();
-
-    // Split by connectors including "so sánh với" in the middle of text
-    // This handles "A so sánh với B" pattern
-    const splitRegex = /\s+(?:so\s+s[aá]nh\s+v[oớ]i|v[oớ]i|và|vs|or|hoặc|so\s+s[aá]nh)\s+/i;
-    const parts = stripped
-      .split(splitRegex)
-      .map((p) => p.trim())
-      .filter((p) => p.length > 0);
-
-    if (parts.length < 2) return [];
-
-    // Referential words that mean "this one", "that one" — not actual property names
-    const referentialPattern =
-      /^(nh[aà]\s+n[aà]y|c[aá]i\s+n[aà]y|c[aá]n\s+n[aà]y|nh[aà]\s+[kđ][oóò]|c[aá]i\s+[kđ][oóò]|nh[aà]\s+kia|c[aá]i\s+kia|c[aá]i\s+tr[eê]n|c[aá]i\s+d[uư][oớ]i|hai\s+c[aá]i|2\s+c[aá]i|chu[nǹ]g|[cđ]h[uú]ng|nh[uư]ng\s+c[aá]i|v[uừ]a\s+tim|v[uừ]a\s+xem)$/i;
-
-    const descriptions = parts.filter(
-      (p) => !referentialPattern.test(p.trim()) && p.length >= 4,
-    );
-
-    return descriptions.length >= 2 ? descriptions.slice(0, 2) : [];
-  }
-
-  private buildIntentInstructions(intent: ParsedIntent): string {
-    switch (intent.type) {
-      case 'search_property':
-        return [
-          'NHIEM VU: Tim kiem BDS CHINH XAC theo yeu cau nguoi dung.',
-          'QUAN TRONG: Chi goi y BDS ma GIA NAM TRONG ngan sach. Neu gia > ngan sach thi LOAI BO.',
-          intent.maxPrice
-            ? `NGAN SACH TOI DA: ${this.formatVnd(intent.maxPrice)}. TUYET DOI khong goi y BDS co gia vuot ngan sach nay.`
-            : '',
-          intent.minPrice
-            ? `GIA TOI THIEU: ${this.formatVnd(intent.minPrice)}.`
-            : '',
-          intent.sourceType
-            ? `LOAI BDS yeu cau: ${intent.sourceType === 'house' ? 'NHA (house)' : intent.sourceType === 'land' ? 'DAT (land)' : intent.sourceType}. Chi goi y dung loai nay.`
-            : '',
-          intent.location ? `KHU VUC: ${intent.location}. Uu tien BDS o khu vuc nay.` : '',
-          'Moi goi y PHAI co reason giai thich tai sao gia phu hop, dien tich hop ly, vi tri thuan loi.',
-        ]
-          .filter(Boolean)
-          .join('\n');
-
-      case 'recommend_property':
-        return [
-          'NHIEM VU: Tu van va goi y BDS phu hop NHAT voi nhu cau.',
-          'Phan tich ky: ngan sach, vi tri, dien tich, tien ich.',
-          'QUAN TRONG: Neu nguoi dung co ngan sach, chi goi y BDS TRONG ngan sach.',
-          'Giai thich CHI TIET ly do goi y.',
-          'Neu thieu thong tin, dat cau hoi lam ro trong followUp.',
-          intent.maxPrice
-            ? `Ngan sach: ${this.formatVnd(intent.maxPrice)}. Khong goi y BDS vuot ngan sach.`
-            : '',
-        ]
-          .filter(Boolean)
-          .join('\n');
-
-      case 'compare_property':
-        return [
-          'NHIEM VU: So sanh cac BDS trong CONTEXT.',
-          'QUAN TRONG: Chi so sanh BDS CUNG LOAI (nha voi nha, dat voi dat) va UU TIEN cung khu vuc.',
-          'So sanh theo: gia, gia/m2, dien tich, vi tri, so phong ngu, uu/nhuoc diem.',
-          'Ket luan: BDS nao phu hop nhat va TAI SAO.',
-        ].join('\n');
-
-      default:
-        return 'NHIEM VU: Tra loi cau hoi ve BDS. Neu co BDS phu hop trong CONTEXT, goi y kem ly do cu the.';
-    }
-  }
-
   private async handleDirectIntent(
     intent: ParsedIntent,
     question: string,
+    sessionId?: string,
   ): Promise<{ answer: string; suggestedQuestions: string[] } | null> {
     if (intent.type === 'greeting') {
+      // Personalize greeting if we know the user
+      let greetingPrefix = 'Xin chào! Mình là trợ lý AI bất động sản.';
+      if (sessionId) {
+        const profile = await this.userProfileService.getProfile(sessionId);
+        if (profile.interactionCount > 0) {
+          greetingPrefix = 'Chào bạn quay lại! 👋';
+          const hints: string[] = [];
+          if (profile.preferredAreas.length > 0) {
+            hints.push(`khu vực ${profile.preferredAreas[profile.preferredAreas.length - 1]}`);
+          }
+          if (profile.budgetMax) {
+            hints.push(`ngân sách ${AiUtils.formatVnd(profile.budgetMax)}`);
+          }
+          if (hints.length > 0) {
+            greetingPrefix += ` Mình nhớ bạn đang quan tâm ${hints.join(', ')}.`;
+          }
+        }
+      }
       return {
-        answer:
-          'Xin chào! Mình là trợ lý AI bất động sản. Mình có thể giúp bạn tìm nhà, đất, tư vấn giá, hoặc giải đáp thắc mắc về bất động sản. Bạn cần hỗ trợ gì?',
+        answer: `${greetingPrefix} Mình có thể giúp bạn:\n\n🔍 **Tìm kiếm** nhà, đất phù hợp nhu cầu\n📊 **Phân tích thị trường** giá cả khu vực\n💰 **Tư vấn tài chính** vay vốn, trả góp\n🏦 **Tư vấn đầu tư** BĐS sinh lời\n⚖️ **Hướng dẫn pháp lý** thủ tục mua bán\n\nBạn cần hỗ trợ gì?`,
         suggestedQuestions: [
-          'Tìm nhà dưới 3 tỷ ở Đà Nẵng',
+          'Tư vấn cho mình mua nhà',
+          'Phân tích thị trường BĐS Đà Nẵng',
+          'Tìm nhà dưới 3 tỷ',
+          'Tính khả năng vay mua nhà',
+          'Kinh nghiệm đầu tư BĐS',
           'Sổ hồng là gì?',
-          'Tìm đất nền giá rẻ',
-          'Cách đặt lịch hẹn xem nhà',
-          'Cách nâng cấp tài khoản VIP',
-          'Gợi ý viết mô tả đăng bán nhà',
         ],
       };
     }
 
+    // ─── Market Analysis ────────────────────────────────────────────
+    if (intent.type === 'market_analysis') {
+      const answer = await this.marketInsightService.buildMarketAnalysisAnswer(
+        question,
+        intent.location,
+        intent.sourceType === 'post' ? undefined : intent.sourceType,
+      );
+      return {
+        answer,
+        suggestedQuestions: [
+          intent.location ? `Tìm nhà ở ${intent.location}` : 'Tìm nhà dưới 3 tỷ',
+          'Tư vấn đầu tư BĐS',
+          'Tính khả năng vay mua nhà',
+        ],
+      };
+    }
+
+    // ─── Investment Advice ──────────────────────────────────────────
+    if (intent.type === 'investment_advice') {
+      const answer = await this.marketInsightService.buildInvestmentAdvice(
+        question,
+        intent.location,
+        intent.maxPrice,
+        intent.sourceType === 'post' ? undefined : intent.sourceType,
+      );
+      return {
+        answer,
+        suggestedQuestions: [
+          'Phân tích thị trường khu vực Đà Nẵng',
+          'Tìm đất nền đầu tư giá tốt',
+          'Tính khả năng vay mua nhà',
+        ],
+      };
+    }
+
+    // ─── Financing Advice ──────────────────────────────────────────
+    if (intent.type === 'financing_advice') {
+      const answer = await this.financingAdvisorService.buildFinancingAnswer(question);
+      return {
+        answer,
+        suggestedQuestions: [
+          'Tìm nhà phù hợp ngân sách',
+          'Kinh nghiệm mua nhà lần đầu',
+          'Tư vấn đầu tư BĐS',
+        ],
+      };
+    }
+
+
     if (intent.type === 'qa_real_estate') {
-      const qaAnswer = this.answerQA(question);
+      const qaAnswer = this.qaService.answerQA(question);
       if (qaAnswer) return qaAnswer;
 
       // Gemini QA fallback: answer knowledge questions not in static bank
-      const geminiQA = await this.answerQAWithGemini(question);
+      const geminiQA = await this.qaService.answerQAWithGemini(question);
       if (geminiQA) {
         return {
           answer: geminiQA,
@@ -1257,7 +1194,7 @@ export class AiService {
     if (intent.type === 'upgrade_listing') {
       return {
         answer:
-          'Hiện chatbot chưa hỗ trợ hướng dẫn nâng cấp tin đăng trong luồng chat này. Bạn có thể thao tác trực tiếp trong trang quản lý tin đăng.',
+          'Để nâng cấp tin đăng (đẩy tin, tin nổi bật), bạn vui lòng truy cập vào phần **[Quản lý tin đăng](/my-posts)** của mình, chọn tin cần nâng cấp và bấm vào nút "Nâng cấp" nhé.',
         suggestedQuestions: [
           'Tìm nhà dưới 5 tỷ',
           'So sánh 2 bất động sản phù hợp nhất',
@@ -1266,17 +1203,7 @@ export class AiService {
       };
     }
 
-    if (intent.type === 'post_guide') {
-      return {
-        answer:
-          'Hiện chatbot chưa hỗ trợ hướng dẫn đăng bài trong luồng chat này.',
-        suggestedQuestions: [
-          'Tìm nhà dưới 3 tỷ',
-          'So sánh 2 bất động sản đang xem',
-          'Nâng cấp tài khoản VIP',
-        ],
-      };
-    }
+
 
     if (intent.type === 'compare_property') {
       if (intent.compareIds && intent.compareIds.length >= 2) {
@@ -1293,214 +1220,170 @@ export class AiService {
   }
 
   /**
-   * Returns true if the last assistant message in memory was asking the user
-   * to supply property details for content generation.
+   * Handle multi-step consultation flow.
    */
-  private isFollowUpToContentGeneration(memory: ChatTurn[]): boolean {
-    const lastAssistant = [...memory]
-      .reverse()
-      .find((t) => t.role === 'assistant');
-    if (!lastAssistant) return false;
-    const triggers = [
-      'Loại BĐS',
-      'soạn bài đăng',
-      'Đặc điểm nổi bật',
-      'mình sẽ soạn',
-      'tạo mô tả',
-      'Mình cần bạn cung cấp thông tin',
-      'Chỉ cần cung cấp thông tin',
-      'soạn bài đăng chất lượng cho bạn ngay',
-      'soạn bài đăng bất động sản chuyên nghiệp',
-    ];
-    return triggers.some((t) => lastAssistant.text.includes(t));
-  }
-
-  /**
-   * Returns true if the user's message contains enough property details
-   * (location, area, price, room count, etc.) to generate a listing description.
-   */
-  private hasPropertyDetails(question: string): boolean {
-    // If message is substantively long, assume it has details
-    if (question.trim().length > 100) return true;
-
-    const normalized = this.normalizeText(question);
-
-    const hasLocation =
-      /\b(quan|huyen|phuong|xa|duong|tinh|tp|thanh pho|ha noi|ho chi minh|da nang|binh duong|dong nai|vung tau|hue|can tho|nha trang)\b/.test(
-        normalized,
-      );
-    const hasArea = /\b(\d+\s*m2|\d+\s*m²|\d+\s*met vuong|dien tich)\b/.test(
-      normalized,
-    );
-    const hasPrice = /\b\d+(\.\d+)?\s*(ty|trieu|tr)\b/.test(normalized);
-    const hasRooms =
-      /\b(\d+\s*(phong ngu|pn|phong|tang)|so phong|so tang)\b/.test(normalized);
-    const hasPropertyType =
-      /\b(nha pho|can ho|biet thu|dat nen|chung cu|shophouse|nha cap 4)\b/.test(
-        normalized,
-      );
-
-    const detailCount = [
-      hasLocation,
-      hasArea,
-      hasPrice,
-      hasRooms,
-      hasPropertyType,
-    ].filter(Boolean).length;
-    return detailCount >= 2;
-  }
-
-  private answerQA(
+  private async handleConsultationFlow(
+    sessionId: string,
     question: string,
-  ): { answer: string; suggestedQuestions: string[] } | null {
-    const normalized = this.normalizeText(question);
-    const qaBank: {
-      pattern: RegExp;
-      answer: string;
-      suggestedQuestions: string[];
-    }[] = [
-        {
-          pattern: /\bso hong\b/,
-          answer:
-            'Sổ hồng (Giấy chứng nhận quyền sử dụng đất, quyền sở hữu nhà ở và tài sản khác gắn liền với đất) là văn bản pháp lý do Nhà nước cấp cho chủ sở hữu bất động sản. Đây là giấy tờ quan trọng nhất khi mua bán nhà đất, giúp đảm bảo quyền lợi hợp pháp của người sở hữu.\n\nLưu ý khi mua nhà:\n- Kiểm tra sổ hồng chính chủ\n- Xác minh thông tin trên sổ với thực tế\n- Kiểm tra có bị thế chấp hay tranh chấp không',
-          suggestedQuestions: [
-            'Sổ đỏ khác sổ hồng thế nào?',
-            'Thủ tục mua bán nhà đất',
-            'Tìm nhà có sổ hồng',
-          ],
-        },
-        {
-          pattern: /\bso do\b/,
-          answer:
-            'Sổ đỏ là tên gọi dân gian của Giấy chứng nhận quyền sử dụng đất (bìa đỏ). Hiện nay, sổ đỏ và sổ hồng đã được hợp nhất thành một loại giấy chứng nhận duy nhất, thường gọi chung là "sổ hồng".\n\nSự khác biệt trước đây:\n- Sổ đỏ: cấp cho đất không có nhà\n- Sổ hồng: cấp cho nhà ở và đất ở đô thị',
-          suggestedQuestions: [
-            'Sổ hồng là gì?',
-            'Thủ tục sang tên sổ đỏ',
-            'Tìm đất nền có sổ',
-          ],
-        },
-        {
-          pattern: /\b(cong chung|thu tuc|sang ten)\b/,
-          answer:
-            'Thủ tục công chứng mua bán nhà đất gồm các bước chính:\n1. Hai bên thỏa thuận giá và điều khoản\n2. Chuẩn bị hồ sơ: CMND/CCCD, sổ hồng, hợp đồng mua bán\n3. Công chứng hợp đồng tại văn phòng công chứng\n4. Nộp thuế (thuế thu nhập cá nhân 2%, lệ phí trước bạ 0.5%)\n5. Đăng ký sang tên tại Văn phòng đăng ký đất đai\n\nThời gian: khoảng 15-30 ngày làm việc.',
-          suggestedQuestions: [
-            'Phí công chứng bao nhiêu?',
-            'Tìm nhà ở Đà Nẵng',
-            'Kinh nghiệm mua nhà lần đầu',
-          ],
-        },
-        {
-          pattern:
-            /\b(thue|phi|le phi|truoc ba)\b.*\b(mua|ban|nha|dat)\b|\b(mua|ban|nha|dat)\b.*\b(thue|phi|le phi)\b/,
-          answer:
-            'Các loại thuế/phí khi mua bán bất động sản:\n- Thuế thu nhập cá nhân (TNCN): 2% giá bán (người bán chịu)\n- Lệ phí trước bạ: 0.5% giá trị BĐS (người mua chịu)\n- Phí công chứng: theo biểu phí quy định\n- Phí thẩm định hồ sơ: khoảng 0.15% giá trị BĐS\n\nLưu ý: Một số trường hợp được miễn thuế TNCN (nhà duy nhất, sở hữu trên 5 năm...).',
-          suggestedQuestions: [
-            'Thủ tục mua bán nhà đất',
-            'Sổ hồng là gì?',
-            'Tìm nhà dưới 3 tỷ',
-          ],
-        },
-        {
-          pattern:
-            /\b(kinh nghiem|luu y|loi khuyen)\b.*\b(mua)\b|\b(mua)\b.*\b(lan dau|luu y|kinh nghiem)\b/,
-          answer:
-            'Kinh nghiệm mua nhà lần đầu:\n1. Xác định ngân sách rõ ràng (bao gồm phí phát sinh)\n2. Ưu tiên vị trí: gần trường học, bệnh viện, chợ\n3. Kiểm tra pháp lý: sổ hồng, quy hoạch, tranh chấp\n4. Xem nhà thực tế nhiều lần, nhiều thời điểm\n5. Kiểm tra kết cấu, hệ thống điện nước\n6. So sánh giá với khu vực lân cận\n7. Thương lượng giá hợp lý\n8. Sử dụng dịch vụ công chứng uy tín\n\nĐừng vội vàng, hãy tìm hiểu kỹ trước khi quyết định!',
-          suggestedQuestions: [
-            'Tìm nhà dưới 3 tỷ',
-            'Sổ hồng là gì?',
-            'Thủ tục mua bán nhà đất',
-          ],
-        },
-        {
-          pattern: /\b(phong thuy|feng\s*shui|huong nha|tuoi)\b/,
-          answer:
-            'Phong thủy khi mua nhà là yếu tố nhiều người Việt quan tâm:\n- Hướng nhà: nên chọn hướng hợp tuổi gia chủ\n- Hình dáng đất: vuông vức là tốt nhất\n- Đường vào nhà: tránh ngõ cụt, đường đâm thẳng vào nhà\n- Xung quanh: tránh gần nghĩa trang, bệnh viện, đường cao tốc\n\nTuy nhiên, vị trí, giá cả và pháp lý vẫn là yếu tố quan trọng nhất khi quyết định mua.',
-          suggestedQuestions: [
-            'Tìm nhà hướng Đông',
-            'Kinh nghiệm mua nhà lần đầu',
-            'Tìm đất nền giá rẻ',
-          ],
-        },
-        {
-          pattern: /\b(vay|ngan hang|lai suat|tra gop)\b.*\b(nha|dat|bds)\b|\b(nha|dat)\b.*\b(vay|ngan hang|tra gop)\b/,
-          answer:
-            'Quy trình vay mua nhà tại ngân hàng:\n1. Điều kiện: Thu nhập ổn định, CCCD, hộ khẩu\n2. Tỷ lệ cho vay: 60-70% giá trị BĐS\n3. Lãi suất: Ưu đãi năm đầu 6-8%/năm, sau đó 10-12%/năm\n4. Thời hạn: 10-25 năm, trả góp hàng tháng\n5. Hồ sơ: CCCD, xác nhận thu nhập, hợp đồng mua bán, sổ hồng\n\nLưu ý: Tổng trả góp không nên vượt 40% thu nhập.',
-          suggestedQuestions: [
-            'Kinh nghiệm mua nhà lần đầu',
-            'Thuế phí mua nhà bao nhiêu?',
-            'Tìm nhà dưới 3 tỷ',
-          ],
-        },
-        {
-          pattern: /\b(quy hoach|trong quy hoach|kiem tra quy hoach)\b/,
-          answer:
-            'Kiểm tra quy hoạch trước khi mua BĐS:\n\nCách kiểm tra:\n1. Tra cứu trực tuyến trên website Sở TN&MT\n2. Đến UBND phường/xã xin trích lục bản đồ\n3. Kiểm tra tại Văn phòng đăng ký đất đai\n\nCác loại cần kiểm tra:\n- Quy hoạch sử dụng đất (ở/nông nghiệp/công)\n- Quy hoạch giao thông (lộ giới)\n- Quy hoạch xây dựng (mật độ, tầng cao)\n\n⚠️ BĐS nằm trong vùng quy hoạch có thể bị thu hồi hoặc không được cấp phép xây dựng.',
-          suggestedQuestions: [
-            'Sổ hồng là gì?',
-            'Kinh nghiệm mua nhà lần đầu',
-            'Tìm đất nền có sổ',
-          ],
-        },
-        {
-          pattern: /\b(dat coc|hop dong dat coc|tien coc)\b/,
-          answer:
-            'Hợp đồng đặt cọc mua BĐS:\n\nNội dung bắt buộc:\n- Thông tin hai bên, mô tả BĐS\n- Số tiền cọc (thường 5-10% giá trị)\n- Thời hạn giao dịch, điều khoản phạt\n\nQuy định pháp luật:\n- Bên mua bỏ cọc → mất tiền cọc\n- Bên bán bỏ cọc → trả gấp đôi\n\nLời khuyên:\n- Nên công chứng hợp đồng\n- Kiểm tra kỹ pháp lý trước khi cọc\n- Không cọc quá 10% giá trị',
-          suggestedQuestions: [
-            'Thủ tục mua bán nhà đất',
-            'Kinh nghiệm mua nhà lần đầu',
-            'Tìm nhà dưới 5 tỷ',
-          ],
-        },
-        {
-          pattern: /\b(dat nen|dat tho cu|dat nong nghiep|loai dat)\b.*\b(khac|la gi|nghia)\b|\b(khac nhau|phan biet)\b.*\b(dat)\b/,
-          answer:
-            'Phân biệt các loại đất:\n\nĐất thổ cư (đất ở): Được xây nhà, cấp sổ hồng, giá cao nhất.\nĐất nền: Đã quy hoạch phân lô, cần kiểm tra pháp lý dự án.\nĐất nông nghiệp: CHỈ dùng sản xuất, KHÔNG được xây nhà. Muốn xây phải chuyển đổi mục đích (mất phí).\nĐất công: Thuộc sở hữu Nhà nước, không được mua bán.',
-          suggestedQuestions: [
-            'Quy hoạch đất là gì?',
-            'Tìm đất nền có sổ',
-            'Sổ hồng là gì?',
-          ],
-        },
-        {
-          pattern: /\b(giay phep xay|xin phep xay|phep xay)\b/,
-          answer:
-            'Giấy phép xây dựng (GPXD):\n\nHồ sơ: Đơn xin, sổ hồng, bản vẽ thiết kế, CCCD.\nThời gian: 15-20 ngày làm việc.\nChi phí: 75.000 - 150.000 VNĐ.\n\nMiễn phép: Nhà ở riêng lẻ tại nông thôn (một số vùng), sửa chữa nhỏ.\n⚠️ Xây không phép phạt 40-80 triệu và buộc tháo dỡ.',
-          suggestedQuestions: [
-            'Quy hoạch đất là gì?',
-            'Sổ hồng là gì?',
-            'Tìm nhà dưới 3 tỷ',
-          ],
-        },
-        {
-          pattern: /\b(tim tuong|thong thuy|dien tich su dung|dien tich san)\b/,
-          answer:
-            'Phân biệt diện tích BĐS:\n\nDiện tích tim tường: Đo từ tâm tường bao, bao gồm tường. Thường ghi trên sổ hồng.\nDiện tích thông thủy: Đo từ mặt trong tường, diện tích sử dụng thực tế.\n\nVí dụ: Sổ hồng ghi 80m² (tim tường) → thực tế sử dụng khoảng 72-75m² (thông thủy).\n\n💡 Luôn hỏi rõ loại diện tích khi mua nhà!',
-          suggestedQuestions: [
-            'Kinh nghiệm mua nhà lần đầu',
-            'Sổ hồng là gì?',
-            'Tìm căn hộ dưới 3 tỷ',
-          ],
-        },
-        {
-          pattern: /\b(dau tu|sinh loi|loi nhuan)\b.*\b(bds|bat dong san|nha|dat)\b|\b(bds|bat dong san)\b.*\b(dau tu|sinh loi)\b/,
-          answer:
-            'Kinh nghiệm đầu tư BĐS:\n\n1. Mua đất nền chờ tăng giá (lãi 15-30%/năm, rủi ro pháp lý)\n2. Mua căn hộ cho thuê (lãi 4-7%/năm, ổn định)\n3. Mua nhà phố cho thuê mặt bằng (lãi 3-5%/năm)\n\nNguyên tắc vàng:\n- Vị trí, vị trí, vị trí\n- Pháp lý rõ ràng, sổ hồng\n- Không dùng quá 50% vốn vay\n\n⚠️ Tránh dự án ma, đất nông nghiệp rao bán như đất ở.',
-          suggestedQuestions: [
-            'Tìm đất nền giá rẻ',
-            'Quy hoạch đất là gì?',
-            'Tìm nhà cho thuê',
-          ],
-        },
-      ];
+    intent: ParsedIntent,
+    conversation: ConversationState,
+  ): Promise<ChatResult | null> {
+    // Check if there's an active consultation
+    const currentState = await this.consultationFlowService.getState(sessionId);
 
-    for (const qa of qaBank) {
-      if (qa.pattern.test(normalized)) {
-        return { answer: qa.answer, suggestedQuestions: qa.suggestedQuestions };
+    if (currentState && currentState.step !== 'idle' && currentState.step !== 'completed') {
+      // Escape hatch: If user explicitly starts over with a greeting or a strong different intent
+      const breakoutIntents = [
+        'greeting',
+        'search_property',
+        'recommend_property',
+        'market_analysis',
+        'investment_advice',
+        'financing_advice',
+        'qa_real_estate',
+        'compare_property',
+        'booking',
+        'upgrade_account',
+        'upgrade_listing',
+      ];
+      
+      if (breakoutIntents.includes(intent.type)) {
+        await this.consultationFlowService.clearState(sessionId);
+        return null; // Let the main flow handle the new intent
       }
+
+      // If user asks for consultation AGAIN, restart the consultation
+      if (intent.type === 'consultation') {
+        await this.consultationFlowService.clearState(sessionId);
+        const profile = await this.userProfileService.getProfile(sessionId);
+        const startAnswer = await this.consultationFlowService.startConsultation(sessionId, profile);
+
+        return this.returnChatWithMemory(sessionId, question, conversation, {
+          answer: startAnswer,
+          structured: null,
+          intent: { type: 'consultation' },
+          confidence: 1,
+          sources: [],
+          relatedSources: [],
+          suggestedQuestions: [],
+        });
+      }
+
+      // Continue existing consultation
+      const result = await this.consultationFlowService.processAnswer(
+        sessionId,
+        question,
+        currentState,
+      );
+
+      if (result.completed && result.intent) {
+        // Consultation completed - trigger a search with gathered criteria
+        // Save the consultation summary in memory, then let the main chat flow handle the search
+        const summaryAnswer = result.answer;
+        await this.returnChatWithMemory(sessionId, question, conversation, {
+          answer: summaryAnswer,
+          structured: null,
+          intent: result.intent,
+          confidence: 1,
+          sources: [],
+          relatedSources: [],
+          suggestedQuestions: [],
+        });
+
+        // Now execute the search with the consultation-derived intent
+        const searchDto: ChatDto = {
+          sessionId,
+          question: this.buildConsultationSearchQuery(result.state),
+        };
+        return this.chat(searchDto);
+      }
+
+      return this.returnChatWithMemory(sessionId, question, conversation, {
+        answer: result.answer,
+        structured: null,
+        intent: { type: 'consultation' },
+        confidence: 1,
+        sources: [],
+        relatedSources: [],
+        suggestedQuestions: [
+          'Hủy tư vấn',
+        ],
+      });
+    }
+
+    // Start new consultation ONLY when intent is explicitly 'consultation'.
+    // Do NOT use isConsultationTrigger fallback here — it was too aggressive
+    // and matched search queries like "đất nền đầu tư" (nen dau tu).
+    if (intent.type === 'consultation') {
+      const profile = await this.userProfileService.getProfile(sessionId);
+      const startAnswer = await this.consultationFlowService.startConsultation(sessionId, profile);
+
+      return this.returnChatWithMemory(sessionId, question, conversation, {
+        answer: startAnswer,
+        structured: null,
+        intent: { type: 'consultation' },
+        confidence: 1,
+        sources: [],
+        relatedSources: [],
+        suggestedQuestions: [],
+      });
     }
 
     return null;
   }
+
+  /**
+   * Build a search query from consultation state.
+   */
+  private buildConsultationSearchQuery(state: any): string {
+    const parts: string[] = ['Tìm'];
+    if (state.propertyType === 'land') parts.push('đất');
+    else parts.push('nhà');
+
+    if (state.location) parts.push(`ở ${state.location}`);
+    if (state.budgetMax) {
+      const label = state.budgetMax >= 1_000_000_000
+        ? `${(state.budgetMax / 1_000_000_000).toFixed(1).replace('.0', '')} tỷ`
+        : `${Math.round(state.budgetMax / 1_000_000)} triệu`;
+      parts.push(`dưới ${label}`);
+    }
+    if (state.bedrooms) parts.push(`${state.bedrooms} phòng ngủ`);
+    if (state.additionalCriteria && state.additionalCriteria !== 'khong co') {
+      parts.push(state.additionalCriteria);
+    }
+
+    return parts.join(' ');
+  }
+
+  /**
+   * Detect if user dislikes current results and mark properties accordingly.
+   */
+  private async handleDislikeDetection(
+    sessionId: string,
+    question: string,
+    conversation: ConversationState,
+  ): Promise<void> {
+    if (!this.userProfileService.detectDislike(question)) return;
+
+    // Get IDs from the last assistant response
+    const lastAssistant = [...conversation.memory]
+      .reverse()
+      .find((t) => t.role === 'assistant');
+    if (!lastAssistant) return;
+
+    const idMatches = lastAssistant.text.matchAll(/\bID\s+(\d+)\b/gi);
+    const ids: number[] = [];
+    for (const match of idMatches) {
+      const id = Number(match[1]);
+      if (Number.isFinite(id) && id > 0) ids.push(id);
+    }
+
+    if (ids.length > 0) {
+      await this.userProfileService.markDisliked(sessionId, ids);
+      this.logger.log(`[PROFILE] Marked ${ids.length} properties as disliked for session ${sessionId}`);
+    }
+  }
+
 
   private buildSuggestedQuestions(
     intent: ParsedIntent,
@@ -1549,15 +1432,6 @@ export class AiService {
     return suggestions.slice(0, 3);
   }
 
-  private compactMemoryText(value: string, limit: number): string {
-    const oneLine = String(value || '')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    if (oneLine.length <= limit) return oneLine;
-    return `${oneLine.slice(0, Math.max(0, limit - 3))}...`;
-  }
-
   private async findDbCandidatesByIntent(
     intent: ParsedIntent,
     limit: number,
@@ -1565,22 +1439,29 @@ export class AiService {
     const priceFilter: Record<string, unknown> | undefined =
       intent.minPrice !== undefined || intent.maxPrice !== undefined
         ? {
-            ...(intent.minPrice !== undefined ? { gte: intent.minPrice } : {}),
-            ...(intent.maxPrice !== undefined ? { lte: intent.maxPrice } : {}),
-          }
+          ...(intent.minPrice !== undefined ? { gte: intent.minPrice } : {}),
+          ...(intent.maxPrice !== undefined ? { lte: intent.maxPrice } : {}),
+        }
         : undefined;
 
-    // Build location OR filters to push into SQL WHERE clause
-    const locationOrFilters: Array<Record<string, unknown>> | undefined =
-      intent.locationTokens && intent.locationTokens.length > 0
-        ? intent.locationTokens.flatMap((token) => [
-            { city: { contains: token } },
-            { district: { contains: token } },
-            { ward: { contains: token } },
-            { street: { contains: token } },
-            { title: { contains: token } },
-          ])
-        : undefined;
+    const locationStopTokens = new Set([
+      'tp',
+      'thanh',
+      'pho',
+      'tinh',
+      'quan',
+      'huyen',
+      'phuong',
+      'xa',
+      'thi',
+      'tran',
+    ]);
+    const normalizedLocation = intent.location
+      ? AiUtils.normalizeText(intent.location)
+      : '';
+    const locationTokens = (intent.locationTokens || [])
+      .map((t) => AiUtils.normalizeText(t))
+      .filter((t) => t.length >= 2 && !locationStopTokens.has(t));
 
     // Transaction type heuristic: rent prices are typically < 100M/month
     const rentPriceGuard =
@@ -1592,7 +1473,6 @@ export class AiService {
       const where: Record<string, unknown> = { status: 1 };
       if (priceFilter) where.price = priceFilter;
       else if (rentPriceGuard) where.price = rentPriceGuard;
-      if (locationOrFilters) where.OR = locationOrFilters;
       return where;
     };
 
@@ -1601,52 +1481,26 @@ export class AiService {
     const [houses, lands] = await Promise.all([
       intent.sourceType !== 'land'
         ? this.prisma.house.findMany({
-            where: buildWhere(),
-            orderBy: { updatedAt: 'desc' },
-            take: fetchLimit,
-            include: { images: { take: 1, orderBy: { position: 'asc' }, select: { url: true } } },
-          })
+          where: buildWhere(),
+          orderBy: { updatedAt: 'desc' },
+          take: fetchLimit,
+          include: { images: { take: 1, orderBy: { position: 'asc' }, select: { url: true } } },
+        })
         : Promise.resolve([]),
       intent.sourceType !== 'house'
         ? this.prisma.land.findMany({
-            where: buildWhere(),
-            orderBy: { updatedAt: 'desc' },
-            take: fetchLimit,
-            include: { images: { take: 1, orderBy: { position: 'asc' }, select: { url: true } } },
-          })
+          where: buildWhere(),
+          orderBy: { updatedAt: 'desc' },
+          take: fetchLimit,
+          include: { images: { take: 1, orderBy: { position: 'asc' }, select: { url: true } } },
+        })
         : Promise.resolve([]),
     ]);
 
-    // If strict query returned nothing and we had location filters, try without location
-    if (houses.length === 0 && lands.length === 0 && locationOrFilters) {
-      const fallbackWhere: Record<string, unknown> = { status: 1 };
-      if (priceFilter) fallbackWhere.price = priceFilter;
-      else if (rentPriceGuard) fallbackWhere.price = rentPriceGuard;
-
-      const [fbHouses, fbLands] = await Promise.all([
-        intent.sourceType !== 'land'
-          ? this.prisma.house.findMany({
-              where: fallbackWhere,
-              orderBy: { updatedAt: 'desc' },
-              take: fetchLimit,
-              include: { images: { take: 1, orderBy: { position: 'asc' }, select: { url: true } } },
-            })
-          : Promise.resolve([]),
-        intent.sourceType !== 'house'
-          ? this.prisma.land.findMany({
-              where: fallbackWhere,
-              orderBy: { updatedAt: 'desc' },
-              take: fetchLimit,
-              include: { images: { take: 1, orderBy: { position: 'asc' }, select: { url: true } } },
-            })
-          : Promise.resolve([]),
-      ]);
-
-      const fallbackDocs: VectorHit[] = [
-        ...fbHouses.map((h) => this.houseToDoc(h)).map((d) => ({ id: d.id, score: 0.1, payload: d.payload })),
-        ...fbLands.map((l) => this.landToDoc(l)).map((d) => ({ id: d.id, score: 0.1, payload: d.payload })),
-      ];
-      return this.applyIntentFilter(fallbackDocs, intent).slice(0, limit);
+    // If strict query returned nothing and we had location filters, do not
+    // fall back to location-agnostic results.
+    if (houses.length === 0 && lands.length === 0 && normalizedLocation) {
+      return [];
     }
 
     const docs: VectorHit[] = [
@@ -1669,7 +1523,7 @@ export class AiService {
       });
     } catch (error) {
       this.logger.warn(
-        `ensureCollection warning: ${this.stringifyError(error)}`,
+        `ensureCollection warning: ${AiUtils.stringifyError(error)}`,
       );
     }
   }
@@ -1694,7 +1548,7 @@ export class AiService {
   }
 
   private async getCachedQueryEmbedding(question: string): Promise<number[]> {
-    const normalized = this.normalizeText(question);
+    const normalized = AiUtils.normalizeText(question);
     const cacheKey = `ai:embed:q:${encodeURIComponent(normalized).slice(0, 200)}`;
     const cached = await this.redis.get<number[]>(cacheKey);
     if (Array.isArray(cached) && cached.length > 0) {
@@ -1708,8 +1562,8 @@ export class AiService {
 
   private houseToDoc(house: Record<string, unknown>): IndexedDoc {
     const id = 1_000_000 + Number(house.id || 0);
-    const price = this.toNumber(house.price);
-    const area = this.toNumber(house.area);
+    const price = AiUtils.toNumber(house.price);
+    const area = AiUtils.toNumber(house.area);
     const bedrooms = Number(house.bedrooms ?? 0);
     const bathrooms = Number(house.bathrooms ?? 0);
     const floors = Number(house.floors ?? 0);
@@ -1760,12 +1614,12 @@ export class AiService {
 
   private landToDoc(land: Record<string, unknown>): IndexedDoc {
     const id = 2_000_000 + Number(land.id || 0);
-    const price = this.toNumber(land.price);
-    const area = this.toNumber(land.area);
+    const price = AiUtils.toNumber(land.price);
+    const area = AiUtils.toNumber(land.area);
     const direction = String(land.direction || '');
     const legalStatus = String(land.legalStatus || land.legal_status || '');
     const landType = String(land.landType || land.land_type || '');
-    const frontWidth = this.toNumber(land.frontWidth ?? land.front_width);
+    const frontWidth = AiUtils.toNumber(land.frontWidth ?? land.front_width);
 
     // Extract first image URL from images array if available
     const images = Array.isArray(land.images) ? land.images : [];
@@ -1812,8 +1666,8 @@ export class AiService {
 
   private postToDoc(post: Record<string, unknown>): IndexedDoc {
     const id = 3_000_000 + Number(post.id || 0);
-    const price = this.toNumber(post.price);
-    const area = this.toNumber(post.area);
+    const price = AiUtils.toNumber(post.price);
+    const area = AiUtils.toNumber(post.area);
 
     const payload: Record<string, unknown> = {
       source: 'post',
@@ -1841,281 +1695,6 @@ export class AiService {
     return { id, text, payload };
   }
 
-  private toNumber(value: unknown): number {
-    if (value === null || value === undefined) return 0;
-    const num = Number(String(value).replace(/[^0-9.-]/g, ''));
-    return Number.isFinite(num) ? num : 0;
-  }
-
-  private stringifyError(error: unknown): string {
-    if (error instanceof Error) return error.message;
-    try {
-      return JSON.stringify(error);
-    } catch {
-      return String(error);
-    }
-  }
-
-  private parseIntent(question: string): ParsedIntent {
-    const normalized = this.normalizeText(question);
-    const intent: ParsedIntent = { type: 'unknown' };
-
-    // --- Classify intent type ---
-    if (/^(xin chao|hello|hi|hey|chao ban|chao|alo)\b/.test(normalized)) {
-      intent.type = 'greeting';
-      return intent;
-    }
-
-    if (/\b(so sanh|compare|khac nhau|giong nhau)\b/.test(normalized)) {
-      intent.type = 'compare_property';
-      // Only match explicit property IDs: preceded by 'id', 'ma tin', 'so', 'can', 'tin'
-      // OR large numbers (>=100) that can't be district/ward numbers
-      const explicitIdMatches = normalized.match(
-        /\b(?:id|ma tin|ma|so|can|tin)\s*(\d+)\b/gi,
-      );
-      const largeNumbers = [...normalized.matchAll(/\b(\d{3,})\b/g)].map(
-        (m: RegExpMatchArray) => m[1],
-      );
-      const allIds = [
-        ...(explicitIdMatches ?? []).map((m) => m.replace(/\D/g, '')),
-        ...largeNumbers,
-      ]
-        .map(Number)
-        .filter((n) => Number.isFinite(n) && n > 0);
-      if (allIds.length >= 2) {
-        intent.compareIds = [...new Set(allIds)].slice(0, 5);
-      } else {
-        // Try to extract two property descriptions: "so sánh <A> với <B>"
-        const descParts = this.parseCompareDescriptions(question);
-        if (descParts.length >= 2) {
-          intent.compareDescriptions = descParts;
-        }
-      }
-    } else if (
-      /\b(so sanh|compare)\b.*\b(nha nay|cai nay|can nay|tin nay|nha do|cai do|can do|tin do|nha kia|cai kia|2 cai|hai cai|nhung cai|chung|vua tim|vua xem|tren|do|chung|nay voi|voi nhau)\b|\b(nha nay|cai nay|hai cai|2 cai|vua tim)\b.*\b(so sanh|compare|voi|va)\b/.test(
-        normalized,
-      )
-    ) {
-      // Referential compare: user is referring to properties seen in recent chat history
-      intent.type = 'compare_property';
-    } else if (
-      /\b(dat lich|book|hen|xem nha|lich hen|lich xem)\b/.test(normalized)
-    ) {
-      intent.type = 'booking';
-    } else if (
-      /\b(nang cap|upgrade|vip|premium|pro)\b/.test(normalized) &&
-      /\b(tai khoan|account)\b/.test(normalized)
-    ) {
-      intent.type = 'upgrade_account';
-    } else if (
-      /\b(nang cap|upgrade|vip|premium|day tin|tin noi bat)\b/.test(
-        normalized,
-      ) &&
-      /\b(tin|listing|bai dang)\b/.test(normalized)
-    ) {
-      intent.type = 'upgrade_listing';
-    } else if (
-      /\b(huong dan dang|cach dang|dang bai|dang tin|lam sao dang|muon dang)\b/.test(
-        normalized,
-      ) &&
-      !/\b(viet|tao|soan|mo ta|gen)\b/.test(normalized)
-    ) {
-      intent.type = 'post_guide';
-    } else if (
-      /\b(viet bai|tao bai|generate|soan noi dung|viet mo ta|tao mo ta|gen mo ta|soan mo ta)\b/.test(
-        normalized,
-      ) ||
-      (/\b(viet|soan|tao|gen|giup)\b/.test(normalized) &&
-        /\b(mo ta|bai dang|noi dung|bai viet)\b/.test(normalized)) ||
-      (/\bmo ta\b/.test(normalized) && /\b(ban|cho thue)\b/.test(normalized))
-    ) {
-      intent.type = 'generate_content';
-    } else if (
-      /\b(la gi|nghia la|the nao|thu tuc|phap ly|so hong|so do|cong chung|phi)\b/.test(
-        normalized,
-      ) &&
-      !/\b(tim|mua|ban|gia|ty|trieu)\b/.test(normalized)
-    ) {
-      intent.type = 'qa_real_estate';
-    } else if (
-      /\b(kinh nghiem|luu y|loi khuyen)\b/.test(normalized) &&
-      !/\b(tim|gia|ty|trieu)\b/.test(normalized)
-    ) {
-      // "kinh nghiem mua nha" is a QA even though it contains "mua"
-      intent.type = 'qa_real_estate';
-    } else if (
-      /\b(nen mua|goi y|tu van|recommend|phu hop|nhu cau)\b/.test(normalized)
-    ) {
-      intent.type = 'recommend_property';
-    } else if (
-      /\b(tim|search|can|mua|ban|thue|cho thue|gia|ty|trieu|dat|nha|can ho|chung cu)\b/.test(
-        normalized,
-      )
-    ) {
-      intent.type = 'search_property';
-    }
-
-    // --- Parse price filters ---
-    const rangeMatch = normalized.match(
-      /tu\s+([0-9.,]+)\s*(ty|trieu|tr)?\s+(den|toi|-)\s+([0-9.,]+)\s*(ty|trieu|tr)?/,
-    );
-    if (rangeMatch) {
-      const min = this.toVnd(rangeMatch[1], rangeMatch[2]);
-      const max = this.toVnd(rangeMatch[4], rangeMatch[5]);
-      if (min !== undefined && max !== undefined) {
-        intent.minPrice = Math.min(min, max);
-        intent.maxPrice = Math.max(min, max);
-      }
-    }
-
-    const underMatch = normalized.match(
-      /(duoi|nho hon|<|<=)\s*([0-9.,]+)\s*(ty|trieu|tr)?/,
-    );
-    if (underMatch) {
-      const max = this.toVnd(underMatch[2], underMatch[3]);
-      if (max !== undefined) intent.maxPrice = max;
-    }
-
-    const overMatch = normalized.match(
-      /(tren|lon hon|>|>=)\s*([0-9.,]+)\s*(ty|trieu|tr)?/,
-    );
-    if (overMatch) {
-      const min = this.toVnd(overMatch[2], overMatch[3]);
-      if (min !== undefined) intent.minPrice = min;
-    }
-
-    // Budget phrasing: "có X tỷ", "ngân sách X tỷ", "khoảng X tỷ", "tầm X tỷ"
-    if (intent.maxPrice === undefined && intent.minPrice === undefined) {
-      const budgetMatch = normalized.match(
-        /(?:co|ngan sach|khoang|tam|budget)\s+([0-9.,]+)\s*(ty|trieu|tr)?/,
-      );
-      if (budgetMatch) {
-        const budget = this.toVnd(budgetMatch[1], budgetMatch[2]);
-        if (budget !== undefined) intent.maxPrice = budget;
-      }
-    }
-
-    // "giá rẻ" / "rẻ nhất" / "giá tốt" — set a reasonable max price ceiling
-    if (
-      intent.maxPrice === undefined &&
-      intent.minPrice === undefined &&
-      /\b(gia re|re nhat|gia tot|binh dan|re|gia mem)\b/.test(normalized)
-    ) {
-      // For land: dưới 1 tỷ. For house: dưới 2 tỷ. Default: dưới 2 tỷ.
-      if (intent.sourceType === 'land') {
-        intent.maxPrice = 1_000_000_000;
-      } else {
-        intent.maxPrice = 2_000_000_000;
-      }
-    }
-
-    // Bare price like "2 tỷ" or "500 triệu" without a qualifier
-    if (intent.maxPrice === undefined && intent.minPrice === undefined) {
-      const bareMatch = normalized.match(/\b([0-9.,]+)\s*(ty|trieu|tr)\b/);
-      if (bareMatch) {
-        const price = this.toVnd(bareMatch[1], bareMatch[2]);
-        if (price !== undefined) {
-          // Treat bare price as maxPrice (budget ceiling) for search/recommend
-          if (
-            /\b(tim|can|mua|co|ngan sach|nen mua|goi y|tu van)\b/.test(
-              normalized,
-            )
-          ) {
-            intent.maxPrice = price;
-          }
-        }
-      }
-    }
-
-    // For price-containing queries, default to search/recommend if not yet classified
-    if (
-      intent.type === 'unknown' &&
-      (intent.minPrice !== undefined || intent.maxPrice !== undefined)
-    ) {
-      intent.type = 'search_property';
-    }
-
-    // --- Parse location ---
-    // Strategy 1: "ở/tại/khu vực/gần" + location phrase
-    const locationMatch = normalized.match(
-      /(?:o|tai|khu vuc|gan)\s+([a-z0-9\s]+?)(?:\s+(?:duoi|tren|gia|tu|den|co|nho|lon|voi)\b|\s*$)/,
-    );
-    if (locationMatch) {
-      const location = locationMatch[1].trim();
-      if (location.length >= 2) intent.location = location;
-    }
-
-    // Strategy 2: Detect known location names even without preposition
-    if (!intent.location) {
-      const knownLocations = [
-        'lien chieu', 'son tra', 'hai chau', 'thanh khe', 'cam le',
-        'ngu hanh son', 'hoa vang', 'da nang', 'ha noi', 'ho chi minh',
-        'binh duong', 'dong nai', 'can tho', 'hai phong', 'nha trang',
-        'hue', 'vung tau', 'quang nam', 'binh dinh', 'khanh hoa',
-        'da lat', 'lam dong', 'phu yen', 'quang ngai', 'binh thanh',
-        'tan binh', 'thu duc', 'go vap', 'phu nhuan', 'quan 1',
-        'quan 2', 'quan 3', 'quan 5', 'quan 7', 'quan 9', 'quan 10',
-        'quan 12', 'tan phu', 'binh tan',
-      ];
-      for (const loc of knownLocations) {
-        if (normalized.includes(loc)) {
-          intent.location = loc;
-          break;
-        }
-      }
-    }
-
-    // Build location tokens for fuzzy matching in DB and vector filters
-    if (intent.location) {
-      intent.locationTokens = intent.location
-        .split(/\s+/)
-        .filter((t) => t.length >= 2);
-    }
-
-    // --- Parse source type ---
-    if (/\b(chung cu|can ho|apartment)\b/.test(normalized)) {
-      intent.sourceType = 'house';
-    } else if (/\b(nha|biet thu|townhouse)\b/.test(normalized)) {
-      intent.sourceType = 'house';
-    } else if (/\b(dat|nen)\b/.test(normalized)) {
-      intent.sourceType = 'land';
-    }
-
-    if (/\b(nong nghiep|vuon|trong cay)\b/.test(normalized)) {
-      intent.sourceType = 'land';
-    }
-
-    // --- Parse required keyword (property feature filter) ---
-    const requiredKeywordMap: Array<[RegExp, string]> = [
-      [/\b(mat tien|mat duong|truoc mat|thoang mat|lo goc)\b/, 'mat tien'],
-      [/\b(hem ngo|hem xe|hem|ngo)\b/, 'hem'],
-      [/\b(view bien|nhin bien|gan bien|ven bien)\b/, 'bien'],
-      [/\b(gara|garage|san xe o to)\b/, 'gara'],
-      [/\b(san vuon|co vuon|vuon rau)\b/, 'vuon'],
-      [/\b(ho boi|boi loi)\b/, 'ho boi'],
-      [/\b(thang may|elevator)\b/, 'thang may'],
-      [/\b(nha pho|lien ke)\b/, 'nha pho'],
-    ];
-    for (const [pattern, kw] of requiredKeywordMap) {
-      if (pattern.test(normalized)) {
-        intent.requiredKeyword = kw;
-        break;
-      }
-    }
-
-    // --- Parse transaction type (rent vs sale) ---
-    if (
-      /\b(cho thue|thue|rent|thang)\b/.test(normalized) &&
-      !/\b(thu tuc|quy trinh|kinh nghiem)\b/.test(normalized)
-    ) {
-      intent.transactionType = 'rent';
-    } else if (/\b(mua|de ban|rao ban)\b/.test(normalized)) {
-      intent.transactionType = 'sale';
-    }
-
-    return intent;
-  }
-
   private applyIntentFilter<T extends { payload: Record<string, unknown> }>(
     hits: T[],
     intent: ParsedIntent,
@@ -2128,11 +1707,28 @@ export class AiService {
     const hasTransactionFilter = Boolean(intent.transactionType);
     if (!hasPriceFilter && !hasLocationFilter && !hasSourceFilter && !hasTransactionFilter) return hits;
 
-    const locationTokens = intent.locationTokens || [];
+    const locationStopTokens = new Set([
+      'tp',
+      'thanh',
+      'pho',
+      'tinh',
+      'quan',
+      'huyen',
+      'phuong',
+      'xa',
+      'thi',
+      'tran',
+    ]);
+    const normalizedLocation = intent.location
+      ? AiUtils.normalizeText(intent.location)
+      : '';
+    const locationTokens = (intent.locationTokens || [])
+      .map((t) => AiUtils.normalizeText(t))
+      .filter((t) => t.length >= 2 && !locationStopTokens.has(t));
 
     const filtered = hits.filter((hit) => {
       const payload = hit.payload || {};
-      const price = this.toNumber(payload.price);
+      const price = AiUtils.toNumber(payload.price);
 
       // When a price filter is active, exclude items with unknown/zero price
       // because they cannot be verified against the user's budget.
@@ -2144,7 +1740,7 @@ export class AiService {
         return false;
 
       // Token-based fuzzy location matching: pass if ANY location token is found
-      if (hasLocationFilter && locationTokens.length > 0) {
+      if (hasLocationFilter) {
         const searchable = [
           payload.city,
           payload.district,
@@ -2152,13 +1748,18 @@ export class AiService {
           payload.street,
           payload.title,
         ]
-          .map((x) => this.normalizeText(String(x || '')))
+          .map((x) => AiUtils.normalizeText(String(x || '')))
           .join(' ');
 
-        const matchCount = locationTokens.filter((t) => searchable.includes(t)).length;
-        // Require at least half the tokens to match (fuzzy)
-        const threshold = Math.max(1, Math.floor(locationTokens.length / 2));
-        if (matchCount < threshold) return false;
+        if (normalizedLocation && searchable.includes(normalizedLocation)) {
+          // Full phrase matched
+        } else if (locationTokens.length > 0) {
+          const matchCount = locationTokens.filter((t) => searchable.includes(t)).length;
+          const threshold = Math.max(1, Math.ceil(locationTokens.length * 0.7));
+          if (matchCount < threshold) return false;
+        } else {
+          return false;
+        }
       }
 
       if (intent.sourceType) {
@@ -2167,7 +1768,7 @@ export class AiService {
       }
 
       if (intent.requiredKeyword) {
-        const needle = this.normalizeText(intent.requiredKeyword);
+        const needle = AiUtils.normalizeText(intent.requiredKeyword);
         const haystack = [
           payload.title,
           payload.description,
@@ -2175,15 +1776,15 @@ export class AiService {
           payload.ward,
           payload.district,
         ]
-          .map((x) => this.normalizeText(String(x || '')))
+          .map((x) => AiUtils.normalizeText(String(x || '')))
           .join(' ');
         if (!haystack.includes(needle)) return false;
       }
 
       // Transaction type heuristic filter
       if (intent.transactionType) {
-        const titleNorm = this.normalizeText(String(payload.title || ''));
-        const descNorm = this.normalizeText(String(payload.description || '').slice(0, 200));
+        const titleNorm = AiUtils.normalizeText(String(payload.title || ''));
+        const descNorm = AiUtils.normalizeText(String(payload.description || '').slice(0, 200));
         const combined = `${titleNorm} ${descNorm}`;
 
         if (intent.transactionType === 'rent') {
@@ -2237,8 +1838,8 @@ export class AiService {
     try {
       const propertyDescriptions = sources
         .map((s, idx) => {
-          const price = this.formatVnd(s.price);
-          const area = this.formatArea(s.area);
+          const price = AiUtils.formatVnd(s.price);
+          const area = AiUtils.formatArea(s.area);
           const location = [s.street, s.ward, s.district, s.city]
             .filter(Boolean)
             .join(', ');
@@ -2267,22 +1868,19 @@ export class AiService {
         '4. Dùng gạch đầu dòng cho dễ đọc',
       ].join('\n');
 
-      const resp = await axios.post(
-        `${this.geminiApiBase}/models/${this.geminiChatModel}:generateContent?key=${this.geminiApiKey}`,
+      const text = await AiUtils.generateLlmResponse(
+        prompt,
+        'Bạn là chuyên gia phân tích bất động sản Việt Nam. Trả lời ngắn gọn, chuyên nghiệp, tiếng Việt có dấu.',
         {
-          systemInstruction: {
-            parts: [{ text: 'Bạn là chuyên gia phân tích bất động sản Việt Nam. Trả lời ngắn gọn, chuyên nghiệp, tiếng Việt có dấu.' }],
-          },
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 512 },
-        },
-        { timeout: this.geminiTimeoutMs },
+          temperature: 0.3,
+          maxTokens: 512,
+          timeout: this.geminiTimeoutMs,
+        }
       );
 
-      const text = resp.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      return text.length > 20 ? `**📊 Phân tích AI:**\n${text}` : null;
+      return (text && text.length > 20) ? `**📊 Phân tích AI:**\n${text}` : null;
     } catch (error) {
-      this.logger.warn(`Compare AI analysis failed: ${this.stringifyError(error)}`);
+      this.logger.warn(`Compare AI analysis failed: ${AiUtils.stringifyError(error)}`);
       return null;
     }
   }
@@ -2298,7 +1896,7 @@ export class AiService {
     const primaryIds = new Set(primaryHits.map((h) => String(h.id)));
     const dedupe = new Set<string>();
     const locationNeedle = intent.location
-      ? this.normalizeText(intent.location)
+      ? AiUtils.normalizeText(intent.location)
       : '';
 
     let candidates = pool.filter((h) => !primaryIds.has(String(h.id)));
@@ -2310,14 +1908,14 @@ export class AiService {
       const sameType = candidates.filter(
         (h) => String(h.payload?.source || '') === intent.sourceType,
       );
-      candidates = [...differentType, ...sameType];
+      candidates = [...sameType, ...differentType];
     }
 
     if (locationNeedle) {
       const strongLocation = candidates.filter((h) => {
         const p = h.payload || {};
         const loc = [p.city, p.district, p.ward, p.street]
-          .map((x) => this.normalizeText(String(x || '')))
+          .map((x) => AiUtils.normalizeText(String(x || '')))
           .join(' ');
         return loc.includes(locationNeedle);
       });
@@ -2379,7 +1977,7 @@ export class AiService {
 
     const tokens = (intent.location || '')
       .split(/\s+/)
-      .map((x) => this.normalizeText(x))
+      .map((x) => AiUtils.normalizeText(x))
       .filter((x) => x.length >= 2);
 
     return docs
@@ -2390,15 +1988,15 @@ export class AiService {
       .map((p) => {
         const source = String(p.source || '');
         const loc = [p.city, p.district, p.ward, p.street]
-          .map((x) => this.normalizeText(String(x || '')))
+          .map((x) => AiUtils.normalizeText(String(x || '')))
           .join(' ');
         const txt = [p.title, p.description]
-          .map((x) => this.normalizeText(String(x || '')))
+          .map((x) => AiUtils.normalizeText(String(x || '')))
           .join(' ');
 
         let score = 0;
-        if (intent.sourceType && source !== intent.sourceType) score += 2;
-        if (intent.sourceType && source === intent.sourceType) score += 1;
+        if (intent.sourceType && source === intent.sourceType) score += 2;
+        if (intent.sourceType && source !== intent.sourceType) score -= 1;
 
         if (tokens.length > 0) {
           const tokenHits = tokens.filter(
@@ -2412,291 +2010,6 @@ export class AiService {
       .sort((a, b) => b.score - a.score)
       .slice(0, limit)
       .map((x) => x.payload);
-  }
-
-  private normalizeText(value: string): string {
-    return value
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
-  /**
-   * Gemini QA fallback: for qa_real_estate intent questions not matched by static QA bank,
-   * ask Gemini to answer as a real estate expert.
-   */
-  private async answerQAWithGemini(question: string): Promise<string | null> {
-    if (!this.geminiApiKey) return null;
-    try {
-      const systemPrompt = [
-        'Bạn là chuyên gia tư vấn bất động sản Việt Nam.',
-        'Trả lời câu hỏi kiến thức BĐS bằng tiếng Việt có dấu, rõ ràng, chính xác.',
-        'Nếu câu hỏi không liên quan đến BĐS, trả lời "Mình chỉ hỗ trợ về bất động sản thôi nhé!"',
-        'Giới hạn trả lời trong 200 từ. Dùng gạch đầu dòng nếu cần.',
-      ].join('\n');
-
-      const resp = await axios.post(
-        `${this.geminiApiBase}/models/${this.geminiChatModel}:generateContent?key=${this.geminiApiKey}`,
-        {
-          systemInstruction: { parts: [{ text: systemPrompt }] },
-          contents: [{ role: 'user', parts: [{ text: question }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 512 },
-        },
-        { timeout: this.geminiTimeoutMs },
-      );
-
-      const text = resp.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      return text.length > 20 ? text : null;
-    } catch (error) {
-      this.logger.warn(`Gemini QA fallback failed: ${this.stringifyError(error)}`);
-      return null;
-    }
-  }
-
-  /**
-   * Extract ALL prices from text. Returns unique price values in order of appearance.
-   * Handles Vietnamese dot-separated format (2.050.000.000), tỷ/triệu format, etc.
-   */
-  private extractAllPricesFromText(text: string): number[] {
-    const prices: number[] = [];
-    const seen = new Set<number>();
-
-    const addPrice = (p: number) => {
-      if (Number.isFinite(p) && p > 0 && !seen.has(p)) {
-        seen.add(p);
-        prices.push(p);
-      }
-    };
-
-    // Pattern 1: Vietnamese dot-separated format: 2.050.000.000 (đ/đồng/vnd optional)
-    const dotSepRegex = /(\d{1,3}(?:\.\d{3}){2,})\s*(?:đ|dong|đồng|vnd)?/gi;
-    let match: RegExpExecArray | null;
-    while ((match = dotSepRegex.exec(text)) !== null) {
-      const num = Number(match[1].replace(/\./g, ''));
-      addPrice(num);
-    }
-
-    // Pattern 2: X tỷ Y triệu
-    const tyRegex = /(\d+(?:[.,]\d+)?)\s*(?:tỷ|ty)\s*(?:(\d+)\s*(?:triệu|trieu|tr))?/gi;
-    while ((match = tyRegex.exec(text)) !== null) {
-      const ty = Number(match[1].replace(',', '.'));
-      const trieu = match[2] ? Number(match[2]) : 0;
-      addPrice(ty * 1_000_000_000 + trieu * 1_000_000);
-    }
-
-    // Pattern 3: X triệu (standalone, not part of tỷ pattern)
-    const trieuRegex = /(\d+(?:[.,]\d+)?)\s*(?:triệu|trieu|tr)(?!\s*\d)/gi;
-    while ((match = trieuRegex.exec(text)) !== null) {
-      const num = Number(match[1].replace(',', '.')) * 1_000_000;
-      addPrice(num);
-    }
-
-    return prices;
-  }
-
-
-  private toVnd(amountText: string, unit?: string): number | undefined {
-    const amount = Number(String(amountText).replace(/,/g, '.'));
-    if (!Number.isFinite(amount)) return undefined;
-
-    const normalizedUnit = (unit || '').toLowerCase();
-    if (normalizedUnit === 'ty') return amount * 1_000_000_000;
-    if (normalizedUnit === 'trieu' || normalizedUnit === 'tr')
-      return amount * 1_000_000;
-
-    // Default to ty if user says "6" in real-estate context.
-    return amount >= 1000 ? amount : amount * 1_000_000_000;
-  }
-
-  private tryParseJson(raw: string): Record<string, unknown> | null {
-    let cleaned = raw.trim();
-
-    // 1. Strip any leading/trailing markdown code fences, e.g. ```json ... ``` or ``` ... ```
-    //    Using a non-anchored match so it works even when Gemini adds preamble text.
-    const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (fenceMatch) {
-      cleaned = fenceMatch[1].trim();
-    }
-
-    // 2. Try direct parse first (clean JSON path)
-    try {
-      const parsed = JSON.parse(cleaned);
-      if (parsed && typeof parsed === 'object')
-        return parsed as Record<string, unknown>;
-    } catch {
-      // fall through to extraction
-    }
-
-    // 3. Extract JSON object from anywhere in the string (handles prose + JSON)
-    const jsonStart = cleaned.indexOf('{');
-    const jsonEnd = cleaned.lastIndexOf('}');
-    if (jsonStart >= 0 && jsonEnd > jsonStart) {
-      try {
-        const sliced = cleaned.slice(jsonStart, jsonEnd + 1);
-        const parsed = JSON.parse(sliced);
-        if (parsed && typeof parsed === 'object')
-          return parsed as Record<string, unknown>;
-      } catch {
-        // fall through
-      }
-    }
-
-    this.logger.warn(
-      `tryParseJson: failed to parse Gemini response (length=${raw.length}). First 120 chars: ${raw.slice(0, 120)}`,
-    );
-    return null;
-  }
-
-  /**
-   * Convert parsed Gemini JSON into user-friendly Vietnamese text.
-   * This method is ONLY called when structured parsing succeeds.
-   * When parsing fails, callers must use toFastAnswer() instead.
-   */
-  private toDisplayAnswer(
-    structured: Record<string, unknown>,
-  ): string {
-    const summary = String(structured.summary || '').trim();
-    const recs = Array.isArray(structured.recommendations)
-      ? (structured.recommendations as Array<Record<string, unknown>>)
-      : [];
-    const followUp = String(structured.followUp || '').trim();
-
-    const lines: string[] = [];
-    if (summary) lines.push(summary);
-
-    if (recs.length > 0) {
-      lines.push('');
-      recs.slice(0, 3).forEach((r, idx) => {
-        const title = String(r.title || '').trim();
-        const reason = String(r.reason || '').trim();
-        const price = this.formatVnd(r.price);
-        // Concise one-liner: "1. Title — price"
-        let line = `${idx + 1}. **${title}** — ${price}`;
-        if (reason) line += `\n   _${reason}_`;
-        lines.push(line);
-      });
-    }
-
-    if (followUp) {
-      lines.push('');
-      lines.push(followUp);
-    }
-
-    const result = lines.join('\n').trim();
-    if (!result) {
-      return summary || 'Hiện tại mình chưa tìm thấy bất động sản nào phù hợp.';
-    }
-    return result;
-  }
-
-  private toFastAnswer(hits: VectorHit[]): string {
-    const recs = hits.slice(0, 3).map((h) => h.payload || {});
-    if (recs.length === 0) {
-      return 'Hiện tại mình chưa tìm thấy bất động sản nào phù hợp với yêu cầu của bạn.';
-    }
-
-    const lines: string[] = [];
-    lines.push(`Mình tìm thấy **${recs.length} gợi ý** phù hợp nhất:`);
-    lines.push('');
-
-    recs.forEach((r, idx) => {
-      const title = String(r.title || 'BĐS').trim();
-      const price = this.formatVnd(r.price);
-      const area = this.formatArea(r.area);
-      lines.push(`${idx + 1}. **${title}** — ${price} • ${area}`);
-    });
-
-    lines.push('');
-    lines.push('Bạn muốn xem chi tiết căn nào hoặc lọc kỹ hơn không?');
-
-    return lines.join('\n').trim();
-  }
-
-  private formatSuggestionBlock(
-    index: number,
-    item: {
-      title?: unknown;
-      location?: unknown;
-      price?: unknown;
-      area?: unknown;
-      bedrooms?: unknown;
-      floors?: unknown;
-      direction?: unknown;
-      url?: unknown;
-      source?: unknown;
-      sourceId?: unknown;
-      reason?: unknown;
-    },
-  ): string {
-    const title = String(item.title || 'N/A');
-    const location = String(item.location || 'N/A');
-    const price = this.formatVnd(item.price);
-    const area = this.formatArea(item.area);
-    const url = this.normalizeDetailUrl(item.url, item.source, item.sourceId);
-    const reason = String(item.reason || '').trim();
-    const bedrooms = Number(item.bedrooms ?? 0);
-    const floors = Number(item.floors ?? 0);
-    const direction = String(item.direction || '').trim();
-
-    const sourceId = Number(item.sourceId);
-    const sourceLabel = String(item.source || '').toUpperCase();
-    const hasDetail = Number.isFinite(sourceId) && sourceId > 0;
-
-    const lines: string[] = [];
-    lines.push(`${index}. ${sourceLabel ? `${sourceLabel} ` : ''}${title}`);
-    lines.push(`   - ${location}`);
-    lines.push(`   - Giá: ${price}`);
-    lines.push(`   - Diện tích: ${area}`);
-    if (bedrooms > 0) lines.push(`   - Phòng ngủ: ${bedrooms} phòng`);
-    if (floors > 0) lines.push(`   - Số tầng: ${floors}`);
-    if (direction) lines.push(`   - Hướng: ${direction}`);
-    if (reason) lines.push(`   - Lý do: ${reason}`);
-    if (url && hasDetail) lines.push(`   - Xem chi tiết: ${url}`);
-
-    return lines.join('\n');
-  }
-
-  private normalizeDetailUrl(
-    url: unknown,
-    source: unknown,
-    sourceId: unknown,
-  ): string {
-    const src = String(source || '').toLowerCase();
-    const id = Number(sourceId);
-    const sourceRoute: Record<string, string> = {
-      house: 'houses',
-      land: 'lands',
-      post: 'posts',
-    };
-
-    if (Number.isFinite(id) && id > 0 && sourceRoute[src]) {
-      return `${this.frontendUrl}/${sourceRoute[src]}/${id}`;
-    }
-
-    const rawUrl = String(url || '').trim();
-    if (!rawUrl) return '';
-
-    const apiMatch = rawUrl.match(/\/api\/(houses|lands|posts)\/(\d+)/i);
-    if (apiMatch) {
-      return `${this.frontendUrl}/${apiMatch[1].toLowerCase()}/${apiMatch[2]}`;
-    }
-
-    return rawUrl;
-  }
-
-  private formatVnd(value: unknown): string {
-    const amount = this.toNumber(value);
-    if (!Number.isFinite(amount) || amount <= 0) return 'N/A';
-    return `${new Intl.NumberFormat('vi-VN').format(amount)} VNĐ`;
-  }
-
-  private formatArea(value: unknown): string {
-    const area = this.toNumber(value);
-    if (!Number.isFinite(area) || area <= 0) return 'N/A';
-    return `${new Intl.NumberFormat('vi-VN').format(area)} m²`;
   }
 
   private async mapWithConcurrency<T, R>(

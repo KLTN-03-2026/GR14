@@ -462,23 +462,21 @@ const HomePage: React.FC = () => {
                         <div className="absolute inset-0 bg-black/40" />
                         <div className="absolute bottom-4 left-4 text-white">
                             <h3 className="text-xl font-semibold">TP Hồ Chí Minh</h3>
-                            <p className="text-sm">3.592 tin đăng</p>
                         </div>
                     </div>
 
                     {/* Small cards */}
                     {[
-                        { name: 'Hà Nội', img: hanoi, total: 1103 },
-                        { name: 'Đà Nẵng', img: danang, total: 564 },
-                        { name: 'Cần Thơ', img: cantho, total: 73 },
-                        { name: 'Bình Dương', img: binhduong, total: 1069 },
+                        { name: 'Hà Nội', img: hanoi },
+                        { name: 'Đà Nẵng', img: danang },
+                        { name: 'Cần Thơ', img: cantho },
+                        { name: 'Bình Dương', img: binhduong },
                     ].map((item, index) => (
                         <div key={index} className="relative rounded-xl overflow-hidden group cursor-pointer sr-reveal" style={{ '--sr-delay': `${(index + 2) * 100}ms` } as React.CSSProperties}>
                             <img src={item.img} className="absolute inset-0 w-full h-full object-cover brightness-110 group-hover:scale-105 transition duration-500" />
                             <div className="absolute inset-0 bg-black/40" />
                             <div className="absolute bottom-2 left-3 text-white">
                                 <h4 className="text-sm font-semibold">{item.name}</h4>
-                                <p className="text-xs">{item.total} tin đăng</p>
                             </div>
                         </div>
                     ))}
