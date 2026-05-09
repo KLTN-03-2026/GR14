@@ -15,7 +15,32 @@ export class AiChatCompareService {
   private readonly frontendUrl =
     process.env.FRONTEND_URL || 'http://localhost:3000';
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
+
+  async filterActiveIds(ids: number[]): Promise<{ active: number[]; stale: number[] }> {
+    if (!ids || ids.length === 0) return { active: [], stale: [] };
+
+    const [houses, lands] = await Promise.all([
+      this.prisma.house.findMany({
+        where: { id: { in: ids }, status: 1 },
+        select: { id: true },
+      }),
+      this.prisma.land.findMany({
+        where: { id: { in: ids }, status: 1 },
+        select: { id: true },
+      }),
+    ]);
+
+    const activeSet = new Set<number>([
+      ...houses.map((h) => h.id),
+      ...lands.map((l) => l.id),
+    ]);
+
+    const active = ids.filter((id) => activeSet.has(id));
+    const stale = ids.filter((id) => !activeSet.has(id));
+
+    return { active, stale };
+  }
 
   /**
    * Scan recent assistant turns in memory and extract property IDs.
@@ -25,19 +50,20 @@ export class AiChatCompareService {
   extractIdsFromHistory(memory: ChatTurn[]): number[] {
     const assistantTurns = memory
       .filter((t) => t.role === 'assistant')
-      .slice(-6);
+      .slice(-8);
 
-    const seen = new Set<number>();
-    const ids: number[] = [];
-
-    for (const turn of assistantTurns) {
-      const text = turn.text;
+    // Prefer the most recent assistant turn that includes IDs to avoid stale matches.
+    for (let i = assistantTurns.length - 1; i >= 0; i -= 1) {
+      const text = assistantTurns[i].text;
 
       const idPatterns = [...text.matchAll(/\bID\s*[:\s#]?\s*(\d+)\b/gi)];
       const urlPatterns = [
         ...text.matchAll(/\/(?:houses|lands|nha|dat)\/(\d+)/gi),
       ];
       const sourceIdPatterns = [...text.matchAll(/"sourceId"\s*:\s*(\d+)/g)];
+
+      const seen = new Set<number>();
+      const ids: number[] = [];
 
       for (const match of [
         ...idPatterns,
@@ -50,9 +76,11 @@ export class AiChatCompareService {
           ids.push(id);
         }
       }
+
+      if (ids.length > 0) return ids;
     }
 
-    return ids;
+    return [];
   }
 
   /**
@@ -143,12 +171,12 @@ export class AiChatCompareService {
     // Build location OR filters from tokens
     const locationOrFilters = locationTokens.length > 0
       ? locationTokens.flatMap((token) => [
-          { district: { contains: token } },
-          { ward: { contains: token } },
-          { city: { contains: token } },
-          { street: { contains: token } },
-          { title: { contains: token } },
-        ])
+        { district: { contains: token } },
+        { ward: { contains: token } },
+        { city: { contains: token } },
+        { street: { contains: token } },
+        { title: { contains: token } },
+      ])
       : undefined;
 
     const selectFields = {
@@ -633,7 +661,7 @@ export class AiChatCompareService {
     const bestValueIdx = found.indexOf(bestValue) + 1;
     const bestValuePM = Math.round(
       this.toNumber(bestValue.data.price) /
-        Math.max(1, this.toNumber(bestValue.data.area)),
+      Math.max(1, this.toNumber(bestValue.data.area)),
     );
     const maxPrice = Math.max(...propertyRows.map((r) => r.price), 1);
     const maxArea = Math.max(...propertyRows.map((r) => r.area), 1);

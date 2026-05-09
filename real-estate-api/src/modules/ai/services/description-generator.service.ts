@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import { GenerateDescriptionDto } from '../dto/generate-description.dto';
+import { AiUtils } from '../utils/ai.utils';
 
 type ConversationState = {
   memoryKey: string;
@@ -29,11 +30,7 @@ export class DescriptionGeneratorService {
     process.env.GEMINI_API_URL ||
     'https://generativelanguage.googleapis.com/v1beta';
   private readonly geminiModelPrimary =
-    process.env.GEMINI_MODEL_PRIMARY || 'gemini-1.5-flash';
-  private readonly geminiModelFallback1 =
-    process.env.GEMINI_MODEL_FALLBACK_1 || 'gemini-1.5-pro';
-  private readonly geminiModelFallback2 =
-    process.env.GEMINI_MODEL_FALLBACK_2 || 'gemini-1.5-flash-8b';
+    process.env.GEMINI_MODEL_PRIMARY || 'gemini-2.5-flash';
   private readonly geminiTimeoutMs = Number(
     process.env.GEMINI_TIMEOUT_MS || 15000,
   );
@@ -453,79 +450,16 @@ ${details}
     prompt: string,
     options: { temperature: number; maxTokens: number },
   ): Promise<string> {
-    if (!this.geminiApiKey) {
-      this.logger.warn('GEMINI_API_KEY is missing.');
-      return '';
-    }
-
-    const modelCandidates = Array.from(
-      new Set(
-        [
-          this.geminiModelPrimary,
-          this.geminiModelFallback1,
-          this.geminiModelFallback2,
-        ]
-          .map((m) => String(m || '').trim())
-          .filter(Boolean),
-      ),
-    );
-
-    for (const model of modelCandidates) {
-      for (let attempt = 0; attempt <= this.geminiMaxRetries; attempt++) {
-        try {
-          const response = await axios.post(
-            `${this.geminiApiUrl}/models/${model}:generateContent?key=${encodeURIComponent(this.geminiApiKey)}`,
-            {
-              contents: [
-                {
-                  role: 'user',
-                  parts: [{ text: prompt }],
-                },
-              ],
-              generationConfig: {
-                temperature: options.temperature,
-                maxOutputTokens: options.maxTokens,
-                thinkingConfig: {
-                  thinkingBudget: this.geminiThinkingBudget,
-                },
-              },
-            },
-            {
-              timeout: this.geminiTimeoutMs,
-              headers: { 'Content-Type': 'application/json' },
-            },
-          );
-
-          const text = response.data?.candidates?.[0]?.content?.parts
-            ?.map((p: { text?: string }) => p?.text || '')
-            .join('')
-            .trim();
-
-          if (text) return text;
-
-          if (attempt < this.geminiMaxRetries) {
-            await this.sleep(this.geminiRetryBaseMs * (attempt + 1));
-          }
-        } catch (error) {
-          const retryable = this.isRetryableGeminiError(error);
-          const waitMs =
-            this.extractRetryDelayMs(error) ??
-            this.geminiRetryBaseMs * (attempt + 1);
-
-          this.logger.warn(
-            `Gemini model ${model} error (attempt ${attempt + 1}/${this.geminiMaxRetries + 1}): ${this.stringifyError(error)}`,
-          );
-
-          if (!retryable || attempt >= this.geminiMaxRetries) {
-            break;
-          }
-
-          await this.sleep(waitMs);
-        }
+    const text = await AiUtils.generateLlmResponse(
+      prompt,
+      'Bạn là chuyên gia viết mô tả bất động sản chuyên nghiệp.',
+      {
+        temperature: options.temperature,
+        maxTokens: options.maxTokens,
+        timeout: this.geminiTimeoutMs,
       }
-    }
-
-    return '';
+    );
+    return text || '';
   }
 
   private isRetryableGeminiError(error: unknown): boolean {
