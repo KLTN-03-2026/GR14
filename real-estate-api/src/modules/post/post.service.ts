@@ -650,6 +650,7 @@ export class PostService {
     dto: UpdatePostDto,
     userId: number,
     files?: Express.Multer.File[],
+    keepImageIds?: string,
   ) {
     const post = await this.prisma.post.findUnique({ where: { id } });
     if (!post) throw new NotFoundException('Không tìm thấy bài đăng');
@@ -670,7 +671,14 @@ export class PostService {
         data,
       });
 
+      // Parse keepImageIds from comma-separated string to array of numbers
+      const keepIds = keepImageIds
+        ? keepImageIds.split(',').map((id) => Number(id.trim())).filter((id) => !isNaN(id))
+        : [];
+
+      // Handle image updates
       if (files && files.length > 0) {
+        // If new files are uploaded, delete all old images and add new ones
         await tx.postImage.deleteMany({ where: { postId: id } });
 
         const uploads = await this.cloudinaryService.uploadImages(files);
@@ -681,6 +689,26 @@ export class PostService {
             position: index + 1,
           })),
         });
+      } else if (keepIds.length > 0) {
+        // If no new files but keepImageIds is specified, delete images NOT in the keepIds list
+        await tx.postImage.deleteMany({
+          where: {
+            postId: id,
+            id: { notIn: keepIds },
+          },
+        });
+
+        // Reorder remaining images
+        const remainingImages = await tx.postImage.findMany({
+          where: { postId: id },
+          orderBy: { id: 'asc' },
+        });
+        for (let i = 0; i < remainingImages.length; i++) {
+          await tx.postImage.update({
+            where: { id: remainingImages[i].id },
+            data: { position: i + 1 },
+          });
+        }
       }
 
       return tx.post.findUnique({

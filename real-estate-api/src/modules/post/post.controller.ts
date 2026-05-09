@@ -100,7 +100,7 @@ export class PostController {
     @UploadedFiles() files: Express.Multer.File[],
     @Req() req: any,
   ) {
-    return this.postService.update(id, dto, req.user.id, files);
+    return this.postService.update(id, dto, req.user.id, files, dto.keepImageIds);
   }
 
   @Put(':id/approve')
