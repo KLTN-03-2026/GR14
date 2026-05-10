@@ -1693,6 +1693,11 @@ export class AiService {
       url: `${this.frontendUrl}/houses/${house.id}`,
     };
 
+    // Truncate description to keep total embed text within nomic-embed-text context limit.
+    // Structured fields (title, price, area, location) are always fully preserved.
+    const desc = String(house.description || '');
+    const shortDesc = desc.length > 4000 ? `${desc.slice(0, 4000)}…` : desc;
+
     const text = [
       `Loai: Nha`,
       `Tieu de: ${payload.title}`,
@@ -1703,7 +1708,7 @@ export class AiService {
       bathrooms > 0 ? `Phong tam: ${bathrooms}` : '',
       floors > 0 ? `So tang: ${floors}` : '',
       direction ? `Huong: ${direction}` : '',
-      `Mo ta: ${String(house.description || '')}`,
+      shortDesc ? `Mo ta: ${shortDesc}` : '',
     ]
       .filter(Boolean)
       .join('\n');
@@ -1746,6 +1751,9 @@ export class AiService {
       url: `${this.frontendUrl}/lands/${land.id}`,
     };
 
+    const descLand = String(land.description || '');
+    const shortDescLand = descLand.length > 4000 ? `${descLand.slice(0, 4000)}…` : descLand;
+
     const text = [
       `Loai: Dat`,
       `Tieu de: ${payload.title}`,
@@ -1756,7 +1764,7 @@ export class AiService {
       legalStatus ? `Phap ly: ${legalStatus}` : '',
       landType ? `Loai dat: ${landType}` : '',
       frontWidth > 0 ? `Mat tien: ${frontWidth}m` : '',
-      `Mo ta: ${String(land.description || '')}`,
+      shortDescLand ? `Mo ta: ${shortDescLand}` : '',
     ]
       .filter(Boolean)
       .join('\n');
@@ -1783,14 +1791,19 @@ export class AiService {
       url: `${this.frontendUrl}/posts/${post.id}`,
     };
 
+    const descPost = String(post.description || '');
+    const shortDescPost = descPost.length > 4000 ? `${descPost.slice(0, 4000)}…` : descPost;
+
     const text = [
       `Loai: Bai dang`,
       `Tieu de: ${payload.title}`,
       `Vi tri: ${payload.street}, ${payload.ward}, ${payload.district}, ${payload.city}`,
       `Gia: ${payload.price}`,
       `Dien tich: ${payload.area}`,
-      `Mo ta: ${String(post.description || '')}`,
-    ].join('\n');
+      shortDescPost ? `Mo ta: ${shortDescPost}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
 
     return { id, text, payload };
   }
