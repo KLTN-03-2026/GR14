@@ -254,7 +254,7 @@ export class FinancingAdvisorService {
       const text = await AiUtils.generateLlmResponse(
         prompt,
         'Bạn là chuyên gia tài chính BĐS Việt Nam. Trả lời chính xác, chuyên nghiệp.',
-        { temperature: 0.3, maxTokens: 600, timeout: this.geminiTimeoutMs },
+        { temperature: 0.3, maxTokens: 1200, timeout: Math.max(this.geminiTimeoutMs, 25000) },
       );
 
       if (text && text.length > 50) {

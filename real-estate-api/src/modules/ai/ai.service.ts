@@ -49,7 +49,7 @@ export class AiService {
   private readonly embedModel = process.env.EMBED_MODEL || 'nomic-embed-text';
   private readonly retrievalTopK = Number(process.env.RAG_TOP_K || 8);
   private readonly contextTopK = Number(process.env.RAG_CONTEXT_K || 5);
-  private readonly minScore = Number(process.env.RAG_MIN_SCORE || 0.35);
+  private readonly minScore = Number(process.env.RAG_MIN_SCORE || 0.18);
   private readonly embedConcurrency = Number(
     process.env.EMBED_CONCURRENCY || 8,
   );
@@ -365,7 +365,7 @@ export class AiService {
 
     const filterStartedAt = Date.now();
     const intentFilteredHits = this.applyIntentFilter(rawHits, intent);
-    const minScoreSafe = Math.max(this.minScore, 0.25);
+    const minScoreSafe = Math.max(this.minScore, 0.12);
     const strongHits = intentFilteredHits.filter(
       (h) => Number(h.score || 0) >= minScoreSafe,
     );
@@ -1559,6 +1559,18 @@ export class AiService {
       const where: Record<string, unknown> = { status: 1 };
       if (priceFilter) where.price = priceFilter;
       else if (rentPriceGuard) where.price = rentPriceGuard;
+
+      // Push location filter to SQL level so we don't miss results
+      // from the target location when other cities dominate recent records.
+      if (intent.location) {
+        where['OR'] = [
+          { city: { contains: intent.location } },
+          { district: { contains: intent.location } },
+          { ward: { contains: intent.location } },
+          { street: { contains: intent.location } },
+        ];
+      }
+
       return where;
     };
 
@@ -1623,6 +1635,27 @@ export class AiService {
       this.logger.warn(
         `ensureCollection warning: ${AiUtils.stringifyError(error)}`,
       );
+    }
+
+    // Create payload indexes for efficient Qdrant metadata filtering
+    const keywordFields = ['source', 'city', 'district', 'ward'];
+    for (const field of keywordFields) {
+      try {
+        await axios.put(
+          `${this.qdrantUrl}/collections/${this.ragCollection}/index`,
+          { field_name: field, field_schema: 'keyword' },
+        );
+      } catch {
+        // Index may already exist — safe to ignore
+      }
+    }
+    try {
+      await axios.put(
+        `${this.qdrantUrl}/collections/${this.ragCollection}/index`,
+        { field_name: 'price', field_schema: 'float' },
+      );
+    } catch {
+      // Index may already exist
     }
   }
 
@@ -1950,6 +1983,19 @@ export class AiService {
       must.push({ key: 'price', range });
     }
 
+    // Location filter: match city OR district OR ward using keyword index.
+    // Uses 'should' (OR) so a match on any field passes the filter.
+    if (intent.location) {
+      const locDisplay = intent.location;
+      must.push({
+        should: [
+          { key: 'city', match: { value: locDisplay } },
+          { key: 'district', match: { value: locDisplay } },
+          { key: 'ward', match: { value: locDisplay } },
+        ],
+      });
+    }
+
     if (must.length === 0) return null;
     return { must };
   }
@@ -2002,8 +2048,8 @@ export class AiService {
         'Bạn là chuyên gia phân tích bất động sản Việt Nam. Trả lời ngắn gọn, chuyên nghiệp, tiếng Việt có dấu.',
         {
           temperature: 0.3,
-          maxTokens: 512,
-          timeout: this.geminiTimeoutMs,
+          maxTokens: 1024,
+          timeout: Math.max(this.geminiTimeoutMs, 25000),
         },
       );
 

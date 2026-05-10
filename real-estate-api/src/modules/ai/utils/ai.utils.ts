@@ -106,6 +106,14 @@ export class AiUtils {
       generationConfig.responseMimeType = 'application/json';
     }
 
+    // For Gemini 2.5 thinking models, maxOutputTokens includes BOTH
+    // thinking and output tokens. Cap thinking budget so actual output
+    // isn't truncated by internal reasoning consuming the token quota.
+    const isThinkingModel = geminiModel.includes('2.5');
+    const thinkingConfig = isThinkingModel
+      ? { thinkingConfig: { thinkingBudget: 0 } }
+      : {};
+
     // 1. Try Gemini Keys sequentially if rate-limited
     for (const apiKey of geminiApiKeys) {
       try {
@@ -115,6 +123,7 @@ export class AiUtils {
             systemInstruction: { parts: [{ text: systemInstruction }] },
             contents: contents,
             generationConfig: generationConfig,
+            ...thinkingConfig,
             safetySettings: [
               {
                 category: 'HARM_CATEGORY_HARASSMENT',
@@ -391,10 +400,10 @@ export class AiUtils {
     ) {
       intent.type = 'upgrade_listing';
     } else if (
-      /\b(vay|tra gop|lai suat|ngan hang|mortgage|kha nang tai chinh|kha nang vay|tra truoc)\b/.test(
+      /\b(vay mua|vay von|vay ngan|cho vay|khoan vay|di vay|can vay|muon vay|tra gop|lai suat|ngan hang|mortgage|kha nang tai chinh|kha nang vay|tra truoc)\b/.test(
         normalized,
       ) &&
-      /\b(nha|dat|bds|bat dong san|mua|vay|tra)\b/.test(normalized)
+      /\b(nha|dat|bds|bat dong san|mua|tra)\b/.test(normalized)
     ) {
       intent.type = 'financing_advice';
       // Extract income/price for financing
@@ -562,6 +571,36 @@ export class AiUtils {
       } else if (location === 'hue' || /\d/.test(location)) {
         // explicitly allow known short locations or locations with numbers (e.g. q1)
         intent.location = location;
+      }
+    }
+
+    // Secondary pattern: extract location after property type words without
+    // requiring a prefix like "ở/tại". Handles "nhà Hải Châu dưới 3 tỷ",
+    // "đất Hoà Vang giá rẻ", etc.
+    if (!intent.location) {
+      const propertyLocMatch = normalized.match(
+        /\b(?:nha|dat|can ho|chung cu|bds|bat dong san)\s+([a-z]{2,}(?:\s+[a-z]{2,}){0,3}?)(?:\s+(?:duoi|tren|gia|tu|den|co|nho|lon|re|tam|khoang|[0-9])|$)/,
+      );
+      if (propertyLocMatch) {
+        const candidate = propertyLocMatch[1].trim();
+        const nonLocationWords = new Set([
+          'nen', 'pho', 'dep', 'tot', 'moi', 'cu', 'lon', 'nho',
+          'sang', 'trong', 'rong', 'cao', 'thap', 'vua', 'binh',
+          'mat', 'tien', 'hem', 'ngo', 'cho', 'thue', 'ban',
+        ]);
+        if (candidate.length >= 4 && !nonLocationWords.has(candidate)) {
+          intent.location = candidate;
+        }
+      }
+    }
+
+    // Tertiary pattern: "quận/huyện/phường X" without prefix
+    if (!intent.location) {
+      const adminMatch = normalized.match(
+        /\b(quan|huyen|phuong|thi xa|thi tran)\s+([a-z0-9]+(?:\s+[a-z]+){0,2})/,
+      );
+      if (adminMatch) {
+        intent.location = `${adminMatch[1]} ${adminMatch[2]}`.trim();
       }
     }
 
