@@ -22,7 +22,8 @@ const houseListKey = (
   status?: number,
   categoryId?: number,
   employeeId?: number,
-) => `houses:list:${page}:${limit}:${status ?? 'all'}:${categoryId ?? 'all'}:${employeeId ?? 'all'}`;
+) =>
+  `houses:list:${page}:${limit}:${status ?? 'all'}:${categoryId ?? 'all'}:${employeeId ?? 'all'}`;
 const houseDetailKey = (id: number) => `house:${id}`;
 const houseSearchKey = (
   query: string,
@@ -43,9 +44,15 @@ export class HouseService {
     private cloudinaryService: CloudinaryService,
     private redis: RedisService,
     private aiService: AiService,
-  ) { }
+  ) {}
 
-  async findAll(page = 1, limit = 10, status?: number, categoryId?: number, employeeId?: number) {
+  async findAll(
+    page = 1,
+    limit = 10,
+    status?: number,
+    categoryId?: number,
+    employeeId?: number,
+  ) {
     const cacheKey = houseListKey(page, limit, status, categoryId, employeeId);
 
     // Try cache first
@@ -96,8 +103,16 @@ export class HouseService {
     return result;
   }
 
-  async findMyAssigned(userId: number, page = 1, limit = 10, status?: number, categoryId?: number) {
-    const employee = await this.prisma.employee.findUnique({ where: { userId } });
+  async findMyAssigned(
+    userId: number,
+    page = 1,
+    limit = 10,
+    status?: number,
+    categoryId?: number,
+  ) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { userId },
+    });
     if (!employee) {
       throw new ForbiddenException('User is not an employee');
     }
@@ -264,7 +279,7 @@ export class HouseService {
     };
 
     // Trigger Qdrant indexing (fire-and-forget)
-    this.aiService.indexOne('house', house.id).catch(() => { });
+    this.aiService.indexOne('house', house.id).catch(() => {});
 
     return result;
   }
@@ -331,11 +346,11 @@ export class HouseService {
     if (files?.length || dto.keepImageIds !== undefined) {
       const keepIds: number[] = dto.keepImageIds
         ? (Array.isArray(dto.keepImageIds)
-          ? dto.keepImageIds
-          : [dto.keepImageIds]
-        )
-          .map(Number)
-          .filter((n) => !isNaN(n))
+            ? dto.keepImageIds
+            : [dto.keepImageIds]
+          )
+            .map(Number)
+            .filter((n) => !isNaN(n))
         : [];
 
       await this.prisma.houseImage.deleteMany({
@@ -363,7 +378,7 @@ export class HouseService {
 
     // Invalidate cache
     await this.invalidateHouseCache();
-    await this.redis.del(houseDetailKey(id)).catch(() => { });
+    await this.redis.del(houseDetailKey(id)).catch(() => {});
 
     const result = {
       message: 'House updated successfully',
@@ -371,7 +386,7 @@ export class HouseService {
     };
 
     // Trigger Qdrant indexing (fire-and-forget)
-    this.aiService.indexOne('house', id).catch(() => { });
+    this.aiService.indexOne('house', id).catch(() => {});
 
     return result;
   }
@@ -392,7 +407,7 @@ export class HouseService {
     await this.prisma.house.delete({ where: { id } });
 
     await this.invalidateHouseCache();
-    await this.redis.del(houseDetailKey(id)).catch(() => { });
+    await this.redis.del(houseDetailKey(id)).catch(() => {});
 
     return { message: 'House deleted successfully' };
   }
@@ -405,7 +420,14 @@ export class HouseService {
     categoryId?: number,
     employeeId?: number,
   ) {
-    const cacheKey = houseSearchKey(query, page, limit, status, categoryId, employeeId);
+    const cacheKey = houseSearchKey(
+      query,
+      page,
+      limit,
+      status,
+      categoryId,
+      employeeId,
+    );
 
     const cached = await this.redis.get(cacheKey).catch(() => null);
     if (cached) {

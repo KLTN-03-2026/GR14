@@ -361,7 +361,11 @@ export class VipPackageService {
     const nextPackageType = dto.packageType ?? vipPackage.packageType;
 
     if (nextStatus === 1) {
-      await this.ensureUniqueActivePriority(nextPackageType, nextPriorityLevel, id);
+      await this.ensureUniqueActivePriority(
+        nextPackageType,
+        nextPriorityLevel,
+        id,
+      );
     }
 
     const normalizedFeatures = this.normalizeFeatures(dto.features);

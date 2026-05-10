@@ -36,10 +36,10 @@ export class RecommendationService {
   private readonly logger = new Logger(RecommendationService.name);
 
   constructor(
-    private readonly prisma: PrismaService,        // Truy vấn MySQL
-    private readonly redis: RedisService,           // Cache kết quả gợi ý
-    private readonly scoring: ScoringService,       // Chấm điểm BĐS (rule-based)
-    private readonly vector: VectorService,         // AI embedding + Qdrant search
+    private readonly prisma: PrismaService, // Truy vấn MySQL
+    private readonly redis: RedisService, // Cache kết quả gợi ý
+    private readonly scoring: ScoringService, // Chấm điểm BĐS (rule-based)
+    private readonly vector: VectorService, // AI embedding + Qdrant search
     private readonly userProfile: UserProfileService, // Phân tích sở thích user
   ) {}
 
@@ -50,7 +50,10 @@ export class RecommendationService {
    * Kết hợp Embedding (Qdrant) + Rule-based scoring.
    * Trả về cả nhà lẫn đất, xen kẽ, đa dạng.
    */
-  async getAIRecommendations(userId: number, limit: number = QUERY_LIMITS.AI_DEFAULT_LIMIT) {
+  async getAIRecommendations(
+    userId: number,
+    limit: number = QUERY_LIMITS.AI_DEFAULT_LIMIT,
+  ) {
     const cacheKey = cacheKeys.aiRecommendation(userId);
 
     // ═══ BƯỚC 1: Kiểm tra cache Redis (TTL = 5 phút) ═══
@@ -91,9 +94,9 @@ export class RecommendationService {
     for (const b of behaviors) {
       const weight =
         b.action === 'save'
-          ? BEHAVIOR_WEIGHTS.SAVE      // save → w=3
+          ? BEHAVIOR_WEIGHTS.SAVE // save → w=3
           : b.action === 'click'
-            ? BEHAVIOR_WEIGHTS.CLICK   // click → w=2
+            ? BEHAVIOR_WEIGHTS.CLICK // click → w=2
             : BEHAVIOR_WEIGHTS.DEFAULT; // khác → w=1
       if (b.houseId) {
         const key = `house:${b.houseId}`;
@@ -246,8 +249,8 @@ export class RecommendationService {
     // User ít tương tác (≤10)  → tin Rules hơn (40% AI, 60% Rules)
     const weightEmbedding =
       profile.totalWeight > EMBEDDING_CONFIG.HIGH_INTERACTION_THRESHOLD
-        ? EMBEDDING_CONFIG.HIGH_EMBEDDING_WEIGHT  // 0.7
-        : EMBEDDING_CONFIG.LOW_EMBEDDING_WEIGHT;  // 0.4
+        ? EMBEDDING_CONFIG.HIGH_EMBEDDING_WEIGHT // 0.7
+        : EMBEDDING_CONFIG.LOW_EMBEDDING_WEIGHT; // 0.4
     const weightRule = 1 - weightEmbedding;
 
     // ═══ BƯỚC 10: HYBRID SCORING — Kết hợp AI + Rules ═══
@@ -417,11 +420,9 @@ export class RecommendationService {
       })
       .filter(Boolean);
 
-    await this.redis
-      .set(cacheKey, result, RECOMMENDATION_TTL)
-      .catch((err) => {
-        this.logger.warn(`Redis set failed for ${cacheKey}: ${err.message}`);
-      });
+    await this.redis.set(cacheKey, result, RECOMMENDATION_TTL).catch((err) => {
+      this.logger.warn(`Redis set failed for ${cacheKey}: ${err.message}`);
+    });
     this.logger.debug(
       `Generated ${result.length} AI hybrid recommendations for user ${userId}`,
     );
@@ -613,11 +614,9 @@ export class RecommendationService {
       })
       .filter(Boolean);
 
-    await this.redis
-      .set(cacheKey, result, RECOMMENDATION_TTL)
-      .catch((err) => {
-        this.logger.warn(`Redis set failed for ${cacheKey}: ${err.message}`);
-      });
+    await this.redis.set(cacheKey, result, RECOMMENDATION_TTL).catch((err) => {
+      this.logger.warn(`Redis set failed for ${cacheKey}: ${err.message}`);
+    });
     this.logger.debug(
       `Generated ${result.length} ${type} recommendations for user ${userId}`,
     );

@@ -15,9 +15,11 @@ export class AiChatCompareService {
   private readonly frontendUrl =
     process.env.FRONTEND_URL || 'http://localhost:3000';
 
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
-  async filterActiveIds(ids: number[]): Promise<{ active: number[]; stale: number[] }> {
+  async filterActiveIds(
+    ids: number[],
+  ): Promise<{ active: number[]; stale: number[] }> {
     if (!ids || ids.length === 0) return { active: [], stale: [] };
 
     const [houses, lands] = await Promise.all([
@@ -120,9 +122,7 @@ export class AiChatCompareService {
   /**
    * Detect property type from description text.
    */
-  extractSourceTypeFromText(
-    text: string,
-  ): 'house' | 'land' | null {
+  extractSourceTypeFromText(text: string): 'house' | 'land' | null {
     const norm = this.normalizeText(text);
     if (/\b(dat|nen|dat nen|lo dat)\b/.test(norm)) return 'land';
     if (/\b(nha|can ho|chung cu|biet thu|nha pho)\b/.test(norm)) return 'house';
@@ -136,8 +136,24 @@ export class AiChatCompareService {
     const norm = this.normalizeText(text);
     // Remove numeric-only tokens and common stop words, keep location-like words
     const locationStops = new Set([
-      'dat', 'nha', 'can', 'ban', 'cho', 'thue', 'mua', 'voi', 'va',
-      'de', 'la', 'so', 'gia', 'dien', 'tich', 'phong', 'ngu', 'tang',
+      'dat',
+      'nha',
+      'can',
+      'ban',
+      'cho',
+      'thue',
+      'mua',
+      'voi',
+      'va',
+      'de',
+      'la',
+      'so',
+      'gia',
+      'dien',
+      'tich',
+      'phong',
+      'ngu',
+      'tang',
     ]);
     return norm
       .split(/\s+/)
@@ -164,20 +180,22 @@ export class AiChatCompareService {
     const minPrice = price ? price - priceTolerance : undefined;
     const maxPrice = price ? price + priceTolerance : undefined;
 
-    const priceFilter = minPrice !== undefined && maxPrice !== undefined
-      ? { gte: minPrice, lte: maxPrice }
-      : undefined;
+    const priceFilter =
+      minPrice !== undefined && maxPrice !== undefined
+        ? { gte: minPrice, lte: maxPrice }
+        : undefined;
 
     // Build location OR filters from tokens
-    const locationOrFilters = locationTokens.length > 0
-      ? locationTokens.flatMap((token) => [
-        { district: { contains: token } },
-        { ward: { contains: token } },
-        { city: { contains: token } },
-        { street: { contains: token } },
-        { title: { contains: token } },
-      ])
-      : undefined;
+    const locationOrFilters =
+      locationTokens.length > 0
+        ? locationTokens.flatMap((token) => [
+            { district: { contains: token } },
+            { ward: { contains: token } },
+            { city: { contains: token } },
+            { street: { contains: token } },
+            { title: { contains: token } },
+          ])
+        : undefined;
 
     const selectFields = {
       id: true,
@@ -211,10 +229,14 @@ export class AiChatCompareService {
       if (price !== null && recordPrice > 0) {
         const diff = Math.abs(recordPrice - price);
         const pct = diff / price;
-        if (pct < 0.001) score += 20;       // exact match
-        else if (pct < 0.01) score += 15;    // ~1% off
-        else if (pct < 0.05) score += 10;    // ~5% off
-        else if (pct < 0.1) score += 5;      // ~10% off
+        if (pct < 0.001)
+          score += 20; // exact match
+        else if (pct < 0.01)
+          score += 15; // ~1% off
+        else if (pct < 0.05)
+          score += 10; // ~5% off
+        else if (pct < 0.1)
+          score += 5; // ~10% off
         else score += 1;
       }
 
@@ -240,7 +262,7 @@ export class AiChatCompareService {
       };
 
       // Query based on detected source type, or both if unknown
-      let candidates: DbRecord[] = [];
+      const candidates: DbRecord[] = [];
 
       if (sourceType !== 'house') {
         const lands = await this.prisma.land.findMany({
@@ -328,11 +350,40 @@ export class AiChatCompareService {
 
     // Strategy 2: Fall back to text token scoring
     const stopWords = new Set([
-      'nha', 'dat', 'can', 'tin', 'ban', 'cho', 'thue', 'mua',
-      'o', 'tai', 'voi', 'va', 'de', 'la', 'duong', 'phuong',
-      'quan', 'tp', 'thanh', 'pho', 'thi', 'xa', 'huyen',
-      'so', 'mat', 'tien', 'hem', 'ngo', 'biet', 'thu',
-      'can', 'ho', 'chung', 'cu',
+      'nha',
+      'dat',
+      'can',
+      'tin',
+      'ban',
+      'cho',
+      'thue',
+      'mua',
+      'o',
+      'tai',
+      'voi',
+      'va',
+      'de',
+      'la',
+      'duong',
+      'phuong',
+      'quan',
+      'tp',
+      'thanh',
+      'pho',
+      'thi',
+      'xa',
+      'huyen',
+      'so',
+      'mat',
+      'tien',
+      'hem',
+      'ngo',
+      'biet',
+      'thu',
+      'can',
+      'ho',
+      'chung',
+      'cu',
     ]);
     const descNorm = this.normalizeText(description);
     const descTokens = descNorm
@@ -661,7 +712,7 @@ export class AiChatCompareService {
     const bestValueIdx = found.indexOf(bestValue) + 1;
     const bestValuePM = Math.round(
       this.toNumber(bestValue.data.price) /
-      Math.max(1, this.toNumber(bestValue.data.area)),
+        Math.max(1, this.toNumber(bestValue.data.area)),
     );
     const maxPrice = Math.max(...propertyRows.map((r) => r.price), 1);
     const maxArea = Math.max(...propertyRows.map((r) => r.area), 1);

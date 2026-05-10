@@ -22,7 +22,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('houses')
 export class HouseController {
-  constructor(private readonly houseService: HouseService) { }
+  constructor(private readonly houseService: HouseService) {}
 
   @Get()
   findAll(
@@ -86,7 +86,13 @@ export class HouseController {
       categoryId !== undefined && categoryId !== ''
         ? Number(categoryId)
         : undefined;
-    return this.houseService.findMyAssigned(req.user.id, +page, +limit, parsedStatus, parsedCategoryId);
+    return this.houseService.findMyAssigned(
+      req.user.id,
+      +page,
+      +limit,
+      parsedStatus,
+      parsedCategoryId,
+    );
   }
 
   @Get(':id')

@@ -19,11 +19,10 @@ import { LandService } from './land.service';
 import { CreateLandDto, UpdateLandDto } from './dto/land.dto';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { Multer } from 'multer';
 
 @Controller('lands')
 export class LandController {
-  constructor(private readonly landService: LandService) { }
+  constructor(private readonly landService: LandService) {}
 
   @Get()
   findAll(
@@ -87,7 +86,13 @@ export class LandController {
       categoryId !== undefined && categoryId !== ''
         ? Number(categoryId)
         : undefined;
-    return this.landService.findMyAssigned(req.user.id, +page, +limit, parsedStatus, parsedCategoryId);
+    return this.landService.findMyAssigned(
+      req.user.id,
+      +page,
+      +limit,
+      parsedStatus,
+      parsedCategoryId,
+    );
   }
 
   @Get(':id')

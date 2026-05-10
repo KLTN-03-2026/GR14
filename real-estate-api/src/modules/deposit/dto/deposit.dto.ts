@@ -42,8 +42,8 @@ export class AdminProcessRefundDto {
   @IsBoolean()
   approve!: boolean;
 
-  @IsOptional()       // ← thêm
-  @IsString()         // ← thêm
+  @IsOptional() // ← thêm
+  @IsString() // ← thêm
   adminNote?: string; // ← thêm
 }
 

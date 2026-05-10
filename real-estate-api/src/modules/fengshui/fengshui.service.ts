@@ -348,7 +348,7 @@ const NGU_HANH_TUONG_KHAC: Record<string, string> = {
 
 @Injectable()
 export class FengshuiService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   private lunarYearFromSolar(day: number, month: number, year: number): number {
     if (month < 2 || (month === 2 && day < 5)) return year - 1;
@@ -703,11 +703,11 @@ export class FengshuiService {
       const huongCanTim = cungInfo.huongTot;
       const locationWhere = dto.location
         ? {
-          OR: [
-            { city: { contains: dto.location } },
-            { district: { contains: dto.location } },
-          ],
-        }
+            OR: [
+              { city: { contains: dto.location } },
+              { district: { contains: dto.location } },
+            ],
+          }
         : {};
 
       const takeLimit = isVip ? 8 : 4;
@@ -770,18 +770,18 @@ export class FengshuiService {
 
       const vipData = isVip
         ? {
-          phongThuyChiTiet: {
-            mauSacHop: cungInfo.mauSac,
-            vatLieuHop: cungInfo.vatLieu,
-          },
-          luuY: [
-            `Nên ưu tiên cửa chính hướng Sinh Khí (${huongCat.find((h) => h.ten === 'Sinh Khí')?.huong}) để kích tài lộc cao nhất.`,
-            `Tuyệt đối không xây cổng hoặc đặt giường ngủ hướng ${huongHung.find((h) => h.ten === 'Tuyệt Mệnh')?.huong} (Tuyệt Mệnh).`,
-            `Màu sắc sinh vượng: ${cungInfo.mauSac.join(', ')}.`,
-            `Vật liệu nạp khí tốt: ${cungInfo.vatLieu.join(', ')}.`,
-            `Nên kết hợp yếu tố ${nguHanhSinh} và giảm yếu tố ${nguHanhKhac} trong thiết kế nội thất.`,
-          ],
-        }
+            phongThuyChiTiet: {
+              mauSacHop: cungInfo.mauSac,
+              vatLieuHop: cungInfo.vatLieu,
+            },
+            luuY: [
+              `Nên ưu tiên cửa chính hướng Sinh Khí (${huongCat.find((h) => h.ten === 'Sinh Khí')?.huong}) để kích tài lộc cao nhất.`,
+              `Tuyệt đối không xây cổng hoặc đặt giường ngủ hướng ${huongHung.find((h) => h.ten === 'Tuyệt Mệnh')?.huong} (Tuyệt Mệnh).`,
+              `Màu sắc sinh vượng: ${cungInfo.mauSac.join(', ')}.`,
+              `Vật liệu nạp khí tốt: ${cungInfo.vatLieu.join(', ')}.`,
+              `Nên kết hợp yếu tố ${nguHanhSinh} và giảm yếu tố ${nguHanhKhac} trong thiết kế nội thất.`,
+            ],
+          }
         : null;
 
       return { ...freeData, vipData };

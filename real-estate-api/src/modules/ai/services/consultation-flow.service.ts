@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '../../../common/redis/redis.service';
-import { ConsultationState, ConsultationStep, ParsedIntent, UserProfile } from '../types/ai.types';
+import {
+  ConsultationState,
+  ParsedIntent,
+  UserProfile,
+} from '../types/ai.types';
 import { AiUtils } from '../utils/ai.utils';
 
 /**
@@ -10,7 +14,9 @@ import { AiUtils } from '../utils/ai.utils';
 @Injectable()
 export class ConsultationFlowService {
   private readonly logger = new Logger(ConsultationFlowService.name);
-  private readonly consultationTtlSec = Number(process.env.CONSULTATION_TTL || 3600); // 1 hour
+  private readonly consultationTtlSec = Number(
+    process.env.CONSULTATION_TTL || 3600,
+  ); // 1 hour
 
   constructor(private readonly redis: RedisService) {}
 
@@ -23,7 +29,11 @@ export class ConsultationFlowService {
   }
 
   async saveState(sessionId: string, state: ConsultationState): Promise<void> {
-    await this.redis.set(this.consultationKey(sessionId), state, this.consultationTtlSec);
+    await this.redis.set(
+      this.consultationKey(sessionId),
+      state,
+      this.consultationTtlSec,
+    );
   }
 
   async clearState(sessionId: string): Promise<void> {
@@ -37,20 +47,28 @@ export class ConsultationFlowService {
     const normalized = AiUtils.normalizeText(question);
     // Only match explicit consultation requests — avoid broad patterns like
     // "tu van" (matches "tư vấn đầu tư") or "nen dau tu" (matches "đất nền đầu tư")
-    return /\b(tu van cho minh|giup minh chon|huong dan mua|nen mua gi|mua nha nao|giup minh tim|ban tu van|muon duoc tu van|can tu van)\b/.test(normalized);
+    return /\b(tu van cho minh|giup minh chon|huong dan mua|nen mua gi|mua nha nao|giup minh tim|ban tu van|muon duoc tu van|can tu van)\b/.test(
+      normalized,
+    );
   }
 
   /**
    * Start a new consultation session.
    */
-  async startConsultation(sessionId: string, profile: UserProfile): Promise<string> {
+  async startConsultation(
+    sessionId: string,
+    profile: UserProfile,
+  ): Promise<string> {
     // Pre-fill from profile if available
     const state: ConsultationState = {
       step: 'ask_purpose',
       purpose: profile.purpose,
       budgetMin: profile.budgetMin,
       budgetMax: profile.budgetMax,
-      location: profile.preferredAreas.length > 0 ? profile.preferredAreas[profile.preferredAreas.length - 1] : undefined,
+      location:
+        profile.preferredAreas.length > 0
+          ? profile.preferredAreas[profile.preferredAreas.length - 1]
+          : undefined,
       propertyType: profile.propertyType,
       startedAt: new Date().toISOString(),
     };
@@ -65,7 +83,12 @@ export class ConsultationFlowService {
     if (state.purpose && state.budgetMax && state.location) {
       state.step = 'ask_property_type';
     }
-    if (state.purpose && state.budgetMax && state.location && state.propertyType) {
+    if (
+      state.purpose &&
+      state.budgetMax &&
+      state.location &&
+      state.propertyType
+    ) {
       state.step = 'ask_criteria';
     }
 
@@ -80,14 +103,20 @@ export class ConsultationFlowService {
     sessionId: string,
     question: string,
     currentState: ConsultationState,
-  ): Promise<{ answer: string; state: ConsultationState; completed: boolean; intent?: ParsedIntent }> {
+  ): Promise<{
+    answer: string;
+    state: ConsultationState;
+    completed: boolean;
+    intent?: ParsedIntent;
+  }> {
     const normalized = AiUtils.normalizeText(question);
 
     // Allow user to cancel
     if (/\b(huy|cancel|dung lai|thoi|khong can|bo)\b/.test(normalized)) {
       await this.clearState(sessionId);
       return {
-        answer: 'Đã dừng quy trình tư vấn. Bạn có thể hỏi mình bất cứ điều gì khác!',
+        answer:
+          'Đã dừng quy trình tư vấn. Bạn có thể hỏi mình bất cứ điều gì khác!',
         state: { ...currentState, step: 'idle' },
         completed: false,
       };
@@ -101,12 +130,13 @@ export class ConsultationFlowService {
         updatedState.step = 'ask_budget';
         break;
 
-      case 'ask_budget':
+      case 'ask_budget': {
         const budgetInfo = this.extractBudget(normalized);
         if (budgetInfo.max) updatedState.budgetMax = budgetInfo.max;
         if (budgetInfo.min) updatedState.budgetMin = budgetInfo.min;
         updatedState.step = 'ask_location';
         break;
+      }
 
       case 'ask_location':
         updatedState.location = this.extractLocation(question);
@@ -118,12 +148,13 @@ export class ConsultationFlowService {
         updatedState.step = 'ask_criteria';
         break;
 
-      case 'ask_criteria':
+      case 'ask_criteria': {
         updatedState.additionalCriteria = question.trim();
         const bedroomMatch = normalized.match(/(\d+)\s*(phong ngu|pn|phong)/);
         if (bedroomMatch) updatedState.bedrooms = Number(bedroomMatch[1]);
         updatedState.step = 'recommend';
         break;
+      }
 
       default:
         break;
@@ -162,10 +193,14 @@ export class ConsultationFlowService {
 
   // ─── Private helpers ──────────────────────────────────────────────
 
-  private buildStepQuestion(state: ConsultationState, profile?: UserProfile): string {
-    const greeting = profile && profile.interactionCount > 0
-      ? 'Tiếp tục tư vấn cho bạn nhé!'
-      : '🏡 **Chào mừng bạn đến với dịch vụ tư vấn BĐS!**\n\nMình sẽ hướng dẫn bạn từng bước để tìm BĐS phù hợp nhất.';
+  private buildStepQuestion(
+    state: ConsultationState,
+    profile?: UserProfile,
+  ): string {
+    const greeting =
+      profile && profile.interactionCount > 0
+        ? 'Tiếp tục tư vấn cho bạn nhé!'
+        : '🏡 **Chào mừng bạn đến với dịch vụ tư vấn BĐS!**\n\nMình sẽ hướng dẫn bạn từng bước để tìm BĐS phù hợp nhất.';
 
     switch (state.step) {
       case 'ask_purpose':
@@ -240,13 +275,20 @@ export class ConsultationFlowService {
   }
 
   private buildConsultationSummary(state: ConsultationState): string {
-    const purposeMap = { invest: 'đầu tư', live: 'để ở', rent_out: 'cho thuê lại' };
+    const purposeMap = {
+      invest: 'đầu tư',
+      live: 'để ở',
+      rent_out: 'cho thuê lại',
+    };
     const typeMap = { house: 'Nhà', land: 'Đất' };
 
     const lines: string[] = [];
     lines.push('✅ **Tổng kết nhu cầu tư vấn:**');
     lines.push('');
-    if (state.purpose) lines.push(`🎯 Mục đích: **${purposeMap[state.purpose] || state.purpose}**`);
+    if (state.purpose)
+      lines.push(
+        `🎯 Mục đích: **${purposeMap[state.purpose] || state.purpose}**`,
+      );
     if (state.budgetMax) {
       const budgetStr = state.budgetMin
         ? `${AiUtils.formatVnd(state.budgetMin)} – ${AiUtils.formatVnd(state.budgetMax)}`
@@ -254,7 +296,10 @@ export class ConsultationFlowService {
       lines.push(`💰 Ngân sách: **${budgetStr}**`);
     }
     if (state.location) lines.push(`📍 Khu vực: **${state.location}**`);
-    if (state.propertyType) lines.push(`🏠 Loại BĐS: **${typeMap[state.propertyType] || state.propertyType}**`);
+    if (state.propertyType)
+      lines.push(
+        `🏠 Loại BĐS: **${typeMap[state.propertyType] || state.propertyType}**`,
+      );
     if (state.bedrooms) lines.push(`🛏️ Phòng ngủ: **${state.bedrooms} phòng**`);
     if (state.additionalCriteria && state.additionalCriteria !== 'khong co') {
       lines.push(`✨ Yêu cầu thêm: ${state.additionalCriteria}`);
@@ -266,8 +311,10 @@ export class ConsultationFlowService {
   }
 
   private extractPurpose(normalized: string): 'invest' | 'live' | 'rent_out' {
-    if (/\b(dau tu|sinh loi|loi nhuan|mua ban|tang gia|2)\b/.test(normalized)) return 'invest';
-    if (/\b(cho thue|thue lai|thu nhap thu dong|3)\b/.test(normalized)) return 'rent_out';
+    if (/\b(dau tu|sinh loi|loi nhuan|mua ban|tang gia|2)\b/.test(normalized))
+      return 'invest';
+    if (/\b(cho thue|thue lai|thu nhap thu dong|3)\b/.test(normalized))
+      return 'rent_out';
     return 'live'; // default
   }
 
@@ -283,7 +330,9 @@ export class ConsultationFlowService {
       }
     }
 
-    const underMatch = normalized.match(/(duoi|nho hon|<|<=)\s*([0-9.,]+)\s*(ty|trieu|tr)?/);
+    const underMatch = normalized.match(
+      /(duoi|nho hon|<|<=)\s*([0-9.,]+)\s*(ty|trieu|tr)?/,
+    );
     if (underMatch) {
       const max = AiUtils.toVnd(underMatch[2], underMatch[3]);
       if (max !== undefined) return { max };
@@ -311,20 +360,41 @@ export class ConsultationFlowService {
 
     // Try to match a known location from the stripped text
     const KNOWN_LOCATIONS: Record<string, string> = {
-      'da nang': 'Đà Nẵng', 'ha noi': 'Hà Nội', 'ho chi minh': 'Hồ Chí Minh',
-      'binh duong': 'Bình Dương', 'dong nai': 'Đồng Nai', 'can tho': 'Cần Thơ',
-      'hai phong': 'Hải Phòng', 'nha trang': 'Nha Trang', 'hue': 'Huế',
-      'vung tau': 'Vũng Tàu', 'quang nam': 'Quảng Nam', 'binh dinh': 'Bình Định',
-      'khanh hoa': 'Khánh Hòa', 'da lat': 'Đà Lạt', 'lam dong': 'Lâm Đồng',
-      'hai chau': 'Hải Châu', 'lien chieu': 'Liên Chiểu', 'son tra': 'Sơn Trà',
-      'ngu hanh son': 'Ngũ Hành Sơn', 'thanh khe': 'Thanh Khê', 'cam le': 'Cẩm Lệ',
-      'hoa vang': 'Hoà Vang', 'binh thanh': 'Bình Thạnh', 'tan binh': 'Tân Bình',
-      'thu duc': 'Thủ Đức', 'go vap': 'Gò Vấp', 'phu nhuan': 'Phú Nhuận',
-      'tan phu': 'Tân Phú', 'binh tan': 'Bình Tân',
+      'da nang': 'Đà Nẵng',
+      'ha noi': 'Hà Nội',
+      'ho chi minh': 'Hồ Chí Minh',
+      'binh duong': 'Bình Dương',
+      'dong nai': 'Đồng Nai',
+      'can tho': 'Cần Thơ',
+      'hai phong': 'Hải Phòng',
+      'nha trang': 'Nha Trang',
+      hue: 'Huế',
+      'vung tau': 'Vũng Tàu',
+      'quang nam': 'Quảng Nam',
+      'binh dinh': 'Bình Định',
+      'khanh hoa': 'Khánh Hòa',
+      'da lat': 'Đà Lạt',
+      'lam dong': 'Lâm Đồng',
+      'hai chau': 'Hải Châu',
+      'lien chieu': 'Liên Chiểu',
+      'son tra': 'Sơn Trà',
+      'ngu hanh son': 'Ngũ Hành Sơn',
+      'thanh khe': 'Thanh Khê',
+      'cam le': 'Cẩm Lệ',
+      'hoa vang': 'Hoà Vang',
+      'binh thanh': 'Bình Thạnh',
+      'tan binh': 'Tân Bình',
+      'thu duc': 'Thủ Đức',
+      'go vap': 'Gò Vấp',
+      'phu nhuan': 'Phú Nhuận',
+      'tan phu': 'Tân Phú',
+      'binh tan': 'Bình Tân',
     };
 
     // Check longest match first (e.g. "ngu hanh son" before "son")
-    const sortedKeys = Object.keys(KNOWN_LOCATIONS).sort((a, b) => b.length - a.length);
+    const sortedKeys = Object.keys(KNOWN_LOCATIONS).sort(
+      (a, b) => b.length - a.length,
+    );
     for (const key of sortedKeys) {
       if (stripped.includes(key) || normalized.includes(key)) {
         return KNOWN_LOCATIONS[key];

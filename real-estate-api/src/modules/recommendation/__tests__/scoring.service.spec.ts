@@ -1,5 +1,8 @@
 import { ScoringService } from '../services/scoring.service';
-import { UserProfile, HybridScoredProperty } from '../interfaces/recommendation.interfaces';
+import {
+  UserProfile,
+  HybridScoredProperty,
+} from '../interfaces/recommendation.interfaces';
 
 describe('ScoringService', () => {
   let service: ScoringService;
@@ -266,16 +269,19 @@ describe('ScoringService', () => {
   describe('applyDiversity', () => {
     it('should limit items per diversity bucket', () => {
       // Create 5 items in the same bucket
-      const items: HybridScoredProperty[] = Array.from({ length: 5 }, (_, i) => ({
-        id: i + 1,
-        type: 'house' as const,
-        district: 'Quận 7',
-        price: 2_000_000_000,
-        embeddingScore: 0.8,
-        ruleScore: 0.7 - i * 0.05,
-        finalScore: 0.75 - i * 0.05,
-        reasons: ['Test'],
-      }));
+      const items: HybridScoredProperty[] = Array.from(
+        { length: 5 },
+        (_, i) => ({
+          id: i + 1,
+          type: 'house' as const,
+          district: 'Quận 7',
+          price: 2_000_000_000,
+          embeddingScore: 0.8,
+          ruleScore: 0.7 - i * 0.05,
+          finalScore: 0.75 - i * 0.05,
+          reasons: ['Test'],
+        }),
+      );
 
       const result = service.applyDiversity(items, 5);
       expect(result.length).toBe(5);
@@ -283,16 +289,19 @@ describe('ScoringService', () => {
     });
 
     it('should not exceed limit', () => {
-      const items: HybridScoredProperty[] = Array.from({ length: 20 }, (_, i) => ({
-        id: i + 1,
-        type: 'house' as const,
-        district: `District ${i}`,
-        price: 2_000_000_000,
-        embeddingScore: 0.5,
-        ruleScore: 0.5,
-        finalScore: 0.5,
-        reasons: [],
-      }));
+      const items: HybridScoredProperty[] = Array.from(
+        { length: 20 },
+        (_, i) => ({
+          id: i + 1,
+          type: 'house' as const,
+          district: `District ${i}`,
+          price: 2_000_000_000,
+          embeddingScore: 0.5,
+          ruleScore: 0.5,
+          finalScore: 0.5,
+          reasons: [],
+        }),
+      );
 
       const result = service.applyDiversity(items, 10);
       expect(result.length).toBe(10);
@@ -305,11 +314,56 @@ describe('ScoringService', () => {
 
     it('should mix different districts/types for diversity', () => {
       const items: HybridScoredProperty[] = [
-        { id: 1, type: 'house', district: 'Q1', price: 2e9, embeddingScore: 0, ruleScore: 0, finalScore: 0.9, reasons: [] },
-        { id: 2, type: 'house', district: 'Q1', price: 2e9, embeddingScore: 0, ruleScore: 0, finalScore: 0.89, reasons: [] },
-        { id: 3, type: 'house', district: 'Q1', price: 2e9, embeddingScore: 0, ruleScore: 0, finalScore: 0.88, reasons: [] },
-        { id: 4, type: 'house', district: 'Q1', price: 2e9, embeddingScore: 0, ruleScore: 0, finalScore: 0.87, reasons: [] },
-        { id: 5, type: 'land', district: 'Q2', price: 3e9, embeddingScore: 0, ruleScore: 0, finalScore: 0.85, reasons: [] },
+        {
+          id: 1,
+          type: 'house',
+          district: 'Q1',
+          price: 2e9,
+          embeddingScore: 0,
+          ruleScore: 0,
+          finalScore: 0.9,
+          reasons: [],
+        },
+        {
+          id: 2,
+          type: 'house',
+          district: 'Q1',
+          price: 2e9,
+          embeddingScore: 0,
+          ruleScore: 0,
+          finalScore: 0.89,
+          reasons: [],
+        },
+        {
+          id: 3,
+          type: 'house',
+          district: 'Q1',
+          price: 2e9,
+          embeddingScore: 0,
+          ruleScore: 0,
+          finalScore: 0.88,
+          reasons: [],
+        },
+        {
+          id: 4,
+          type: 'house',
+          district: 'Q1',
+          price: 2e9,
+          embeddingScore: 0,
+          ruleScore: 0,
+          finalScore: 0.87,
+          reasons: [],
+        },
+        {
+          id: 5,
+          type: 'land',
+          district: 'Q2',
+          price: 3e9,
+          embeddingScore: 0,
+          ruleScore: 0,
+          finalScore: 0.85,
+          reasons: [],
+        },
       ];
 
       const result = service.applyDiversity(items, 4);

@@ -11,7 +11,7 @@ import {
   ParseIntPipe,
   UsePipes,
   ValidationPipe,
-  Req,                    // ← Thêm import này
+  Req, // ← Thêm import này
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AppointmentService } from './appointment.service';
@@ -42,10 +42,7 @@ export class AppointmentController {
   @Post()
   @Roles('CUSTOMER')
   @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
-  create(
-    @Body() dto: CreateAppointmentDto,
-    @CurrentUser('id') userId: number,
-  ) {
+  create(@Body() dto: CreateAppointmentDto, @CurrentUser('id') userId: number) {
     return this.appointmentService.create(dto, userId);
   }
 

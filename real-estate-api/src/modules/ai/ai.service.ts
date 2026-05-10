@@ -13,9 +13,18 @@ import {
   ConsultationFlowService,
   FinancingAdvisorService,
 } from './services';
-import { IndexedDoc, ChatTurn, IntentType, ParsedIntent, VectorHit, ChatSourcePayload, ConversationState, ChatResponsePayload, ChatResult } from "./types/ai.types";
-import { AiUtils } from "./utils/ai.utils";
-
+import {
+  IndexedDoc,
+  ChatTurn,
+  IntentType,
+  ParsedIntent,
+  VectorHit,
+  ChatSourcePayload,
+  ConversationState,
+  ChatResponsePayload,
+  ChatResult,
+} from './types/ai.types';
+import { AiUtils } from './utils/ai.utils';
 
 @Injectable()
 export class AiService {
@@ -34,7 +43,8 @@ export class AiService {
   private readonly geminiChatModel =
     process.env.GEMINI_MODEL_PRIMARY || 'gemini-2.5-flash';
   private readonly geminiApiBase =
-    process.env.GEMINI_API_URL || 'https://generativelanguage.googleapis.com/v1beta';
+    process.env.GEMINI_API_URL ||
+    'https://generativelanguage.googleapis.com/v1beta';
   // Ollama embed model (lightweight ~274MB, runs fine on VPS)
   private readonly embedModel = process.env.EMBED_MODEL || 'nomic-embed-text';
   private readonly retrievalTopK = Number(process.env.RAG_TOP_K || 8);
@@ -96,7 +106,7 @@ export class AiService {
     private readonly marketInsightService: MarketInsightService,
     private readonly consultationFlowService: ConsultationFlowService,
     private readonly financingAdvisorService: FinancingAdvisorService,
-  ) { }
+  ) {}
 
   async indexOne(type: 'house' | 'land' | 'post', id: number): Promise<void> {
     try {
@@ -138,13 +148,25 @@ export class AiService {
         where: { status: 1 },
         orderBy: { updatedAt: 'desc' },
         take: limit,
-        include: { images: { take: 1, orderBy: { position: 'asc' }, select: { url: true } } },
+        include: {
+          images: {
+            take: 1,
+            orderBy: { position: 'asc' },
+            select: { url: true },
+          },
+        },
       }),
       this.prisma.land.findMany({
         where: { status: 1 },
         orderBy: { updatedAt: 'desc' },
         take: limit,
-        include: { images: { take: 1, orderBy: { position: 'asc' }, select: { url: true } } },
+        include: {
+          images: {
+            take: 1,
+            orderBy: { position: 'asc' },
+            select: { url: true },
+          },
+        },
       }),
       this.prisma.post.findMany({
         where: { status: 2 },
@@ -209,7 +231,9 @@ export class AiService {
     const question = dto.question.trim();
     const sessionId = dto.sessionId.trim();
     const intent = AiUtils.parseIntent(question);
-    this.logger.log(`[INTENT] "${question.slice(0, 60)}" → ${intent.type} | loc=${intent.location} | max=${intent.maxPrice} | purpose=${intent.purpose}`);
+    this.logger.log(
+      `[INTENT] "${question.slice(0, 60)}" → ${intent.type} | loc=${intent.location} | max=${intent.maxPrice} | purpose=${intent.purpose}`,
+    );
     const normalizedQuestion = AiUtils.normalizeText(question);
     const hasIntentFilter =
       Boolean(intent.location) ||
@@ -219,7 +243,9 @@ export class AiService {
     const noDataAnswer =
       'Hiện tại mình chưa tìm thấy bất động sản nào phù hợp với yêu cầu của bạn.';
     const isContextualCompare = intent.type === 'compare_property';
-    const isContextualFollowUp = /\b(vua tim|vua xem)\b/.test(normalizedQuestion);
+    const isContextualFollowUp = /\b(vua tim|vua xem)\b/.test(
+      normalizedQuestion,
+    );
     const shouldUseCache =
       this.enableChatCache &&
       (intent.type === 'qa_real_estate' || intent.type === 'greeting') &&
@@ -227,7 +253,8 @@ export class AiService {
       !isContextualFollowUp;
     const shouldStoreLastSources =
       this.enableLastSources &&
-      (intent.type === 'search_property' || intent.type === 'recommend_property');
+      (intent.type === 'search_property' ||
+        intent.type === 'recommend_property');
 
     // Fetch conversation state early (needed for multi-turn flows)
     const conversationEarly = await this.getConversationState(sessionId);
@@ -243,15 +270,23 @@ export class AiService {
     );
     if (consultationResponse) return consultationResponse;
 
-
     // Detect user dislike and mark properties
     await this.handleDislikeDetection(sessionId, question, conversationEarly);
 
     // Handle intents that don't need RAG lookup
-    const directResponse = await this.handleDirectIntent(intent, question, sessionId);
+    const directResponse = await this.handleDirectIntent(
+      intent,
+      question,
+      sessionId,
+    );
     if (directResponse) {
       // Learn from interaction
-      await this.userProfileService.learnFromInteraction(sessionId, intent, [], question);
+      await this.userProfileService.learnFromInteraction(
+        sessionId,
+        intent,
+        [],
+        question,
+      );
       return this.returnChatWithMemory(sessionId, question, conversationEarly, {
         answer: directResponse.answer,
         structured: null,
@@ -271,14 +306,8 @@ export class AiService {
     );
     if (compareResponse) return compareResponse;
 
-    // Follow-up questions depend on conversation context, so they must not share
-    // a global cache key with other sessions that asked the same literal question.
-    const isFollowUp =
-      conversationEarly.memory.length > 0 &&
-      /\b(do|kia|tren|day|vua xem|vua tim|cai do|nha do|tin do|can do|no|chung|nhung|nay voi|voi nhau|hai cai|2 cai)\b/.test(
-        normalizedQuestion,
-      );
-    // Always include sessionId to prevent cross-session cache pollution
+    // Follow-up questions depend on conversation context — always include sessionId
+    // to prevent cross-session cache pollution with identical question strings.
     const responseCacheKey = `ai:chat:resp:${sessionId}:${encodeURIComponent(normalizedQuestion).slice(0, 160)}`;
     const conversation = conversationEarly;
     const recentMemory = conversation.memory.slice(
@@ -299,9 +328,9 @@ export class AiService {
 
     const candidateLimit = hasIntentFilter
       ? Math.max(
-        this.retrievalTopK * this.retrievalCandidateMultiplier,
-        this.retrievalTopK * 3,
-      )
+          this.retrievalTopK * this.retrievalCandidateMultiplier,
+          this.retrievalTopK * 3,
+        )
       : this.retrievalTopK;
 
     let rawHits: VectorHit[] = [];
@@ -369,7 +398,10 @@ export class AiService {
       );
       const dbFallbackStartedAt = Date.now();
       const emergencyHits = await this.findDbCandidatesByIntent(
-        { type: intent.type || 'search_property', sourceType: intent.sourceType },
+        {
+          type: intent.type || 'search_property',
+          sourceType: intent.sourceType,
+        },
         Math.max(this.retrievalTopK, 8),
       );
       timings.dbFallbackMs = Date.now() - dbFallbackStartedAt;
@@ -496,12 +528,15 @@ export class AiService {
     const intentInstructions = AiUtils.buildIntentInstructions(intent);
 
     // Build system instruction (proper Vietnamese, separated from user content)
-    const profileContext = this.userProfileService.buildProfileContext(userProfile);
+    const profileContext =
+      this.userProfileService.buildProfileContext(userProfile);
     const systemInstruction = [
       'Bạn là trợ lý AI tư vấn bất động sản CHUYÊN NGHIỆP cho nền tảng Real Estate Việt Nam.',
       'LUÔN trả lời bằng TIẾNG VIỆT có dấu. Giọng điệu thân thiện, chuyên nghiệp.',
       '',
-      profileContext ? `=== THÔNG TIN KHÁCH HÀNG ===\n${profileContext}\nHãy cá nhân hóa tư vấn dựa trên thông tin này.` : '',
+      profileContext
+        ? `=== THÔNG TIN KHÁCH HÀNG ===\n${profileContext}\nHãy cá nhân hóa tư vấn dựa trên thông tin này.`
+        : '',
       '',
       `Nhiệm vụ: ${intent.type}`,
       intentInstructions,
@@ -518,10 +553,13 @@ export class AiService {
       '',
       '=== ĐỊNH DẠNG JSON ===',
       '{"summary":"string","recommendations":[{"title":"string","location":"string","price":number,"area":number,"bedrooms":number,"floors":number,"direction":"string","reason":"string","source":"string","sourceId":number,"url":"string"}],"followUp":"string","suggestedQuestions":["string"]}',
-    ].filter(Boolean).join('\n');
+    ]
+      .filter(Boolean)
+      .join('\n');
 
     // Build multi-turn contents for proper Gemini conversation context
-    const contents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+    const contents: Array<{ role: string; parts: Array<{ text: string }> }> =
+      [];
 
     // Add conversation history as multi-turn messages (proper Gemini format)
     if (recentMemory.length > 0) {
@@ -536,7 +574,9 @@ export class AiService {
     // Build the current user message with context
     const userMessageParts: string[] = [];
     if (conversation.summaryMemory) {
-      userMessageParts.push(`Tóm tắt hội thoại trước: ${conversation.summaryMemory}`);
+      userMessageParts.push(
+        `Tóm tắt hội thoại trước: ${conversation.summaryMemory}`,
+      );
     }
     if (hasIntentFilter) {
       userMessageParts.push(`Intent đã phân tích: ${JSON.stringify(intent)}`);
@@ -544,7 +584,10 @@ export class AiService {
     userMessageParts.push(`CONTEXT:\n${context}`);
     userMessageParts.push(`CÂU HỎI: ${question}`);
 
-    contents.push({ role: 'user', parts: [{ text: userMessageParts.join('\n\n') }] });
+    contents.push({
+      role: 'user',
+      parts: [{ text: userMessageParts.join('\n\n') }],
+    });
 
     let answer = noDataAnswer;
     let structured: Record<string, unknown> | null = null;
@@ -558,14 +601,16 @@ export class AiService {
           maxTokens: 2048,
           timeout: this.geminiTimeoutMs,
           isJson: true,
-        }
+        },
       );
 
       timings.llmMs = Date.now() - llmStartedAt;
 
       // Handle blocked / empty response from LLM
       if (!text) {
-        this.logger.warn(`LLM response blocked or empty, fallback to fast answer`);
+        this.logger.warn(
+          `LLM response blocked or empty, fallback to fast answer`,
+        );
         structured = null;
         answer = AiUtils.toFastAnswer(hits, intent);
       } else {
@@ -575,7 +620,9 @@ export class AiService {
           answer = AiUtils.toDisplayAnswer(structured);
         } else {
           // Parse failed (truncated/malformed JSON) — use clean fast answer from vector hits
-          this.logger.warn(`LLM JSON parse failed, using fast answer. Raw (first 150 chars): ${rawAnswer.slice(0, 150)}`);
+          this.logger.warn(
+            `LLM JSON parse failed, using fast answer. Raw (first 150 chars): ${rawAnswer.slice(0, 150)}`,
+          );
           answer = AiUtils.toFastAnswer(hits, intent);
         }
       }
@@ -590,8 +637,8 @@ export class AiService {
     // Extract suggestedQuestions from LLM structured output if available
     const llmSuggestions = Array.isArray(structured?.suggestedQuestions)
       ? (structured.suggestedQuestions as string[])
-        .filter((s) => typeof s === 'string' && s.trim().length > 0)
-        .slice(0, 3)
+          .filter((s) => typeof s === 'string' && s.trim().length > 0)
+          .slice(0, 3)
       : [];
     const suggestedQuestions =
       llmSuggestions.length > 0 ? llmSuggestions : defaultSuggestions;
@@ -624,7 +671,12 @@ export class AiService {
     const viewedIds = sources
       .map((s) => Number(s['sourceId']))
       .filter((id) => Number.isFinite(id) && id > 0);
-    await this.userProfileService.learnFromInteraction(sessionId, intent, viewedIds, question);
+    await this.userProfileService.learnFromInteraction(
+      sessionId,
+      intent,
+      viewedIds,
+      question,
+    );
 
     return this.returnChatWithMemory(sessionId, question, conversation, {
       answer,
@@ -658,7 +710,9 @@ export class AiService {
         street: s.street,
         url: s.url,
       }))
-      .filter((s) => Number.isFinite(Number(s.sourceId)) && Number(s.sourceId) > 0)
+      .filter(
+        (s) => Number.isFinite(Number(s.sourceId)) && Number(s.sourceId) > 0,
+      )
       .slice(0, 5);
 
     if (compact.length === 0) return;
@@ -670,7 +724,9 @@ export class AiService {
     );
   }
 
-  private async getLastSources(sessionId: string): Promise<ChatSourcePayload[]> {
+  private async getLastSources(
+    sessionId: string,
+  ): Promise<ChatSourcePayload[]> {
     const cached = await this.redis.get<{ sources?: ChatSourcePayload[] }>(
       this.lastSourcesKey(sessionId),
     );
@@ -711,7 +767,8 @@ export class AiService {
         .map((s) => {
           const src = String(s.source || 'house');
           const id = Number(s.sourceId);
-          const route = src === 'land' ? 'lands' : src === 'post' ? 'posts' : 'houses';
+          const route =
+            src === 'land' ? 'lands' : src === 'post' ? 'posts' : 'houses';
           return `[ID ${id} - ${this.frontendUrl}/${route}/${id}]`;
         });
       if (sourceRefs.length > 0) {
@@ -736,9 +793,6 @@ export class AiService {
     };
   }
 
-
-
-
   private async handleCompareFlow(
     sessionId: string,
     question: string,
@@ -751,9 +805,10 @@ export class AiService {
     const returnCompare = async (ids: number[]) => {
       const { active, stale } = await this.compareService.filterActiveIds(ids);
       if (active.length < 2) {
-        const staleAnswer = stale.length > 0
-          ? 'Một số bất động sản đã hết hoặc đã bị xóa. Bạn vui lòng tìm lại để mình so sánh chính xác hơn.'
-          : 'Mình chưa tìm thấy đủ bất động sản để so sánh. Bạn có thể gửi link chi tiết hoặc mô tả ngắn từng BĐS.';
+        const staleAnswer =
+          stale.length > 0
+            ? 'Một số bất động sản đã hết hoặc đã bị xóa. Bạn vui lòng tìm lại để mình so sánh chính xác hơn.'
+            : 'Mình chưa tìm thấy đủ bất động sản để so sánh. Bạn có thể gửi link chi tiết hoặc mô tả ngắn từng BĐS.';
 
         return this.returnChatWithMemory(sessionId, question, conversation, {
           answer: staleAnswer,
@@ -770,12 +825,20 @@ export class AiService {
         });
       }
 
-      const compareAnswer = await this.compareService.buildCompareAnswer(active);
+      const compareAnswer =
+        await this.compareService.buildCompareAnswer(active);
 
       // Enrich with AI reasoning via Gemini for expert analysis
       let enrichedAnswer = compareAnswer.answer;
-      if (this.enableLlm && this.geminiApiKey && compareAnswer.sources.length >= 2) {
-        const aiAnalysis = await this.getCompareAIAnalysis(compareAnswer.sources, question);
+      if (
+        this.enableLlm &&
+        this.geminiApiKey &&
+        compareAnswer.sources.length >= 2
+      ) {
+        const aiAnalysis = await this.getCompareAIAnalysis(
+          compareAnswer.sources,
+          question,
+        );
         if (aiAnalysis) {
           enrichedAnswer = `${compareAnswer.answer}\n\n${aiAnalysis}`;
         }
@@ -792,7 +855,11 @@ export class AiService {
       });
     };
 
-    if (this.enableLastSources && (!intent.compareIds || intent.compareIds.length === 0) && (!intent.compareDescriptions || intent.compareDescriptions.length === 0)) {
+    if (
+      this.enableLastSources &&
+      (!intent.compareIds || intent.compareIds.length === 0) &&
+      (!intent.compareDescriptions || intent.compareDescriptions.length === 0)
+    ) {
       // Strategy -1: compare from last search sources (recently returned results)
       const lastSources = await this.getLastSources(sessionId);
       const lastIds = lastSources
@@ -834,8 +901,10 @@ export class AiService {
     {
       const allPrices = AiUtils.extractAllPricesFromText(question);
       if (allPrices.length >= 2) {
-        const sourceType = this.compareService.extractSourceTypeFromText(question);
-        const locationTokens = this.compareService.extractLocationTokens(question);
+        const sourceType =
+          this.compareService.extractSourceTypeFromText(question);
+        const locationTokens =
+          this.compareService.extractLocationTokens(question);
 
         const foundIds: number[] = [];
         const usedIds = new Set<number>();
@@ -846,7 +915,9 @@ export class AiService {
             sourceType === 'land' ? 'Đất' : sourceType === 'house' ? 'Nhà' : '',
             ...locationTokens.slice(0, 5),
             price.toString(),
-          ].filter(Boolean).join(' ');
+          ]
+            .filter(Boolean)
+            .join(' ');
 
           const id = await this.compareService.findByPriceAndLocation(
             // Use original question fragments for better location matching
@@ -905,7 +976,8 @@ export class AiService {
     // and search broadly for properties matching those prices
     {
       const allPrices = AiUtils.extractAllPricesFromText(question);
-      const sourceType = this.compareService.extractSourceTypeFromText(question);
+      const sourceType =
+        this.compareService.extractSourceTypeFromText(question);
 
       if (allPrices.length >= 1 || sourceType) {
         // Build a broader intent from the question
@@ -1049,7 +1121,9 @@ export class AiService {
           greetingPrefix = 'Chào bạn quay lại! 👋';
           const hints: string[] = [];
           if (profile.preferredAreas.length > 0) {
-            hints.push(`khu vực ${profile.preferredAreas[profile.preferredAreas.length - 1]}`);
+            hints.push(
+              `khu vực ${profile.preferredAreas[profile.preferredAreas.length - 1]}`,
+            );
           }
           if (profile.budgetMax) {
             hints.push(`ngân sách ${AiUtils.formatVnd(profile.budgetMax)}`);
@@ -1082,7 +1156,9 @@ export class AiService {
       return {
         answer,
         suggestedQuestions: [
-          intent.location ? `Tìm nhà ở ${intent.location}` : 'Tìm nhà dưới 3 tỷ',
+          intent.location
+            ? `Tìm nhà ở ${intent.location}`
+            : 'Tìm nhà dưới 3 tỷ',
           'Tư vấn đầu tư BĐS',
           'Tính khả năng vay mua nhà',
         ],
@@ -1109,7 +1185,8 @@ export class AiService {
 
     // ─── Financing Advice ──────────────────────────────────────────
     if (intent.type === 'financing_advice') {
-      const answer = await this.financingAdvisorService.buildFinancingAnswer(question);
+      const answer =
+        await this.financingAdvisorService.buildFinancingAnswer(question);
       return {
         answer,
         suggestedQuestions: [
@@ -1119,7 +1196,6 @@ export class AiService {
         ],
       };
     }
-
 
     if (intent.type === 'qa_real_estate') {
       const qaAnswer = this.qaService.answerQA(question);
@@ -1203,8 +1279,6 @@ export class AiService {
       };
     }
 
-
-
     if (intent.type === 'compare_property') {
       if (intent.compareIds && intent.compareIds.length >= 2) {
         // IDs were parsed — let RAG handle it with context
@@ -1231,7 +1305,11 @@ export class AiService {
     // Check if there's an active consultation
     const currentState = await this.consultationFlowService.getState(sessionId);
 
-    if (currentState && currentState.step !== 'idle' && currentState.step !== 'completed') {
+    if (
+      currentState &&
+      currentState.step !== 'idle' &&
+      currentState.step !== 'completed'
+    ) {
       // Escape hatch: If user explicitly starts over with a greeting or a strong different intent
       const breakoutIntents = [
         'greeting',
@@ -1246,7 +1324,7 @@ export class AiService {
         'upgrade_account',
         'upgrade_listing',
       ];
-      
+
       if (breakoutIntents.includes(intent.type)) {
         await this.consultationFlowService.clearState(sessionId);
         return null; // Let the main flow handle the new intent
@@ -1256,7 +1334,11 @@ export class AiService {
       if (intent.type === 'consultation') {
         await this.consultationFlowService.clearState(sessionId);
         const profile = await this.userProfileService.getProfile(sessionId);
-        const startAnswer = await this.consultationFlowService.startConsultation(sessionId, profile);
+        const startAnswer =
+          await this.consultationFlowService.startConsultation(
+            sessionId,
+            profile,
+          );
 
         return this.returnChatWithMemory(sessionId, question, conversation, {
           answer: startAnswer,
@@ -1305,9 +1387,7 @@ export class AiService {
         confidence: 1,
         sources: [],
         relatedSources: [],
-        suggestedQuestions: [
-          'Hủy tư vấn',
-        ],
+        suggestedQuestions: ['Hủy tư vấn'],
       });
     }
 
@@ -1316,7 +1396,10 @@ export class AiService {
     // and matched search queries like "đất nền đầu tư" (nen dau tu).
     if (intent.type === 'consultation') {
       const profile = await this.userProfileService.getProfile(sessionId);
-      const startAnswer = await this.consultationFlowService.startConsultation(sessionId, profile);
+      const startAnswer = await this.consultationFlowService.startConsultation(
+        sessionId,
+        profile,
+      );
 
       return this.returnChatWithMemory(sessionId, question, conversation, {
         answer: startAnswer,
@@ -1342,9 +1425,10 @@ export class AiService {
 
     if (state.location) parts.push(`ở ${state.location}`);
     if (state.budgetMax) {
-      const label = state.budgetMax >= 1_000_000_000
-        ? `${(state.budgetMax / 1_000_000_000).toFixed(1).replace('.0', '')} tỷ`
-        : `${Math.round(state.budgetMax / 1_000_000)} triệu`;
+      const label =
+        state.budgetMax >= 1_000_000_000
+          ? `${(state.budgetMax / 1_000_000_000).toFixed(1).replace('.0', '')} tỷ`
+          : `${Math.round(state.budgetMax / 1_000_000)} triệu`;
       parts.push(`dưới ${label}`);
     }
     if (state.bedrooms) parts.push(`${state.bedrooms} phòng ngủ`);
@@ -1380,10 +1464,11 @@ export class AiService {
 
     if (ids.length > 0) {
       await this.userProfileService.markDisliked(sessionId, ids);
-      this.logger.log(`[PROFILE] Marked ${ids.length} properties as disliked for session ${sessionId}`);
+      this.logger.log(
+        `[PROFILE] Marked ${ids.length} properties as disliked for session ${sessionId}`,
+      );
     }
   }
-
 
   private buildSuggestedQuestions(
     intent: ParsedIntent,
@@ -1411,9 +1496,10 @@ export class AiService {
     }
 
     if (intent.maxPrice) {
-      const priceLabel = intent.maxPrice >= 1_000_000_000
-        ? `${(intent.maxPrice / 1_000_000_000).toFixed(1).replace('.0', '')} tỷ`
-        : `${Math.round(intent.maxPrice / 1_000_000)} triệu`;
+      const priceLabel =
+        intent.maxPrice >= 1_000_000_000
+          ? `${(intent.maxPrice / 1_000_000_000).toFixed(1).replace('.0', '')} tỷ`
+          : `${Math.round(intent.maxPrice / 1_000_000)} triệu`;
       suggestions.push(`Tìm nhà dưới ${priceLabel}`);
     } else if (intent.minPrice) {
       suggestions.push('Xem thêm bất động sản giá tương tự');
@@ -1439,9 +1525,9 @@ export class AiService {
     const priceFilter: Record<string, unknown> | undefined =
       intent.minPrice !== undefined || intent.maxPrice !== undefined
         ? {
-          ...(intent.minPrice !== undefined ? { gte: intent.minPrice } : {}),
-          ...(intent.maxPrice !== undefined ? { lte: intent.maxPrice } : {}),
-        }
+            ...(intent.minPrice !== undefined ? { gte: intent.minPrice } : {}),
+            ...(intent.maxPrice !== undefined ? { lte: intent.maxPrice } : {}),
+          }
         : undefined;
 
     const locationStopTokens = new Set([
@@ -1481,19 +1567,31 @@ export class AiService {
     const [houses, lands] = await Promise.all([
       intent.sourceType !== 'land'
         ? this.prisma.house.findMany({
-          where: buildWhere(),
-          orderBy: { updatedAt: 'desc' },
-          take: fetchLimit,
-          include: { images: { take: 1, orderBy: { position: 'asc' }, select: { url: true } } },
-        })
+            where: buildWhere(),
+            orderBy: { updatedAt: 'desc' },
+            take: fetchLimit,
+            include: {
+              images: {
+                take: 1,
+                orderBy: { position: 'asc' },
+                select: { url: true },
+              },
+            },
+          })
         : Promise.resolve([]),
       intent.sourceType !== 'house'
         ? this.prisma.land.findMany({
-          where: buildWhere(),
-          orderBy: { updatedAt: 'desc' },
-          take: fetchLimit,
-          include: { images: { take: 1, orderBy: { position: 'asc' }, select: { url: true } } },
-        })
+            where: buildWhere(),
+            orderBy: { updatedAt: 'desc' },
+            take: fetchLimit,
+            include: {
+              images: {
+                take: 1,
+                orderBy: { position: 'asc' },
+                select: { url: true },
+              },
+            },
+          })
         : Promise.resolve([]),
     ]);
 
@@ -1571,9 +1669,10 @@ export class AiService {
 
     // Extract first image URL from images array if available
     const images = Array.isArray(house.images) ? house.images : [];
-    const firstImage = images.length > 0
-      ? String((images[0] as Record<string, unknown>)?.url || '')
-      : '';
+    const firstImage =
+      images.length > 0
+        ? String((images[0] as Record<string, unknown>)?.url || '')
+        : '';
 
     const payload: Record<string, unknown> = {
       source: 'house',
@@ -1623,9 +1722,10 @@ export class AiService {
 
     // Extract first image URL from images array if available
     const images = Array.isArray(land.images) ? land.images : [];
-    const firstImage = images.length > 0
-      ? String((images[0] as Record<string, unknown>)?.url || '')
-      : '';
+    const firstImage =
+      images.length > 0
+        ? String((images[0] as Record<string, unknown>)?.url || '')
+        : '';
 
     const payload: Record<string, unknown> = {
       source: 'land',
@@ -1705,7 +1805,13 @@ export class AiService {
     const hasSourceFilter =
       Boolean(intent.sourceType) || Boolean(intent.requiredKeyword);
     const hasTransactionFilter = Boolean(intent.transactionType);
-    if (!hasPriceFilter && !hasLocationFilter && !hasSourceFilter && !hasTransactionFilter) return hits;
+    if (
+      !hasPriceFilter &&
+      !hasLocationFilter &&
+      !hasSourceFilter &&
+      !hasTransactionFilter
+    )
+      return hits;
 
     const locationStopTokens = new Set([
       'tp',
@@ -1754,7 +1860,9 @@ export class AiService {
         if (normalizedLocation && searchable.includes(normalizedLocation)) {
           // Full phrase matched
         } else if (locationTokens.length > 0) {
-          const matchCount = locationTokens.filter((t) => searchable.includes(t)).length;
+          const matchCount = locationTokens.filter((t) =>
+            searchable.includes(t),
+          ).length;
           const threshold = Math.max(1, Math.ceil(locationTokens.length * 0.7));
           if (matchCount < threshold) return false;
         } else {
@@ -1784,7 +1892,9 @@ export class AiService {
       // Transaction type heuristic filter
       if (intent.transactionType) {
         const titleNorm = AiUtils.normalizeText(String(payload.title || ''));
-        const descNorm = AiUtils.normalizeText(String(payload.description || '').slice(0, 200));
+        const descNorm = AiUtils.normalizeText(
+          String(payload.description || '').slice(0, 200),
+        );
         const combined = `${titleNorm} ${descNorm}`;
 
         if (intent.transactionType === 'rent') {
@@ -1794,7 +1904,9 @@ export class AiService {
           if (!hasRentKeyword && !isRentPrice) return false;
         } else if (intent.transactionType === 'sale') {
           // For sale: exclude items explicitly marked as rent
-          const isExplicitRent = /\b(cho thue)\b/.test(combined) && !/\b(ban|de ban)\b/.test(combined);
+          const isExplicitRent =
+            /\b(cho thue)\b/.test(combined) &&
+            !/\b(ban|de ban)\b/.test(combined);
           if (isExplicitRent) return false;
         }
       }
@@ -1809,7 +1921,9 @@ export class AiService {
    * Build Qdrant metadata filter to push filtering into the vector search
    * instead of filtering client-side after retrieval.
    */
-  private buildQdrantFilter(intent: ParsedIntent): Record<string, unknown> | null {
+  private buildQdrantFilter(
+    intent: ParsedIntent,
+  ): Record<string, unknown> | null {
     const must: Array<Record<string, unknown>> = [];
 
     if (intent.sourceType) {
@@ -1850,7 +1964,9 @@ export class AiService {
             `Diện tích: ${area}`,
             bedrooms > 0 ? `${bedrooms} phòng ngủ` : '',
             floors > 0 ? `${floors} tầng` : '',
-          ].filter(Boolean).join(', ');
+          ]
+            .filter(Boolean)
+            .join(', ');
           return `BĐS ${idx + 1}: ${String(s.title || 'N/A')} | ${location} | ${details}`;
         })
         .join('\n');
@@ -1875,12 +1991,14 @@ export class AiService {
           temperature: 0.3,
           maxTokens: 512,
           timeout: this.geminiTimeoutMs,
-        }
+        },
       );
 
-      return (text && text.length > 20) ? `**📊 Phân tích AI:**\n${text}` : null;
+      return text && text.length > 20 ? `**📊 Phân tích AI:**\n${text}` : null;
     } catch (error) {
-      this.logger.warn(`Compare AI analysis failed: ${AiUtils.stringifyError(error)}`);
+      this.logger.warn(
+        `Compare AI analysis failed: ${AiUtils.stringifyError(error)}`,
+      );
       return null;
     }
   }
@@ -2075,4 +2193,3 @@ export class AiService {
     return this.descriptionGeneratorService.generateDescription(dto);
   }
 }
-

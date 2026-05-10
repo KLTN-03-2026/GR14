@@ -47,10 +47,10 @@ export class DepositController {
     return this.depositService.createDepositRequest(
       {
         appointmentId: dto.appointmentId,
-        userId:        req.user.id,
-        amount:        dto.amount,
+        userId: req.user.id,
+        amount: dto.amount,
         paymentMethod: dto.paymentMethod,
-        returnUrl:     dto.returnUrl,
+        returnUrl: dto.returnUrl,
       },
       ipAddr,
     );
@@ -59,7 +59,11 @@ export class DepositController {
   @Get('my')
   @Roles('CUSTOMER')
   async getMyDeposits(@Query() query: GetDepositsQueryDto, @Req() req: any) {
-    return this.depositService.findByUser(+req.user.id, query.page, query.limit);
+    return this.depositService.findByUser(
+      +req.user.id,
+      query.page,
+      query.limit,
+    );
   }
 
   // ── ✅ THÊM MỚI: Admin xem danh sách yêu cầu hoàn tiền ──────────────────
@@ -83,10 +87,7 @@ export class DepositController {
 
   @Get(':id')
   @Roles('CUSTOMER', 'ADMIN')
-  async getDepositById(
-    @Param('id', ParseIntPipe) id: number,
-    @Req() req: any,
-  ) {
+  async getDepositById(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     const deposit = await this.depositService.findById(id);
     const isAdmin = (req.user.roles as string[])?.includes('ADMIN');
     if (!isAdmin && deposit.userId !== req.user.id) {
@@ -104,8 +105,8 @@ export class DepositController {
     @Req() req: any,
   ) {
     return this.depositService.requestRefund({
-      depositId:         id,
-      userId:            req.user.id,
+      depositId: id,
+      userId: req.user.id,
       refundAccountInfo: dto.refundAccountInfo,
     });
   }
@@ -119,7 +120,7 @@ export class DepositController {
   ) {
     return this.depositService.adminProcessRefund({
       depositId: id,
-      approve:   dto.approve,
+      approve: dto.approve,
       adminNote: dto.adminNote, // ← thêm
     });
   }

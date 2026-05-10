@@ -42,7 +42,9 @@ export class MailConsumerController {
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
         await this.mailService.sendEmail(data.to, data.subject, data.html);
-        this.logger.log(`[RabbitMQ] ✅ Gửi mail thành công → ${data.to} (lần ${attempt})`);
+        this.logger.log(
+          `[RabbitMQ] ✅ Gửi mail thành công → ${data.to} (lần ${attempt})`,
+        );
 
         // Acknowledge message sau khi gửi thành công
         this.ackMessage(context);

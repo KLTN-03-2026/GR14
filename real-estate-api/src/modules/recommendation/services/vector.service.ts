@@ -31,12 +31,12 @@ export class VectorService {
   private readonly logger = new Logger(VectorService.name);
 
   // Các URL và cấu hình được lấy từ .env qua ConfigService
-  private readonly qdrantUrl: string;      // URL của Qdrant (Vector DB)
-  private readonly ollamaUrl: string;      // URL của Ollama (LLM embed)
-  private readonly ragCollection: string;  // Tên collection trong Qdrant
-  private readonly embedModel: string;     // Model embedding (nomic-embed-text)
+  private readonly qdrantUrl: string; // URL của Qdrant (Vector DB)
+  private readonly ollamaUrl: string; // URL của Ollama (LLM embed)
+  private readonly ragCollection: string; // Tên collection trong Qdrant
+  private readonly embedModel: string; // Model embedding (nomic-embed-text)
   private readonly qdrantTimeoutMs: number; // Timeout gọi Qdrant (ms)
-  private readonly embedTimeoutMs: number;  // Timeout gọi Ollama (ms)
+  private readonly embedTimeoutMs: number; // Timeout gọi Ollama (ms)
 
   constructor(
     private readonly prisma: PrismaService,
@@ -283,9 +283,9 @@ export class VectorService {
       const resp = await axios.post(
         `${this.qdrantUrl}/collections/${this.ragCollection}/points/search`,
         {
-          vector: userVector,      // Vector sở thích user
-          limit: candidateLimit,   // Lấy top 100
-          with_payload: true,      // Kèm metadata (source, sourceId, district...)
+          vector: userVector, // Vector sở thích user
+          limit: candidateLimit, // Lấy top 100
+          with_payload: true, // Kèm metadata (source, sourceId, district...)
           filter:
             excludeIds.length > 0
               ? { must_not: [{ has_id: excludeIds }] } // Loại trừ đã xem

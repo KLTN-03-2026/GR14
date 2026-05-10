@@ -47,11 +47,11 @@ export class VipExpiryTask {
         // 3. Đánh dấu subscription đã hết endDate sang status = 2 (expired)
         this.prisma.vipSubscription.updateMany({
           where: {
-            status: 1,           // đang active
+            status: 1, // đang active
             endDate: { lt: now },
           },
           data: {
-            status: 2,           // expired
+            status: 2, // expired
           },
         }),
       ]);

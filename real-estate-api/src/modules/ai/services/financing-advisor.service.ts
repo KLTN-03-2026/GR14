@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { FinancingResult } from '../types/ai.types';
 import { AiUtils } from '../utils/ai.utils';
-import axios from 'axios';
 
 /**
  * Provides mortgage/financing calculations and advice.
@@ -11,9 +10,14 @@ import axios from 'axios';
 export class FinancingAdvisorService {
   private readonly logger = new Logger(FinancingAdvisorService.name);
   private readonly geminiApiKey = process.env.GEMINI_API_KEY || '';
-  private readonly geminiChatModel = process.env.GEMINI_MODEL_PRIMARY || 'gemini-2.5-flash';
-  private readonly geminiApiBase = process.env.GEMINI_API_URL || 'https://generativelanguage.googleapis.com/v1beta';
-  private readonly geminiTimeoutMs = Number(process.env.GEMINI_TIMEOUT_MS || 15000);
+  private readonly geminiChatModel =
+    process.env.GEMINI_MODEL_PRIMARY || 'gemini-2.5-flash';
+  private readonly geminiApiBase =
+    process.env.GEMINI_API_URL ||
+    'https://generativelanguage.googleapis.com/v1beta';
+  private readonly geminiTimeoutMs = Number(
+    process.env.GEMINI_TIMEOUT_MS || 15000,
+  );
 
   // Default Vietnamese mortgage parameters
   private readonly defaultInterestRate = 0.08; // 8% annual (year 1 preferential)
@@ -41,9 +45,12 @@ export class FinancingAdvisorService {
       const maxMonthlyPayment = monthlyIncome * this.maxDebtToIncome;
 
       // PMT formula inverse: PV = PMT × [(1 - (1+r)^-n) / r]
-      const pvFactor = (1 - Math.pow(1 + monthlyRate, -totalMonths)) / monthlyRate;
+      const pvFactor =
+        (1 - Math.pow(1 + monthlyRate, -totalMonths)) / monthlyRate;
       const maxLoanAmount = Math.round(maxMonthlyPayment * pvFactor);
-      const affordablePrice = Math.round(maxLoanAmount / this.defaultLoanToValue);
+      const affordablePrice = Math.round(
+        maxLoanAmount / this.defaultLoanToValue,
+      );
       const downPaymentRequired = affordablePrice - maxLoanAmount;
       const totalPayment = maxMonthlyPayment * totalMonths;
       const totalInterest = totalPayment - maxLoanAmount;
@@ -63,18 +70,19 @@ export class FinancingAdvisorService {
 
     if (propertyPrice && propertyPrice > 0) {
       // Calculate from property price
-      const actualDownPayment = downPayment ?? Math.round(propertyPrice * (1 - this.defaultLoanToValue));
+      const actualDownPayment =
+        downPayment ??
+        Math.round(propertyPrice * (1 - this.defaultLoanToValue));
       const loanAmount = propertyPrice - actualDownPayment;
       const ltv = loanAmount / propertyPrice;
 
       // PMT formula: PMT = PV × [r(1+r)^n / ((1+r)^n - 1)]
-      const pmtFactor = (monthlyRate * Math.pow(1 + monthlyRate, totalMonths)) /
+      const pmtFactor =
+        (monthlyRate * Math.pow(1 + monthlyRate, totalMonths)) /
         (Math.pow(1 + monthlyRate, totalMonths) - 1);
       const monthlyPayment = Math.round(loanAmount * pmtFactor);
       const totalPayment = monthlyPayment * totalMonths;
       const totalInterest = totalPayment - loanAmount;
-
-      const requiredIncome = Math.round(monthlyPayment / this.maxDebtToIncome);
 
       return {
         maxLoanAmount: loanAmount,
@@ -103,7 +111,11 @@ export class FinancingAdvisorService {
     const propertyPrice = this.extractPropertyPrice(normalized);
     const downPayment = this.extractDownPayment(normalized);
 
-    const result = this.calculateFinancing(monthlyIncome, propertyPrice, downPayment);
+    const result = this.calculateFinancing(
+      monthlyIncome,
+      propertyPrice,
+      downPayment,
+    );
 
     if (result) {
       return this.formatFinancingResult(result, monthlyIncome, propertyPrice);
@@ -125,21 +137,37 @@ export class FinancingAdvisorService {
     lines.push('');
 
     if (monthlyIncome) {
-      lines.push(`📊 **Thu nhập hàng tháng:** ${AiUtils.formatVnd(monthlyIncome)}`);
+      lines.push(
+        `📊 **Thu nhập hàng tháng:** ${AiUtils.formatVnd(monthlyIncome)}`,
+      );
       lines.push('');
     }
 
     lines.push('🏦 **Kết quả tính toán:**');
-    lines.push(`- Giá BĐS có thể mua: **${AiUtils.formatVnd(result.affordablePrice)}**`);
-    lines.push(`- Số tiền cần trả trước (${((1 - result.loanToValue) * 100).toFixed(0)}%): **${AiUtils.formatVnd(result.downPaymentRequired)}**`);
-    lines.push(`- Số tiền vay tối đa: **${AiUtils.formatVnd(result.maxLoanAmount)}**`);
-    lines.push(`- Trả góp hàng tháng: **${AiUtils.formatVnd(result.monthlyPayment)}**`);
-    lines.push(`- Lãi suất: **${(result.interestRate * 100).toFixed(1)}%/năm**`);
+    lines.push(
+      `- Giá BĐS có thể mua: **${AiUtils.formatVnd(result.affordablePrice)}**`,
+    );
+    lines.push(
+      `- Số tiền cần trả trước (${((1 - result.loanToValue) * 100).toFixed(0)}%): **${AiUtils.formatVnd(result.downPaymentRequired)}**`,
+    );
+    lines.push(
+      `- Số tiền vay tối đa: **${AiUtils.formatVnd(result.maxLoanAmount)}**`,
+    );
+    lines.push(
+      `- Trả góp hàng tháng: **${AiUtils.formatVnd(result.monthlyPayment)}**`,
+    );
+    lines.push(
+      `- Lãi suất: **${(result.interestRate * 100).toFixed(1)}%/năm**`,
+    );
     lines.push(`- Thời hạn vay: **${result.loanTermYears} năm**`);
     lines.push('');
     lines.push('📋 **Chi tiết khoản vay:**');
-    lines.push(`- Tổng tiền phải trả: ${AiUtils.formatVnd(result.totalPayment)}`);
-    lines.push(`- Tổng lãi phải trả: ${AiUtils.formatVnd(result.totalInterest)}`);
+    lines.push(
+      `- Tổng tiền phải trả: ${AiUtils.formatVnd(result.totalPayment)}`,
+    );
+    lines.push(
+      `- Tổng lãi phải trả: ${AiUtils.formatVnd(result.totalInterest)}`,
+    );
     lines.push('');
 
     if (monthlyIncome) {
@@ -150,12 +178,16 @@ export class FinancingAdvisorService {
         lines.push('- Xem xét BĐS giá thấp hơn');
         lines.push('- Kéo dài thời hạn vay');
       } else {
-        lines.push('✅ **Tỷ lệ trả góp hợp lý**, phù hợp với thu nhập hiện tại.');
+        lines.push(
+          '✅ **Tỷ lệ trả góp hợp lý**, phù hợp với thu nhập hiện tại.',
+        );
       }
     }
 
     lines.push('');
-    lines.push('_⚠️ Lãi suất tham khảo. Lãi suất thực tế phụ thuộc ngân hàng và thời điểm vay. Năm đầu thường có ưu đãi 6-8%, sau đó tăng lên 10-12%/năm._');
+    lines.push(
+      '_⚠️ Lãi suất tham khảo. Lãi suất thực tế phụ thuộc ngân hàng và thời điểm vay. Năm đầu thường có ưu đãi 6-8%, sau đó tăng lên 10-12%/năm._',
+    );
 
     return lines.join('\n');
   }
@@ -222,14 +254,16 @@ export class FinancingAdvisorService {
       const text = await AiUtils.generateLlmResponse(
         prompt,
         'Bạn là chuyên gia tài chính BĐS Việt Nam. Trả lời chính xác, chuyên nghiệp.',
-        { temperature: 0.3, maxTokens: 600, timeout: this.geminiTimeoutMs }
+        { temperature: 0.3, maxTokens: 600, timeout: this.geminiTimeoutMs },
       );
 
       if (text && text.length > 50) {
         return `💰 **Tư vấn tài chính BĐS:**\n\n${text}`;
       }
     } catch (error) {
-      this.logger.warn(`Gemini financing advice failed: ${AiUtils.stringifyError(error)}`);
+      this.logger.warn(
+        `Gemini financing advice failed: ${AiUtils.stringifyError(error)}`,
+      );
     }
 
     return this.getDefaultFinancingAdvice();

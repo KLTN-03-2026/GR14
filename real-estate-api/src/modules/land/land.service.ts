@@ -23,7 +23,8 @@ const landListKey = (
   status?: number,
   categoryId?: number,
   employeeId?: number,
-) => `lands:list:${page}:${limit}:${status ?? 'all'}:${categoryId ?? 'all'}:${employeeId ?? 'all'}`;
+) =>
+  `lands:list:${page}:${limit}:${status ?? 'all'}:${categoryId ?? 'all'}:${employeeId ?? 'all'}`;
 const landDetailKey = (id: number) => `land:${id}`;
 const landSearchKey = (
   query: string,
@@ -44,9 +45,15 @@ export class LandService {
     private cloudinaryService: CloudinaryService,
     private redis: RedisService,
     private aiService: AiService,
-  ) { }
+  ) {}
 
-  async findAll(page = 1, limit = 10, status?: number, categoryId?: number, employeeId?: number) {
+  async findAll(
+    page = 1,
+    limit = 10,
+    status?: number,
+    categoryId?: number,
+    employeeId?: number,
+  ) {
     const cacheKey = landListKey(page, limit, status, categoryId, employeeId);
 
     // Try cache first
@@ -98,8 +105,16 @@ export class LandService {
     return result;
   }
 
-  async findMyAssigned(userId: number, page = 1, limit = 10, status?: number, categoryId?: number) {
-    const employee = await this.prisma.employee.findUnique({ where: { userId } });
+  async findMyAssigned(
+    userId: number,
+    page = 1,
+    limit = 10,
+    status?: number,
+    categoryId?: number,
+  ) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { userId },
+    });
     if (!employee) {
       throw new ForbiddenException('User is not an employee');
     }
@@ -271,7 +286,7 @@ export class LandService {
     };
 
     // Trigger Qdrant indexing (fire-and-forget)
-    this.aiService.indexOne('land', land.id).catch(() => { });
+    this.aiService.indexOne('land', land.id).catch(() => {});
 
     return result;
   }
@@ -338,11 +353,11 @@ export class LandService {
       // Parse danh sách ID ảnh cần giữ
       const keepIds: number[] = dto.keepImageIds
         ? (Array.isArray(dto.keepImageIds)
-          ? dto.keepImageIds
-          : [dto.keepImageIds]
-        )
-          .map(Number)
-          .filter((n) => !isNaN(n))
+            ? dto.keepImageIds
+            : [dto.keepImageIds]
+          )
+            .map(Number)
+            .filter((n) => !isNaN(n))
         : [];
 
       // Xóa ảnh không nằm trong keepIds
@@ -371,7 +386,7 @@ export class LandService {
 
     // Invalidate cache
     await this.invalidateLandCache();
-    await this.redis.del(landDetailKey(id)).catch(() => { });
+    await this.redis.del(landDetailKey(id)).catch(() => {});
 
     const result = {
       message: 'Land updated successfully',
@@ -379,7 +394,7 @@ export class LandService {
     };
 
     // Trigger Qdrant indexing (fire-and-forget)
-    this.aiService.indexOne('land', id).catch(() => { });
+    this.aiService.indexOne('land', id).catch(() => {});
 
     return result;
   }
@@ -401,7 +416,7 @@ export class LandService {
 
     // Invalidate cache
     await this.invalidateLandCache();
-    await this.redis.del(landDetailKey(id)).catch(() => { });
+    await this.redis.del(landDetailKey(id)).catch(() => {});
 
     return { message: 'Land deleted successfully' };
   }
@@ -414,7 +429,14 @@ export class LandService {
     categoryId?: number,
     employeeId?: number,
   ) {
-    const cacheKey = landSearchKey(query, page, limit, status, categoryId, employeeId);
+    const cacheKey = landSearchKey(
+      query,
+      page,
+      limit,
+      status,
+      categoryId,
+      employeeId,
+    );
 
     // Try cache first
     const cached = await this.redis.get(cacheKey).catch(() => null);
