@@ -349,7 +349,7 @@ export class UserProfileService {
    *     [nhà1, đất1, nhà2, đất2, nhà3, đất3]
    */
   async getPopularMixed(limit: number) {
-    const houseLimit = Math.ceil(limit / 2);  // Chia đều
+    const houseLimit = Math.ceil(limit / 2); // Chia đều
     const landLimit = limit - houseLimit;
 
     const [houses, lands] = await Promise.all([

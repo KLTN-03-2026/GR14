@@ -24,7 +24,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('payment')
 export class PaymentController {
-  constructor(private paymentService: PaymentService) { }
+  constructor(private paymentService: PaymentService) {}
 
   // ── Public callbacks ──────────────────────────────────────────────────────
 
@@ -91,7 +91,7 @@ export class PaymentController {
     @Query('search') search?: string,
     @Query('method') method?: string,
     @Query('status') status?: string,
-    @Query('type') type?: string,          // ← thêm
+    @Query('type') type?: string, // ← thêm
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
@@ -101,7 +101,7 @@ export class PaymentController {
       search,
       method,
       status,
-      type,          // ← thêm
+      type, // ← thêm
       startDate,
       endDate,
     );
@@ -121,10 +121,7 @@ export class PaymentController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @Post(':id/simulate-success')
-  async simulateSuccess(
-    @Param('id', ParseIntPipe) id: number,
-    @Request() req,
-  ) {
+  async simulateSuccess(@Param('id', ParseIntPipe) id: number, @Request() req) {
     return this.paymentService.simulatePaymentSuccess(id, req.user.id);
   }
 
@@ -136,10 +133,7 @@ export class PaymentController {
 
   @UseGuards(JwtAuthGuard)
   @Get(':id')
-  async getPaymentById(
-    @Param('id', ParseIntPipe) id: number,
-    @Request() req,
-  ) {
+  async getPaymentById(@Param('id', ParseIntPipe) id: number, @Request() req) {
     return this.paymentService.getPaymentById(id, req.user.id);
   }
 }

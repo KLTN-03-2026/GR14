@@ -241,7 +241,11 @@ export class AuthService {
       otp,
     );
 
-    this.mailProducer.sendMail(email, 'Xác thực đăng ký tài khoản — Black\'S City', html);
+    this.mailProducer.sendMail(
+      email,
+      "Xác thực đăng ký tài khoản — Black'S City",
+      html,
+    );
 
     return {
       message:
@@ -323,7 +327,7 @@ export class AuthService {
       otp,
     );
 
-    this.mailProducer.sendMail(email, 'Đặt lại mật khẩu — Black\'S City', html);
+    this.mailProducer.sendMail(email, "Đặt lại mật khẩu — Black'S City", html);
 
     return { message: 'Mã OTP đã được gửi đến email' };
   }

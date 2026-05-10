@@ -14,20 +14,27 @@ export class MoMoService {
   private notifyUrl: string;
 
   constructor(private configService: ConfigService) {
-    this.partnerCode = (this.configService.get('MOMO_PARTNER_CODE') || '').trim();
+    this.partnerCode = (
+      this.configService.get('MOMO_PARTNER_CODE') || ''
+    ).trim();
     this.accessKey = (this.configService.get('MOMO_ACCESS_KEY') || '').trim();
     this.secretKey = (this.configService.get('MOMO_SECRET_KEY') || '').trim();
-    this.endpoint =
-      (this.configService.get('MOMO_ENDPOINT') ||
-      'https://test-payment.momo.vn/v2/gateway/api/create').trim();
-    this.returnUrl =
-      (this.configService.get('MOMO_RETURN_URL') ||
-      'http://localhost:3000/api/payment/momo/callback').trim();
-    this.notifyUrl =
-      (this.configService.get('MOMO_NOTIFY_URL') ||
-      'http://localhost:3000/api/payment/momo/notify').trim();
+    this.endpoint = (
+      this.configService.get('MOMO_ENDPOINT') ||
+      'https://test-payment.momo.vn/v2/gateway/api/create'
+    ).trim();
+    this.returnUrl = (
+      this.configService.get('MOMO_RETURN_URL') ||
+      'http://localhost:3000/api/payment/momo/callback'
+    ).trim();
+    this.notifyUrl = (
+      this.configService.get('MOMO_NOTIFY_URL') ||
+      'http://localhost:3000/api/payment/momo/notify'
+    ).trim();
 
-    this.logger.debug(`MoMo config: partnerCode="${this.partnerCode}" accessKey="${this.accessKey}" endpoint="${this.endpoint}"`);
+    this.logger.debug(
+      `MoMo config: partnerCode="${this.partnerCode}" accessKey="${this.accessKey}" endpoint="${this.endpoint}"`,
+    );
   }
 
   async createPaymentUrl(
@@ -88,12 +95,13 @@ export class MoMoService {
       }
     } catch (error) {
       if (error.response) {
-        this.logger.error(`MoMo API error: status=${error.response.status}, data=${JSON.stringify(error.response.data)}`);
+        this.logger.error(
+          `MoMo API error: status=${error.response.status}, data=${JSON.stringify(error.response.data)}`,
+        );
       }
       throw new Error(`Failed to create MoMo payment: ${error.message}`);
     }
   }
-
 
   verifySignature(data: any): boolean {
     const {

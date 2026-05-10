@@ -62,7 +62,9 @@ export class DepositExpiryCron {
     const staleIds = await this.depositService.findStalePendingDepositIds(now);
 
     if (staleIds.length === 0) {
-      this.logger.log('[DepositExpiryCron] Không có deposit pending nào cần cleanup');
+      this.logger.log(
+        '[DepositExpiryCron] Không có deposit pending nào cần cleanup',
+      );
     } else {
       this.logger.log(
         `[DepositExpiryCron] Tìm thấy ${staleIds.length} deposit pending cũ, đang cleanup...`,

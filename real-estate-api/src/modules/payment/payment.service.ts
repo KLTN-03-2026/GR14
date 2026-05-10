@@ -43,7 +43,9 @@ export class PaymentService {
 
     if (dto.paymentType === PaymentType.POST_VIP) {
       if (!dto.postId) {
-        throw new BadRequestException('Bắt buộc có postId cho gói VIP bài viết');
+        throw new BadRequestException(
+          'Bắt buộc có postId cho gói VIP bài viết',
+        );
       }
       finalPostId = Number(dto.postId);
 
@@ -51,7 +53,9 @@ export class PaymentService {
         where: { id: finalPostId, userId },
       });
       if (!post)
-        throw new NotFoundException('Post not found or you do not own this post');
+        throw new NotFoundException(
+          'Post not found or you do not own this post',
+        );
 
       if (post.isVip && post.vipExpiry && post.vipExpiry > new Date()) {
         if ((post.vipPriorityLevel ?? 0) > vipPackage.priorityLevel) {
@@ -61,7 +65,9 @@ export class PaymentService {
         }
       }
     } else if (dto.paymentType === String(PaymentType.ACCOUNT_VIP)) {
-      const dbUser = await this.prisma.user.findUnique({ where: { id: userId } });
+      const dbUser = await this.prisma.user.findUnique({
+        where: { id: userId },
+      });
       if (dbUser?.isVip && dbUser.vipExpiry && dbUser.vipExpiry > new Date()) {
         if ((dbUser.vipPriorityLevel ?? 0) > vipPackage.priorityLevel) {
           throw new BadRequestException(
@@ -275,7 +281,8 @@ export class PaymentService {
     await this.prisma.paymentTransaction.updateMany({
       where: { transactionId },
       data: {
-        status: verification.isValid && responseCode === '00' ? 'success' : 'failed',
+        status:
+          verification.isValid && responseCode === '00' ? 'success' : 'failed',
         responseCode: responseCode,
         responseData: JSON.stringify(vnp_Params),
       },
@@ -322,8 +329,10 @@ export class PaymentService {
     });
 
     if (!payment) return { RspCode: '01', Message: 'Order not found' };
-    if (!verification.isValid) return { RspCode: '97', Message: 'Invalid signature' };
-    if (payment.status === 1) return { RspCode: '02', Message: 'Order already confirmed' };
+    if (!verification.isValid)
+      return { RspCode: '97', Message: 'Invalid signature' };
+    if (payment.status === 1)
+      return { RspCode: '02', Message: 'Order already confirmed' };
 
     if (responseCode === '00') {
       if (payment.paymentType === 'PROPERTY_DEPOSIT') {
@@ -366,8 +375,10 @@ export class PaymentService {
     });
 
     if (!payment) throw new NotFoundException('Payment not found');
-    if (payment.status === 1) return { success: true, message: 'Payment successful' };
-    if (payment.status === 2) return { success: false, message: 'Payment failed' };
+    if (payment.status === 1)
+      return { success: true, message: 'Payment successful' };
+    if (payment.status === 2)
+      return { success: false, message: 'Payment failed' };
 
     if (resultCode === 0) {
       if (payment.paymentType === 'PROPERTY_DEPOSIT') {
@@ -472,7 +483,9 @@ export class PaymentService {
     }
 
     if (!payment.subscription) {
-      throw new BadRequestException('Không tìm thấy subscription cho payment này');
+      throw new BadRequestException(
+        'Không tìm thấy subscription cho payment này',
+      );
     }
 
     await this.activateSubscription(payment.id, payment.subscription);
@@ -544,7 +557,9 @@ export class PaymentService {
 
     this.mailProducer.sendMail(
       payment.user.email,
-      isSuccess ? 'Đặt cọc bất động sản thành công' : 'Thanh toán đặt cọc thất bại',
+      isSuccess
+        ? 'Đặt cọc bất động sản thành công'
+        : 'Thanh toán đặt cọc thất bại',
       html,
     );
   }
@@ -594,7 +609,7 @@ export class PaymentService {
     search?: string,
     method?: string,
     status?: string,
-    type?: string, 
+    type?: string,
     startDate?: string,
     endDate?: string,
   ) {
@@ -611,11 +626,11 @@ export class PaymentService {
     }
 
     if (method) whereCondition.paymentMethod = method;
-    
+
     if (status !== undefined && status !== '') {
       whereCondition.status = parseInt(status);
     }
-    if (type)   whereCondition.paymentType = type;
+    if (type) whereCondition.paymentType = type;
     if (startDate || endDate) {
       whereCondition.createdAt = {};
       if (startDate) whereCondition.createdAt.gte = new Date(startDate);
@@ -651,7 +666,10 @@ export class PaymentService {
     const post = await this.prisma.post.findFirst({
       where: { id: postId, userId },
     });
-    if (!post) throw new NotFoundException('Bài đăng không tồn tại hoặc bạn không có quyền');
+    if (!post)
+      throw new NotFoundException(
+        'Bài đăng không tồn tại hoặc bạn không có quyền',
+      );
     if (post.isVip) throw new BadRequestException('Bài đăng đã là VIP');
 
     return {
@@ -660,179 +678,217 @@ export class PaymentService {
     };
   }
   async getRevenueStats(
-  startDate?: string,
-  endDate?: string,
-  groupBy: 'day' | 'month' | 'year' = 'month',
-) {
-  const start = startDate ? new Date(startDate) : this.getDefaultStartDate(groupBy);
-  const end   = endDate   ? new Date(endDate)   : new Date();
- 
-  // 1. Aggregate theo loại payment (chỉ status = 1 — đã thành công)
-  const [accountVipAgg, postVipAgg, depositAgg] = await Promise.all([
-    this.prisma.payment.aggregate({
-      where: { status: 1, paymentType: 'ACCOUNT_VIP', createdAt: { gte: start, lte: end } },
-      _sum: { amount: true },
-      _count: { id: true },
-    }),
-    this.prisma.payment.aggregate({
-      where: { status: 1, paymentType: 'POST_VIP', createdAt: { gte: start, lte: end } },
-      _sum: { amount: true },
-      _count: { id: true },
-    }),
-    this.prisma.payment.aggregate({
-      where: { status: 1, paymentType: 'PROPERTY_DEPOSIT', createdAt: { gte: start, lte: end } },
-      _sum: { amount: true },
-      _count: { id: true },
-    }),
-  ]);
- 
-  // 2. Đếm trạng thái giao dịch
-  const [successCount, failedCount, pendingCount] = await Promise.all([
-    this.prisma.payment.count({ where: { status: 1, createdAt: { gte: start, lte: end } } }),
-    this.prisma.payment.count({ where: { status: 2, createdAt: { gte: start, lte: end } } }),
-    this.prisma.payment.count({ where: { status: 0, createdAt: { gte: start, lte: end } } }),
-  ]);
- 
-  // 3. Breakdown theo phương thức thanh toán
-  const methodBreakdown = await this.prisma.payment.groupBy({
-    by: ['paymentMethod'],
-    where: { status: 1, createdAt: { gte: start, lte: end } },
-    _sum: { amount: true },
-    _count: { id: true },
-  });
- 
-  // 4. Chart data theo time bucket
-  const chartData = await this.getChartData(start, end, groupBy);
- 
-  // 5. So sánh với kỳ trước
-  const comparison = await this.getComparisonData(start, end);
- 
-  const totalRevenue =
-    Number(accountVipAgg._sum.amount ?? 0) +
-    Number(postVipAgg._sum.amount   ?? 0) +
-    Number(depositAgg._sum.amount   ?? 0);
- 
-  const totalTx = successCount + failedCount + pendingCount;
- 
-  return {
-    data: {
-      summary: {
-        totalRevenue,
-        accountVip: {
-          revenue: Number(accountVipAgg._sum.amount ?? 0),
-          count:   accountVipAgg._count.id,
+    startDate?: string,
+    endDate?: string,
+    groupBy: 'day' | 'month' | 'year' = 'month',
+  ) {
+    const start = startDate
+      ? new Date(startDate)
+      : this.getDefaultStartDate(groupBy);
+    const end = endDate ? new Date(endDate) : new Date();
+
+    // 1. Aggregate theo loại payment (chỉ status = 1 — đã thành công)
+    const [accountVipAgg, postVipAgg, depositAgg] = await Promise.all([
+      this.prisma.payment.aggregate({
+        where: {
+          status: 1,
+          paymentType: 'ACCOUNT_VIP',
+          createdAt: { gte: start, lte: end },
         },
-        postVip: {
-          revenue: Number(postVipAgg._sum.amount ?? 0),
-          count:   postVipAgg._count.id,
+        _sum: { amount: true },
+        _count: { id: true },
+      }),
+      this.prisma.payment.aggregate({
+        where: {
+          status: 1,
+          paymentType: 'POST_VIP',
+          createdAt: { gte: start, lte: end },
         },
-        deposit: {
-          revenue: Number(depositAgg._sum.amount ?? 0),
-          count:   depositAgg._count.id,
+        _sum: { amount: true },
+        _count: { id: true },
+      }),
+      this.prisma.payment.aggregate({
+        where: {
+          status: 1,
+          paymentType: 'PROPERTY_DEPOSIT',
+          createdAt: { gte: start, lte: end },
         },
-      },
-      transactionStatus: {
-        success:     successCount,
-        failed:      failedCount,
-        pending:     pendingCount,
-        total:       totalTx,
-        successRate: totalTx > 0 ? Math.round((successCount / totalTx) * 100) : 0,
-      },
-      methodBreakdown: methodBreakdown.map((m) => ({
-        method:  m.paymentMethod,
-        revenue: Number(m._sum.amount ?? 0),
-        count:   m._count.id,
-      })),
-      chartData,
-      comparison,
-      period: { startDate: start, endDate: end, groupBy },
-    },
-  };
-}
- 
-// ── getChartData: group payments vào buckets day/month/year ──────────────────
-private async getChartData(
-  start: Date,
-  end: Date,
-  groupBy: 'day' | 'month' | 'year',
-) {
-  const payments = await this.prisma.payment.findMany({
-    where: { status: 1, createdAt: { gte: start, lte: end } },
-    select: { amount: true, paymentType: true, createdAt: true },
-    orderBy: { createdAt: 'asc' },
-  });
- 
-  const buckets = new Map<string, {
-    label: string;
-    accountVip: number;
-    postVip: number;
-    deposit: number;
-    total: number;
-  }>();
- 
-  for (const p of payments) {
-    const key = this.getTimeKey(p.createdAt, groupBy);
-    if (!buckets.has(key)) {
-      buckets.set(key, { label: key, accountVip: 0, postVip: 0, deposit: 0, total: 0 });
-    }
-    const b = buckets.get(key)!;
-    const amount = Number(p.amount);
-    b.total += amount;
-    if (p.paymentType === 'ACCOUNT_VIP')          b.accountVip += amount;
-    else if (p.paymentType === 'POST_VIP')          b.postVip    += amount;
-    else if (p.paymentType === 'PROPERTY_DEPOSIT')  b.deposit    += amount;
-  }
- 
-  return Array.from(buckets.values());
-}
- 
-// ── getComparisonData: so sánh kỳ hiện tại vs kỳ trước tương đương ──────────
-private async getComparisonData(start: Date, end: Date) {
-  const duration  = end.getTime() - start.getTime();
-  const prevStart = new Date(start.getTime() - duration);
-  const prevEnd   = new Date(start.getTime() - 1);
- 
-  const [curr, prev] = await Promise.all([
-    this.prisma.payment.aggregate({
+        _sum: { amount: true },
+        _count: { id: true },
+      }),
+    ]);
+
+    // 2. Đếm trạng thái giao dịch
+    const [successCount, failedCount, pendingCount] = await Promise.all([
+      this.prisma.payment.count({
+        where: { status: 1, createdAt: { gte: start, lte: end } },
+      }),
+      this.prisma.payment.count({
+        where: { status: 2, createdAt: { gte: start, lte: end } },
+      }),
+      this.prisma.payment.count({
+        where: { status: 0, createdAt: { gte: start, lte: end } },
+      }),
+    ]);
+
+    // 3. Breakdown theo phương thức thanh toán
+    const methodBreakdown = await this.prisma.payment.groupBy({
+      by: ['paymentMethod'],
       where: { status: 1, createdAt: { gte: start, lte: end } },
       _sum: { amount: true },
       _count: { id: true },
-    }),
-    this.prisma.payment.aggregate({
-      where: { status: 1, createdAt: { gte: prevStart, lte: prevEnd } },
-      _sum: { amount: true },
-      _count: { id: true },
-    }),
-  ]);
- 
-  const currRev = Number(curr._sum.amount ?? 0);
-  const prevRev = Number(prev._sum.amount ?? 0);
- 
-  return {
-    currentPeriod:  { revenue: currRev,  count: curr._count.id },
-    previousPeriod: { revenue: prevRev,  count: prev._count.id },
-    revenueChange:
-      prevRev > 0 ? Math.round(((currRev - prevRev) / prevRev) * 100) : null,
-    countChange:
-      prev._count.id > 0
-        ? Math.round(((curr._count.id - prev._count.id) / prev._count.id) * 100)
-        : null,
-  };
-}
- 
-// ── helpers ───────────────────────────────────────────────────────────────────
-private getTimeKey(date: Date, groupBy: 'day' | 'month' | 'year'): string {
-  const d = new Date(date);
-  if (groupBy === 'day')   return d.toISOString().slice(0, 10);
-  if (groupBy === 'month') return d.toISOString().slice(0, 7);
-  return String(d.getFullYear());
-}
- 
-private getDefaultStartDate(groupBy: 'day' | 'month' | 'year'): Date {
-  const d = new Date();
-  if (groupBy === 'day')   { d.setDate(d.getDate() - 30);    return d; }
-  if (groupBy === 'month') { d.setMonth(d.getMonth() - 12);  return d; }
-  d.setFullYear(d.getFullYear() - 5);
-  return d;
-}
+    });
+
+    // 4. Chart data theo time bucket
+    const chartData = await this.getChartData(start, end, groupBy);
+
+    // 5. So sánh với kỳ trước
+    const comparison = await this.getComparisonData(start, end);
+
+    const totalRevenue =
+      Number(accountVipAgg._sum.amount ?? 0) +
+      Number(postVipAgg._sum.amount ?? 0) +
+      Number(depositAgg._sum.amount ?? 0);
+
+    const totalTx = successCount + failedCount + pendingCount;
+
+    return {
+      data: {
+        summary: {
+          totalRevenue,
+          accountVip: {
+            revenue: Number(accountVipAgg._sum.amount ?? 0),
+            count: accountVipAgg._count.id,
+          },
+          postVip: {
+            revenue: Number(postVipAgg._sum.amount ?? 0),
+            count: postVipAgg._count.id,
+          },
+          deposit: {
+            revenue: Number(depositAgg._sum.amount ?? 0),
+            count: depositAgg._count.id,
+          },
+        },
+        transactionStatus: {
+          success: successCount,
+          failed: failedCount,
+          pending: pendingCount,
+          total: totalTx,
+          successRate:
+            totalTx > 0 ? Math.round((successCount / totalTx) * 100) : 0,
+        },
+        methodBreakdown: methodBreakdown.map((m) => ({
+          method: m.paymentMethod,
+          revenue: Number(m._sum.amount ?? 0),
+          count: m._count.id,
+        })),
+        chartData,
+        comparison,
+        period: { startDate: start, endDate: end, groupBy },
+      },
+    };
+  }
+
+  // ── getChartData: group payments vào buckets day/month/year ──────────────────
+  private async getChartData(
+    start: Date,
+    end: Date,
+    groupBy: 'day' | 'month' | 'year',
+  ) {
+    const payments = await this.prisma.payment.findMany({
+      where: { status: 1, createdAt: { gte: start, lte: end } },
+      select: { amount: true, paymentType: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const buckets = new Map<
+      string,
+      {
+        label: string;
+        accountVip: number;
+        postVip: number;
+        deposit: number;
+        total: number;
+      }
+    >();
+
+    for (const p of payments) {
+      const key = this.getTimeKey(p.createdAt, groupBy);
+      if (!buckets.has(key)) {
+        buckets.set(key, {
+          label: key,
+          accountVip: 0,
+          postVip: 0,
+          deposit: 0,
+          total: 0,
+        });
+      }
+      const b = buckets.get(key)!;
+      const amount = Number(p.amount);
+      b.total += amount;
+      if (p.paymentType === 'ACCOUNT_VIP') b.accountVip += amount;
+      else if (p.paymentType === 'POST_VIP') b.postVip += amount;
+      else if (p.paymentType === 'PROPERTY_DEPOSIT') b.deposit += amount;
+    }
+
+    return Array.from(buckets.values());
+  }
+
+  // ── getComparisonData: so sánh kỳ hiện tại vs kỳ trước tương đương ──────────
+  private async getComparisonData(start: Date, end: Date) {
+    const duration = end.getTime() - start.getTime();
+    const prevStart = new Date(start.getTime() - duration);
+    const prevEnd = new Date(start.getTime() - 1);
+
+    const [curr, prev] = await Promise.all([
+      this.prisma.payment.aggregate({
+        where: { status: 1, createdAt: { gte: start, lte: end } },
+        _sum: { amount: true },
+        _count: { id: true },
+      }),
+      this.prisma.payment.aggregate({
+        where: { status: 1, createdAt: { gte: prevStart, lte: prevEnd } },
+        _sum: { amount: true },
+        _count: { id: true },
+      }),
+    ]);
+
+    const currRev = Number(curr._sum.amount ?? 0);
+    const prevRev = Number(prev._sum.amount ?? 0);
+
+    return {
+      currentPeriod: { revenue: currRev, count: curr._count.id },
+      previousPeriod: { revenue: prevRev, count: prev._count.id },
+      revenueChange:
+        prevRev > 0 ? Math.round(((currRev - prevRev) / prevRev) * 100) : null,
+      countChange:
+        prev._count.id > 0
+          ? Math.round(
+              ((curr._count.id - prev._count.id) / prev._count.id) * 100,
+            )
+          : null,
+    };
+  }
+
+  // ── helpers ───────────────────────────────────────────────────────────────────
+  private getTimeKey(date: Date, groupBy: 'day' | 'month' | 'year'): string {
+    const d = new Date(date);
+    if (groupBy === 'day') return d.toISOString().slice(0, 10);
+    if (groupBy === 'month') return d.toISOString().slice(0, 7);
+    return String(d.getFullYear());
+  }
+
+  private getDefaultStartDate(groupBy: 'day' | 'month' | 'year'): Date {
+    const d = new Date();
+    if (groupBy === 'day') {
+      d.setDate(d.getDate() - 30);
+      return d;
+    }
+    if (groupBy === 'month') {
+      d.setMonth(d.getMonth() - 12);
+      return d;
+    }
+    d.setFullYear(d.getFullYear() - 5);
+    return d;
+  }
 }

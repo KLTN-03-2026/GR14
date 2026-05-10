@@ -353,8 +353,10 @@ export class PostService {
         return {
           ...post,
           isVip: Boolean(vipStillActive),
-          vipPackageName: vipStillActive ? (vip?.package?.name || null) : null,
-          vipPriorityLevel: vipStillActive ? (vip?.package?.priorityLevel ?? post.vipPriorityLevel ?? null) : 0,
+          vipPackageName: vipStillActive ? vip?.package?.name || null : null,
+          vipPriorityLevel: vipStillActive
+            ? (vip?.package?.priorityLevel ?? post.vipPriorityLevel ?? null)
+            : 0,
           vipSubscriptions: undefined,
         };
       });
@@ -516,7 +518,14 @@ export class PostService {
       where: { id },
       include: {
         user: {
-          select: { id: true, username: true, fullName: true, phone: true, isVip: true, vipPriorityLevel: true },
+          select: {
+            id: true,
+            username: true,
+            fullName: true,
+            phone: true,
+            isVip: true,
+            vipPriorityLevel: true,
+          },
         },
         images: {
           select: { id: true, url: true, position: true },
@@ -552,7 +561,9 @@ export class PostService {
         user: { select: { fullName: true, email: true } },
         vipSubscriptions: {
           where: { status: 1 },
-          include: { package: { select: { durationDays: true, priorityLevel: true } } },
+          include: {
+            package: { select: { durationDays: true, priorityLevel: true } },
+          },
           orderBy: { endDate: 'desc' },
           take: 1,
         },
@@ -577,7 +588,8 @@ export class PostService {
           now.getTime() + vipSub.package.durationDays * 24 * 60 * 60 * 1000,
         );
         // Chỉ reset nếu startDate cũ sớm hơn now (thời gian VIP đang chạy lúc chờ duyệt)
-        const startedBeforeApproval = !vipSub.startDate || vipSub.startDate < now;
+        const startedBeforeApproval =
+          !vipSub.startDate || vipSub.startDate < now;
         if (startedBeforeApproval) {
           await tx.vipSubscription.update({
             where: { id: vipSub.id },
@@ -609,7 +621,9 @@ export class PostService {
     }
 
     // Gửi thông báo trong ứng dụng
-    void this.notificationService.notifyPostApproved(post.userId, id, post.title).catch(() => null);
+    void this.notificationService
+      .notifyPostApproved(post.userId, id, post.title)
+      .catch(() => null);
 
     return { message: 'Đã duyệt bài đăng' };
   }
@@ -640,7 +654,9 @@ export class PostService {
     }
 
     // Gửi thông báo trong ứng dụng
-    void this.notificationService.notifyPostRejected(post.userId, id, post.title).catch(() => null);
+    void this.notificationService
+      .notifyPostRejected(post.userId, id, post.title)
+      .catch(() => null);
 
     return { message: 'Đã từ chối bài đăng', data: updated };
   }
@@ -673,7 +689,10 @@ export class PostService {
 
       // Parse keepImageIds from comma-separated string to array of numbers
       const keepIds = keepImageIds
-        ? keepImageIds.split(',').map((id) => Number(id.trim())).filter((id) => !isNaN(id))
+        ? keepImageIds
+            .split(',')
+            .map((id) => Number(id.trim()))
+            .filter((id) => !isNaN(id))
         : [];
 
       // Handle image updates
@@ -744,14 +763,17 @@ export class PostService {
   }
   async initiatePostVipUpgrade(postId: number, userId: number) {
     const post = await this.prisma.post.findFirst({
-        where: { id: postId, userId },
+      where: { id: postId, userId },
     });
-    if (!post) throw new NotFoundException('Bài đăng không tồn tại hoặc bạn không có quyền');
+    if (!post)
+      throw new NotFoundException(
+        'Bài đăng không tồn tại hoặc bạn không có quyền',
+      );
     if (post.isVip) throw new BadRequestException('Bài đăng đã là VIP');
 
     return {
-        message: 'Vui lòng chọn gói VIP cho bài đăng',
-        data: { postId, postTitle: post.title },
+      message: 'Vui lòng chọn gói VIP cho bài đăng',
+      data: { postId, postTitle: post.title },
     };
-}
+  }
 }

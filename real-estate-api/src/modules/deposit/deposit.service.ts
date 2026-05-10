@@ -16,11 +16,11 @@ import { RedisService } from '../../common/redis/redis.service';
 // ─── Hằng số ───────────────────────────────────────────────────────────────
 const AFTER_VIEWING_LOCK_DAYS = 3;
 const CANCEL_BEFORE_VIEWING_REFUND_RATE = 0.95; // Huỷ trước ngày hẹn → hoàn 95%
-const CANCEL_AFTER_VIEWING_REFUND_RATE = 0.50;  // Huỷ sau ngày hẹn  → hoàn 50%
-const PENDING_DEPOSIT_TTL_MINUTES = 30;          // Fix #2: Deposit pending quá 30 phút → tự cleanup
-const MIN_DEPOSIT_AMOUNT = 1_000_000;            // Fix #6: Tối thiểu 1 triệu VND
-const DEPOSIT_RATE = 0.002;                // 0.2% giá trị BĐS
-const DEPOSIT_FLEX_AMOUNT = 500_000;       // Linh hoạt ±500k quanh giá đề xuất
+const CANCEL_AFTER_VIEWING_REFUND_RATE = 0.5; // Huỷ sau ngày hẹn  → hoàn 50%
+const PENDING_DEPOSIT_TTL_MINUTES = 30; // Fix #2: Deposit pending quá 30 phút → tự cleanup
+const MIN_DEPOSIT_AMOUNT = 1_000_000; // Fix #6: Tối thiểu 1 triệu VND
+const DEPOSIT_RATE = 0.002; // 0.2% giá trị BĐS
+const DEPOSIT_FLEX_AMOUNT = 500_000; // Linh hoạt ±500k quanh giá đề xuất
 
 export interface ICreateDepositRequest {
   appointmentId: number;
@@ -64,7 +64,10 @@ export class DepositService {
   private readonly houseDetailKey = (id: number) => `house:${id}`;
   private readonly landDetailKey = (id: number) => `land:${id}`;
 
-  private async invalidatePropertyDetailCache(houseId?: number, landId?: number) {
+  private async invalidatePropertyDetailCache(
+    houseId?: number,
+    landId?: number,
+  ) {
     if (houseId) {
       await this.redis.del(this.houseDetailKey(houseId)).catch(() => null);
     }
@@ -114,7 +117,10 @@ export class DepositService {
   }
 
   private formatCurrency(amount: number): string {
-    return amount.toLocaleString('vi-VN', { style: 'currency', currency: 'VND' });
+    return amount.toLocaleString('vi-VN', {
+      style: 'currency',
+      currency: 'VND',
+    });
   }
 
   // ── Queries ────────────────────────────────────────────────────────────────
@@ -175,7 +181,9 @@ export class DepositService {
       this.prisma.propertyDeposit.findMany({
         where,
         include: {
-          user: { select: { id: true, fullName: true, email: true, phone: true } },
+          user: {
+            select: { id: true, fullName: true, email: true, phone: true },
+          },
           appointment: {
             include: {
               house: { select: { id: true, title: true } },
@@ -197,7 +205,11 @@ export class DepositService {
     };
   }
 
-  async findRefundRequests(page: number = 1, limit: number = 10, status?: number) {
+  async findRefundRequests(
+    page: number = 1,
+    limit: number = 10,
+    status?: number,
+  ) {
     const skip = (page - 1) * limit;
 
     const where =
@@ -248,7 +260,9 @@ export class DepositService {
 
   // Fix #2: Tìm deposit pending (status=0) quá thời hạn → cleanup
   async findStalePendingDepositIds(now: Date): Promise<number[]> {
-    const cutoff = new Date(now.getTime() - PENDING_DEPOSIT_TTL_MINUTES * 60 * 1000);
+    const cutoff = new Date(
+      now.getTime() - PENDING_DEPOSIT_TTL_MINUTES * 60 * 1000,
+    );
     const stale = await this.prisma.propertyDeposit.findMany({
       where: {
         status: 0,
@@ -266,7 +280,9 @@ export class DepositService {
       const payment = await tx.payment.findFirst({ where: { depositId } });
       if (payment) {
         // Xoá paymentTransaction trước
-        await tx.paymentTransaction.deleteMany({ where: { paymentId: payment.id } });
+        await tx.paymentTransaction.deleteMany({
+          where: { paymentId: payment.id },
+        });
         // Xoá payment
         await tx.payment.delete({ where: { id: payment.id } });
       }
@@ -292,8 +308,12 @@ export class DepositService {
     const appointment = await this.prisma.appointment.findUnique({
       where: { id: appointmentId },
       include: {
-        house: { select: { id: true, title: true, depositStatus: true, price: true } },
-        land: { select: { id: true, title: true, depositStatus: true, price: true } },
+        house: {
+          select: { id: true, title: true, depositStatus: true, price: true },
+        },
+        land: {
+          select: { id: true, title: true, depositStatus: true, price: true },
+        },
         deposit: true,
       },
     });
@@ -316,10 +336,13 @@ export class DepositService {
       const s = appointment.deposit.status;
       if (s === 0) {
         // Deposit pending quá hạn → tự cleanup
-        const ageMs = now.getTime() - new Date(appointment.deposit.createdAt).getTime();
+        const ageMs =
+          now.getTime() - new Date(appointment.deposit.createdAt).getTime();
         if (ageMs > PENDING_DEPOSIT_TTL_MINUTES * 60 * 1000) {
           await this.cleanupStalePendingDeposit(appointment.deposit.id);
-          this.logger.log(`Cleaned up stale pending deposit #${appointment.deposit.id}`);
+          this.logger.log(
+            `Cleaned up stale pending deposit #${appointment.deposit.id}`,
+          );
         } else {
           throw new BadRequestException(
             'Lịch hẹn này đã có giao dịch cọc đang chờ thanh toán. Vui lòng hoàn tất hoặc đợi hết hạn.',
@@ -340,8 +363,14 @@ export class DepositService {
     const propertyPrice = Number(property.price || 0);
 
     if (propertyPrice > 0) {
-      const suggestedAmount = Math.max(MIN_DEPOSIT_AMOUNT, Math.round(propertyPrice * DEPOSIT_RATE));
-      const minAmount = Math.max(MIN_DEPOSIT_AMOUNT, suggestedAmount - DEPOSIT_FLEX_AMOUNT);
+      const suggestedAmount = Math.max(
+        MIN_DEPOSIT_AMOUNT,
+        Math.round(propertyPrice * DEPOSIT_RATE),
+      );
+      const minAmount = Math.max(
+        MIN_DEPOSIT_AMOUNT,
+        suggestedAmount - DEPOSIT_FLEX_AMOUNT,
+      );
       const maxAmount = suggestedAmount + DEPOSIT_FLEX_AMOUNT;
       if (amount < minAmount || amount > maxAmount) {
         throw new BadRequestException(
@@ -365,7 +394,9 @@ export class DepositService {
           select: { depositStatus: true },
         });
         if (house?.depositStatus === 1) {
-          throw new BadRequestException('Bất động sản này đang được giữ chỗ bởi khách hàng khác');
+          throw new BadRequestException(
+            'Bất động sản này đang được giữ chỗ bởi khách hàng khác',
+          );
         }
       } else if (appointment.land?.id) {
         const land = await tx.land.findUnique({
@@ -373,12 +404,17 @@ export class DepositService {
           select: { depositStatus: true },
         });
         if (land?.depositStatus === 1) {
-          throw new BadRequestException('Bất động sản này đang được giữ chỗ bởi khách hàng khác');
+          throw new BadRequestException(
+            'Bất động sản này đang được giữ chỗ bởi khách hàng khác',
+          );
         }
       }
 
       // 1. Tạo deposit record
-      const depositType = this.resolveDepositType(appointment.appointmentDate, now);
+      const depositType = this.resolveDepositType(
+        appointment.appointmentDate,
+        now,
+      );
       const deposit = await tx.propertyDeposit.create({
         data: {
           appointmentId,
@@ -513,7 +549,9 @@ export class DepositService {
     const userEmail = deposit.user?.email;
     const userId = deposit.user?.id;
     const expiresAtStr = deposit.expiresAt
-      ? new Date(deposit.expiresAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })
+      ? new Date(deposit.expiresAt).toLocaleString('vi-VN', {
+          timeZone: 'Asia/Ho_Chi_Minh',
+        })
       : 'Không xác định';
 
     if (userEmail) {
@@ -524,16 +562,24 @@ export class DepositService {
         expiresAtStr,
         deposit.depositType,
       );
-      this.mailProducer.sendMail(userEmail, 'Đặt cọc bất động sản thành công 🎉', html);
+      this.mailProducer.sendMail(
+        userEmail,
+        'Đặt cọc bất động sản thành công 🎉',
+        html,
+      );
     }
 
     if (userId) {
-      this.notificationService.create({
-        userId,
-        type: 'SYSTEM',
-        title: 'Đặt cọc thành công 🎉',
-        message: `Đặt cọc "${propertyTitle}" thành công với số tiền ${this.formatCurrency(Number(deposit.amount))}. Hạn giữ chỗ: ${expiresAtStr}.`,
-      }).catch((err) => this.logger.warn(`Notification failed: ${err.message}`));
+      this.notificationService
+        .create({
+          userId,
+          type: 'SYSTEM',
+          title: 'Đặt cọc thành công 🎉',
+          message: `Đặt cọc "${propertyTitle}" thành công với số tiền ${this.formatCurrency(Number(deposit.amount))}. Hạn giữ chỗ: ${expiresAtStr}.`,
+        })
+        .catch((err) =>
+          this.logger.warn(`Notification failed: ${err.message}`),
+        );
     }
 
     return { message: 'Xác nhận đặt cọc thành công', depositId };
@@ -572,8 +618,8 @@ export class DepositService {
 
     const isBefore = now < deposit.appointment.appointmentDate;
     const refundRate = isBefore
-      ? CANCEL_BEFORE_VIEWING_REFUND_RATE   // Chưa xem → hoàn 95%
-      : CANCEL_AFTER_VIEWING_REFUND_RATE;   // Đã qua ngày hẹn → hoàn 50%
+      ? CANCEL_BEFORE_VIEWING_REFUND_RATE // Chưa xem → hoàn 95%
+      : CANCEL_AFTER_VIEWING_REFUND_RATE; // Đã qua ngày hẹn → hoàn 50%
     const refundAmount = Math.round(Number(deposit.amount) * refundRate);
 
     await this.prisma.propertyDeposit.update({
@@ -645,9 +691,15 @@ export class DepositService {
         });
 
         if (houseId) {
-          await tx.house.update({ where: { id: houseId }, data: { depositStatus: 0 } });
+          await tx.house.update({
+            where: { id: houseId },
+            data: { depositStatus: 0 },
+          });
         } else if (landId) {
-          await tx.land.update({ where: { id: landId }, data: { depositStatus: 0 } });
+          await tx.land.update({
+            where: { id: landId },
+            data: { depositStatus: 0 },
+          });
         }
       });
 
@@ -661,17 +713,25 @@ export class DepositService {
           propertyTitle,
           refundAmount,
         );
-        this.mailProducer.sendMail(userEmail, 'Yêu cầu hoàn tiền đã được duyệt ✅', html);
+        this.mailProducer.sendMail(
+          userEmail,
+          'Yêu cầu hoàn tiền đã được duyệt ✅',
+          html,
+        );
       }
 
       // Fix #8: Gửi notification
       if (userId) {
-        this.notificationService.create({
-          userId,
-          type: 'SYSTEM',
-          title: 'Hoàn tiền đã được duyệt ✅',
-          message: `Yêu cầu hoàn tiền đặt cọc "${propertyTitle}" đã được duyệt. Số tiền ${this.formatCurrency(Number(deposit.refundAmount || deposit.amount))} sẽ được chuyển về tài khoản của bạn.`,
-        }).catch((err) => this.logger.warn(`Notification failed: ${err.message}`));
+        this.notificationService
+          .create({
+            userId,
+            type: 'SYSTEM',
+            title: 'Hoàn tiền đã được duyệt ✅',
+            message: `Yêu cầu hoàn tiền đặt cọc "${propertyTitle}" đã được duyệt. Số tiền ${this.formatCurrency(Number(deposit.refundAmount || deposit.amount))} sẽ được chuyển về tài khoản của bạn.`,
+          })
+          .catch((err) =>
+            this.logger.warn(`Notification failed: ${err.message}`),
+          );
       }
 
       return { message: 'Đã duyệt hoàn tiền thành công', depositId };
@@ -691,18 +751,26 @@ export class DepositService {
           propertyTitle,
           dto.adminNote,
         );
-        this.mailProducer.sendMail(userEmail, 'Yêu cầu hoàn tiền bị từ chối ❌', html);
+        this.mailProducer.sendMail(
+          userEmail,
+          'Yêu cầu hoàn tiền bị từ chối ❌',
+          html,
+        );
       }
 
       // Fix #8: Gửi notification
       if (userId) {
         const noteMsg = dto.adminNote ? ` Lý do: ${dto.adminNote}` : '';
-        this.notificationService.create({
-          userId,
-          type: 'SYSTEM',
-          title: 'Yêu cầu hoàn tiền bị từ chối ❌',
-          message: `Yêu cầu hoàn tiền đặt cọc "${propertyTitle}" đã bị từ chối.${noteMsg} Giao dịch cọc vẫn đang giữ chỗ.`,
-        }).catch((err) => this.logger.warn(`Notification failed: ${err.message}`));
+        this.notificationService
+          .create({
+            userId,
+            type: 'SYSTEM',
+            title: 'Yêu cầu hoàn tiền bị từ chối ❌',
+            message: `Yêu cầu hoàn tiền đặt cọc "${propertyTitle}" đã bị từ chối.${noteMsg} Giao dịch cọc vẫn đang giữ chỗ.`,
+          })
+          .catch((err) =>
+            this.logger.warn(`Notification failed: ${err.message}`),
+          );
       }
 
       return { message: 'Đã từ chối yêu cầu hoàn tiền', depositId };

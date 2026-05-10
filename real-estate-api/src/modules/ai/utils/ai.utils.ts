@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { ParsedIntent, VectorHit } from '../types/ai.types';
 
 export class AiUtils {
@@ -68,21 +69,24 @@ export class AiUtils {
       maxTokens?: number;
       timeout?: number;
       isJson?: boolean;
-    } = {}
+    } = {},
   ): Promise<string | null> {
-    const axios = require('axios');
-    
     // Parse multiple Gemini keys separated by commas
     const rawGeminiKeys = process.env.GEMINI_API_KEY || '';
-    const geminiApiKeys = rawGeminiKeys.split(',').map((k: string) => k.trim()).filter(Boolean);
-    
+    const geminiApiKeys = rawGeminiKeys
+      .split(',')
+      .map((k: string) => k.trim())
+      .filter(Boolean);
+
     const geminiModel = process.env.GEMINI_MODEL_PRIMARY || 'gemini-2.5-flash';
-    const geminiApiBase = process.env.GEMINI_API_URL || 'https://generativelanguage.googleapis.com/v1beta';
-    
+    const geminiApiBase =
+      process.env.GEMINI_API_URL ||
+      'https://generativelanguage.googleapis.com/v1beta';
+
     // User's provided Groq Key as ultimate fallback
     const groqApiKey = process.env.GROQ_API_KEY || '';
     const groqModel = 'llama-3.3-70b-versatile';
-    
+
     // OpenRouter fallback
     const openRouterApiKey = process.env.OPENROUTER_API_KEY || '';
     const openRouterModel = 'google/gemini-2.5-flash';
@@ -90,8 +94,8 @@ export class AiUtils {
     const timeout = options.timeout || 15000;
 
     // Standardize contents
-    const contents = Array.isArray(promptOrContents) 
-      ? promptOrContents 
+    const contents = Array.isArray(promptOrContents)
+      ? promptOrContents
       : [{ role: 'user', parts: [{ text: promptOrContents }] }];
 
     const generationConfig: any = {
@@ -112,30 +116,49 @@ export class AiUtils {
             contents: contents,
             generationConfig: generationConfig,
             safetySettings: [
-              { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
-              { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
-              { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
-              { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+              {
+                category: 'HARM_CATEGORY_HARASSMENT',
+                threshold: 'BLOCK_ONLY_HIGH',
+              },
+              {
+                category: 'HARM_CATEGORY_HATE_SPEECH',
+                threshold: 'BLOCK_ONLY_HIGH',
+              },
+              {
+                category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+                threshold: 'BLOCK_ONLY_HIGH',
+              },
+              {
+                category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
+                threshold: 'BLOCK_ONLY_HIGH',
+              },
             ],
           },
-          { timeout }
+          { timeout },
         );
-        const text = resp.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const text =
+          resp.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
         const finishReason = resp.data?.candidates?.[0]?.finishReason;
-        
+
         if (finishReason === 'SAFETY' || finishReason === 'RECITATION') {
-           console.warn(`[LLM] Gemini blocked by safety filters. Key: ${apiKey.substring(0, 8)}...`);
-           continue; // Maybe next key won't be blocked, but unlikely. Let's still fallback.
+          console.warn(
+            `[LLM] Gemini blocked by safety filters. Key: ${apiKey.substring(0, 8)}...`,
+          );
+          continue; // Maybe next key won't be blocked, but unlikely. Let's still fallback.
         }
-        
+
         if (text) return text;
       } catch (err: any) {
         const status = err.response?.status;
         if (status === 429) {
-          console.warn(`[LLM] Gemini Rate Limit Hit for key starting with ${apiKey.substring(0, 8)}... Trying next key...`);
+          console.warn(
+            `[LLM] Gemini Rate Limit Hit for key starting with ${apiKey.substring(0, 8)}... Trying next key...`,
+          );
           continue; // Try next key
         } else {
-          console.warn(`[LLM] Gemini failed with status ${status}: ${AiUtils.stringifyError(err)}. Moving to next fallback...`);
+          console.warn(
+            `[LLM] Gemini failed with status ${status}: ${AiUtils.stringifyError(err)}. Moving to next fallback...`,
+          );
           break; // Not a rate limit issue, break out and try Groq
         }
       }
@@ -152,7 +175,7 @@ export class AiUtils {
           const role = c.role === 'model' ? 'assistant' : 'user';
           const textContent = c.parts?.[0]?.text || '';
           if (textContent) {
-             messages.push({ role, content: textContent });
+            messages.push({ role, content: textContent });
           }
         }
 
@@ -163,13 +186,16 @@ export class AiUtils {
           max_tokens: options.maxTokens ?? 1024,
         };
         if (options.isJson) {
-           groqBody.response_format = { type: 'json_object' };
-           // Groq requires the prompt to contain the word "JSON"
-           if (messages[0].role === 'system') {
-               messages[0].content += ' (Please format the output as JSON)';
-           } else {
-               messages.unshift({ role: 'system', content: 'Please format the output as JSON' });
-           }
+          groqBody.response_format = { type: 'json_object' };
+          // Groq requires the prompt to contain the word "JSON"
+          if (messages[0].role === 'system') {
+            messages[0].content += ' (Please format the output as JSON)';
+          } else {
+            messages.unshift({
+              role: 'system',
+              content: 'Please format the output as JSON',
+            });
+          }
         }
 
         const resp = await axios.post(
@@ -181,18 +207,22 @@ export class AiUtils {
               'Content-Type': 'application/json',
             },
             timeout,
-          }
+          },
         );
         const text = resp.data?.choices?.[0]?.message?.content || '';
         if (text) return text;
       } catch (err: any) {
-        console.error(`[LLM] Groq fallback failed: ${AiUtils.stringifyError(err)}`);
+        console.error(
+          `[LLM] Groq fallback failed: ${AiUtils.stringifyError(err)}`,
+        );
       }
     }
 
     // 3. Fallback to OpenRouter if Groq also failed
     if (openRouterApiKey) {
-      console.log(`[LLM] Falling back to OpenRouter API using model ${openRouterModel}...`);
+      console.log(
+        `[LLM] Falling back to OpenRouter API using model ${openRouterModel}...`,
+      );
       try {
         // Convert Gemini contents to OpenAI format
         const messages = [{ role: 'system', content: systemInstruction }];
@@ -200,7 +230,7 @@ export class AiUtils {
           const role = c.role === 'model' ? 'assistant' : 'user';
           const textContent = c.parts?.[0]?.text || '';
           if (textContent) {
-             messages.push({ role, content: textContent });
+            messages.push({ role, content: textContent });
           }
         }
 
@@ -210,10 +240,10 @@ export class AiUtils {
           temperature: options.temperature ?? 0.3,
           max_tokens: options.maxTokens ?? 1024,
         };
-        
+
         // Note: JSON object support in OpenRouter depends on the model.
         if (options.isJson) {
-           openRouterBody.response_format = { type: 'json_object' };
+          openRouterBody.response_format = { type: 'json_object' };
         }
 
         const resp = await axios.post(
@@ -223,16 +253,19 @@ export class AiUtils {
             headers: {
               Authorization: `Bearer ${openRouterApiKey}`,
               'Content-Type': 'application/json',
-              'HTTP-Referer': process.env.FRONTEND_URL || 'http://localhost:3000', 
+              'HTTP-Referer':
+                process.env.FRONTEND_URL || 'http://localhost:3000',
               'X-Title': 'BlacksCity Bot',
             },
             timeout,
-          }
+          },
         );
         const text = resp.data?.choices?.[0]?.message?.content || '';
         if (text) return text;
       } catch (err: any) {
-        console.error(`[LLM] OpenRouter fallback failed: ${AiUtils.stringifyError(err)}`);
+        console.error(
+          `[LLM] OpenRouter fallback failed: ${AiUtils.stringifyError(err)}`,
+        );
       }
     }
 
@@ -259,7 +292,8 @@ export class AiUtils {
     }
 
     // Pattern 2: X tỷ Y triệu
-    const tyRegex = /(\d+(?:[.,]\d+)?)\s*(?:tỷ|ty)\s*(?:(\d+)\s*(?:triệu|trieu|tr))?/gi;
+    const tyRegex =
+      /(\d+(?:[.,]\d+)?)\s*(?:tỷ|ty)\s*(?:(\d+)\s*(?:triệu|trieu|tr))?/gi;
     while ((match = tyRegex.exec(text)) !== null) {
       const ty = Number(match[1].replace(',', '.'));
       const trieu = match[2] ? Number(match[2]) : 0;
@@ -277,14 +311,15 @@ export class AiUtils {
   }
 
   static parseCompareDescriptions(question: string): string[] {
-    let stripped = question
+    const stripped = question
       .replace(
         /^(so\s+s[aá]nh|compare|so\s+v[oớ]i|h[aã]y\s+so\s+s[aá]nh)\s*/i,
         '',
       )
       .trim();
 
-    const splitRegex = /\s+(?:so\s+s[aá]nh\s+v[oớ]i|v[oớ]i|và|vs|or|hoặc|so\s+s[aá]nh)\s+/i;
+    const splitRegex =
+      /\s+(?:so\s+s[aá]nh\s+v[oớ]i|v[oớ]i|và|vs|or|hoặc|so\s+s[aá]nh)\s+/i;
     const parts = stripped
       .split(splitRegex)
       .map((p) => p.trim())
@@ -356,7 +391,9 @@ export class AiUtils {
     ) {
       intent.type = 'upgrade_listing';
     } else if (
-      /\b(vay|tra gop|lai suat|ngan hang|mortgage|kha nang tai chinh|kha nang vay|tra truoc)\b/.test(normalized) &&
+      /\b(vay|tra gop|lai suat|ngan hang|mortgage|kha nang tai chinh|kha nang vay|tra truoc)\b/.test(
+        normalized,
+      ) &&
       /\b(nha|dat|bds|bat dong san|mua|vay|tra)\b/.test(normalized)
     ) {
       intent.type = 'financing_advice';
@@ -375,25 +412,34 @@ export class AiUtils {
     ) {
       intent.type = 'investment_advice';
     } else if (
-      /\b(thi truong|gia trung binh|xu huong|bien dong|phan tich|thong ke|bao nhieu|mat bang gia)\b/.test(normalized) &&
-      /\b(nha|dat|bds|bat dong san|khu vuc|o|tai|hien nay|nam nay)\b/.test(normalized) &&
+      /\b(thi truong|gia trung binh|xu huong|bien dong|phan tich|thong ke|bao nhieu|mat bang gia)\b/.test(
+        normalized,
+      ) &&
+      /\b(nha|dat|bds|bat dong san|khu vuc|o|tai|hien nay|nam nay)\b/.test(
+        normalized,
+      ) &&
       !/\b(tim|can mua|can thue|mua)\b/.test(normalized)
     ) {
       intent.type = 'market_analysis';
     } else if (
       (/\b(la gi|nghia la|the nao|thu tuc|phap ly)\b/.test(normalized) ||
-        (/\b(so hong|so do|cong chung|phi)\b/.test(normalized) && /\b(la gi|nghia la|the nao|bao nhieu|nhu the nao)\b/.test(normalized))) &&
+        (/\b(so hong|so do|cong chung|phi)\b/.test(normalized) &&
+          /\b(la gi|nghia la|the nao|bao nhieu|nhu the nao)\b/.test(
+            normalized,
+          ))) &&
       !/\b(tim|can mua|can thue|gia bao nhieu)\b/.test(normalized)
     ) {
       intent.type = 'qa_real_estate';
     } else if (
       /\b(kinh nghiem|luu y|loi khuyen)\b/.test(normalized) &&
       (/\b(lan dau|mua nha lan dau)\b/.test(normalized) ||
-       !/\b(tim|can mua|can thue|ty|trieu|can ho)\b/.test(normalized))
+        !/\b(tim|can mua|can thue|ty|trieu|can ho)\b/.test(normalized))
     ) {
       intent.type = 'qa_real_estate';
     } else if (
-      /\b(tu van cho minh|giup minh chon|huong dan mua|nen mua gi|mua nha nao|giup minh tim|ban tu van|muon duoc tu van|can tu van)\b/.test(normalized)
+      /\b(tu van cho minh|giup minh chon|huong dan mua|nen mua gi|mua nha nao|giup minh tim|ban tu van|muon duoc tu van|can tu van)\b/.test(
+        normalized,
+      )
     ) {
       intent.type = 'consultation';
     } else if (
@@ -401,9 +447,14 @@ export class AiUtils {
     ) {
       intent.type = 'recommend_property';
     } else if (
-      /\b(tim kiem|can tim|dang tim|muon mua|muon thue|can mua|can thue|tim nha|tim dat|tim can ho|tim chung cu|tim)\b/.test(normalized) ||
-      (/\b(nha|dat|can ho|chung cu)\b/.test(normalized) && /\b(gia|ty|trieu|bao nhieu|duoi|tren|tam|khoang)\b/.test(normalized)) ||
-      (/\b(nha|dat|can ho|chung cu)\b/.test(normalized) && /\b(phong ngu|pn|tang|m2|met vuong|phong)\b/.test(normalized) && /\b(o|tai|khu vuc|gan)\b/.test(normalized))
+      /\b(tim kiem|can tim|dang tim|muon mua|muon thue|can mua|can thue|tim nha|tim dat|tim can ho|tim chung cu|tim)\b/.test(
+        normalized,
+      ) ||
+      (/\b(nha|dat|can ho|chung cu)\b/.test(normalized) &&
+        /\b(gia|ty|trieu|bao nhieu|duoi|tren|tam|khoang)\b/.test(normalized)) ||
+      (/\b(nha|dat|can ho|chung cu)\b/.test(normalized) &&
+        /\b(phong ngu|pn|tang|m2|met vuong|phong)\b/.test(normalized) &&
+        /\b(o|tai|khu vuc|gan)\b/.test(normalized))
     ) {
       intent.type = 'search_property';
     }
@@ -486,7 +537,26 @@ export class AiUtils {
     );
     if (locationMatch) {
       const location = locationMatch[1].trim();
-      const stopWords = ['day', 'do', 'day do', 'nay', 'kia', 'dau', 'nao', 'truong', 'benh vien', 'cho', 'sieu thi', 'hien nay', 'nam nay', 'minh', 'minh mua nha', 'ban', 'anh', 'chi'];
+      const stopWords = [
+        'day',
+        'do',
+        'day do',
+        'nay',
+        'kia',
+        'dau',
+        'nao',
+        'truong',
+        'benh vien',
+        'cho',
+        'sieu thi',
+        'hien nay',
+        'nam nay',
+        'minh',
+        'minh mua nha',
+        'ban',
+        'anh',
+        'chi',
+      ];
       if (location.length >= 4 && !stopWords.includes(location)) {
         intent.location = location;
       } else if (location === 'hue' || /\d/.test(location)) {
@@ -497,14 +567,45 @@ export class AiUtils {
 
     if (!intent.location) {
       const knownLocations = [
-        'lien chieu', 'son tra', 'hai chau', 'thanh khe', 'cam le',
-        'ngu hanh son', 'hoa vang', 'da nang', 'ha noi', 'ho chi minh',
-        'binh duong', 'dong nai', 'can tho', 'hai phong', 'nha trang',
-        'hue', 'vung tau', 'quang nam', 'binh dinh', 'khanh hoa',
-        'da lat', 'lam dong', 'phu yen', 'quang ngai', 'binh thanh',
-        'tan binh', 'thu duc', 'go vap', 'phu nhuan', 'quan 1',
-        'quan 2', 'quan 3', 'quan 5', 'quan 7', 'quan 9', 'quan 10',
-        'quan 12', 'tan phu', 'binh tan',
+        'lien chieu',
+        'son tra',
+        'hai chau',
+        'thanh khe',
+        'cam le',
+        'ngu hanh son',
+        'hoa vang',
+        'da nang',
+        'ha noi',
+        'ho chi minh',
+        'binh duong',
+        'dong nai',
+        'can tho',
+        'hai phong',
+        'nha trang',
+        'hue',
+        'vung tau',
+        'quang nam',
+        'binh dinh',
+        'khanh hoa',
+        'da lat',
+        'lam dong',
+        'phu yen',
+        'quang ngai',
+        'binh thanh',
+        'tan binh',
+        'thu duc',
+        'go vap',
+        'phu nhuan',
+        'quan 1',
+        'quan 2',
+        'quan 3',
+        'quan 5',
+        'quan 7',
+        'quan 9',
+        'quan 10',
+        'quan 12',
+        'tan phu',
+        'binh tan',
       ];
       for (const loc of knownLocations) {
         if (normalized.includes(loc)) {
@@ -516,25 +617,49 @@ export class AiUtils {
 
     // Map normalized location back to Vietnamese display name with diacritics
     const LOCATION_DISPLAY: Record<string, string> = {
-      'da nang': 'Đà Nẵng', 'ha noi': 'Hà Nội', 'ho chi minh': 'Hồ Chí Minh',
-      'binh duong': 'Bình Dương', 'dong nai': 'Đồng Nai', 'can tho': 'Cần Thơ',
-      'hai phong': 'Hải Phòng', 'nha trang': 'Nha Trang', 'hue': 'Huế',
-      'vung tau': 'Vũng Tàu', 'quang nam': 'Quảng Nam', 'binh dinh': 'Bình Định',
-      'khanh hoa': 'Khánh Hòa', 'da lat': 'Đà Lạt', 'lam dong': 'Lâm Đồng',
-      'phu yen': 'Phú Yên', 'quang ngai': 'Quảng Ngãi',
-      'hai chau': 'Hải Châu', 'lien chieu': 'Liên Chiểu', 'son tra': 'Sơn Trà',
-      'ngu hanh son': 'Ngũ Hành Sơn', 'thanh khe': 'Thanh Khê', 'cam le': 'Cẩm Lệ',
-      'hoa vang': 'Hoà Vang', 'binh thanh': 'Bình Thạnh', 'tan binh': 'Tân Bình',
-      'thu duc': 'Thủ Đức', 'go vap': 'Gò Vấp', 'phu nhuan': 'Phú Nhuận',
-      'tan phu': 'Tân Phú', 'binh tan': 'Bình Tân',
-      'quan 1': 'Quận 1', 'quan 2': 'Quận 2', 'quan 3': 'Quận 3',
-      'quan 5': 'Quận 5', 'quan 7': 'Quận 7', 'quan 9': 'Quận 9',
-      'quan 10': 'Quận 10', 'quan 12': 'Quận 12',
+      'da nang': 'Đà Nẵng',
+      'ha noi': 'Hà Nội',
+      'ho chi minh': 'Hồ Chí Minh',
+      'binh duong': 'Bình Dương',
+      'dong nai': 'Đồng Nai',
+      'can tho': 'Cần Thơ',
+      'hai phong': 'Hải Phòng',
+      'nha trang': 'Nha Trang',
+      hue: 'Huế',
+      'vung tau': 'Vũng Tàu',
+      'quang nam': 'Quảng Nam',
+      'binh dinh': 'Bình Định',
+      'khanh hoa': 'Khánh Hòa',
+      'da lat': 'Đà Lạt',
+      'lam dong': 'Lâm Đồng',
+      'phu yen': 'Phú Yên',
+      'quang ngai': 'Quảng Ngãi',
+      'hai chau': 'Hải Châu',
+      'lien chieu': 'Liên Chiểu',
+      'son tra': 'Sơn Trà',
+      'ngu hanh son': 'Ngũ Hành Sơn',
+      'thanh khe': 'Thanh Khê',
+      'cam le': 'Cẩm Lệ',
+      'hoa vang': 'Hoà Vang',
+      'binh thanh': 'Bình Thạnh',
+      'tan binh': 'Tân Bình',
+      'thu duc': 'Thủ Đức',
+      'go vap': 'Gò Vấp',
+      'phu nhuan': 'Phú Nhuận',
+      'tan phu': 'Tân Phú',
+      'binh tan': 'Bình Tân',
+      'quan 1': 'Quận 1',
+      'quan 2': 'Quận 2',
+      'quan 3': 'Quận 3',
+      'quan 5': 'Quận 5',
+      'quan 7': 'Quận 7',
+      'quan 9': 'Quận 9',
+      'quan 10': 'Quận 10',
+      'quan 12': 'Quận 12',
     };
     if (intent.location && LOCATION_DISPLAY[intent.location]) {
       intent.location = LOCATION_DISPLAY[intent.location];
     }
-
 
     if (intent.location) {
       intent.locationTokens = intent.location
@@ -557,7 +682,9 @@ export class AiUtils {
     // Purpose detection
     if (/\b(dau tu|sinh loi|loi nhuan)\b/.test(normalized)) {
       intent.purpose = 'invest';
-    } else if (/\b(cho thue lai|thue lai|thu nhap thu dong)\b/.test(normalized)) {
+    } else if (
+      /\b(cho thue lai|thue lai|thu nhap thu dong)\b/.test(normalized)
+    ) {
       intent.purpose = 'rent_out';
     } else if (/\b(de o|o lau dai|an cu|dinh cu)\b/.test(normalized)) {
       intent.purpose = 'live';
@@ -593,9 +720,14 @@ export class AiUtils {
   }
 
   static buildIntentInstructions(intent: ParsedIntent): string {
-    const purposeLabel = intent.purpose === 'invest' ? 'đầu tư'
-      : intent.purpose === 'rent_out' ? 'cho thuê lại'
-        : intent.purpose === 'live' ? 'để ở' : '';
+    const purposeLabel =
+      intent.purpose === 'invest'
+        ? 'đầu tư'
+        : intent.purpose === 'rent_out'
+          ? 'cho thuê lại'
+          : intent.purpose === 'live'
+            ? 'để ở'
+            : '';
 
     switch (intent.type) {
       case 'search_property':
@@ -611,8 +743,12 @@ export class AiUtils {
           intent.sourceType
             ? `LOẠI BĐS yêu cầu: ${intent.sourceType === 'house' ? 'NHÀ (house)' : intent.sourceType === 'land' ? 'ĐẤT (land)' : intent.sourceType}. Chỉ gợi ý đúng loại này.`
             : '',
-          intent.location ? `KHU VỰC: ${intent.location}. Ưu tiên BĐS ở khu vực này.` : '',
-          purposeLabel ? `MỤC ĐÍCH: ${purposeLabel}. Đánh giá BĐS theo mục đích này.` : '',
+          intent.location
+            ? `KHU VỰC: ${intent.location}. Ưu tiên BĐS ở khu vực này.`
+            : '',
+          purposeLabel
+            ? `MỤC ĐÍCH: ${purposeLabel}. Đánh giá BĐS theo mục đích này.`
+            : '',
           'Mỗi gợi ý PHẢI có reason giải thích tại sao giá phù hợp, diện tích hợp lý, vị trí thuận lợi.',
         ]
           .filter(Boolean)
@@ -625,7 +761,9 @@ export class AiUtils {
           'QUAN TRỌNG: Nếu người dùng có ngân sách, chỉ gợi ý BĐS TRONG ngân sách.',
           'Giải thích CHI TIẾT lý do gợi ý.',
           'Nếu thiếu thông tin, đặt câu hỏi làm rõ trong followUp.',
-          purposeLabel ? `Mục đích người dùng: ${purposeLabel}. Ưu tiên gợi ý phù hợp mục đích.` : '',
+          purposeLabel
+            ? `Mục đích người dùng: ${purposeLabel}. Ưu tiên gợi ý phù hợp mục đích.`
+            : '',
           intent.maxPrice
             ? `Ngân sách: ${AiUtils.formatVnd(intent.maxPrice)}. Không gợi ý BĐS vượt ngân sách.`
             : '',
@@ -647,9 +785,13 @@ export class AiUtils {
           'Phân tích: tiềm năng tăng giá, thanh khoản, ROI, rủi ro khu vực.',
           'Đề xuất chiến lược: mua bán, cho thuê, giữ dài hạn.',
           'Nếu có dữ liệu CONTEXT, phân tích cụ thể từng BĐS cho mục đích đầu tư.',
-          intent.maxPrice ? `Ngân sách đầu tư: ${AiUtils.formatVnd(intent.maxPrice)}.` : '',
+          intent.maxPrice
+            ? `Ngân sách đầu tư: ${AiUtils.formatVnd(intent.maxPrice)}.`
+            : '',
           intent.location ? `Khu vực quan tâm: ${intent.location}.` : '',
-        ].filter(Boolean).join('\n');
+        ]
+          .filter(Boolean)
+          .join('\n');
 
       case 'market_analysis':
         return [
@@ -657,16 +799,24 @@ export class AiUtils {
           'Cung cấp: mức giá trung bình, xu hướng, phân khúc phổ biến.',
           'Dựa trên dữ liệu CONTEXT nếu có, nếu không thì cung cấp nhận định chung.',
           intent.location ? `Khu vực phân tích: ${intent.location}.` : '',
-        ].filter(Boolean).join('\n');
+        ]
+          .filter(Boolean)
+          .join('\n');
 
       case 'financing_advice':
         return [
           'NHIỆM VỤ: Tư vấn tài chính mua BĐS.',
           'Tính toán: khả năng vay, trả góp, lãi suất tham khảo.',
           'Đề xuất phương án tài chính phù hợp.',
-          intent.monthlyIncome ? `Thu nhập hàng tháng: ${AiUtils.formatVnd(intent.monthlyIncome)}.` : '',
-          intent.maxPrice ? `Giá BĐS mục tiêu: ${AiUtils.formatVnd(intent.maxPrice)}.` : '',
-        ].filter(Boolean).join('\n');
+          intent.monthlyIncome
+            ? `Thu nhập hàng tháng: ${AiUtils.formatVnd(intent.monthlyIncome)}.`
+            : '',
+          intent.maxPrice
+            ? `Giá BĐS mục tiêu: ${AiUtils.formatVnd(intent.maxPrice)}.`
+            : '',
+        ]
+          .filter(Boolean)
+          .join('\n');
 
       default:
         return 'NHIỆM VỤ: Trả lời câu hỏi về BĐS. Nếu có BĐS phù hợp trong CONTEXT, gợi ý kèm lý do cụ thể.';
@@ -734,11 +884,19 @@ export class AiUtils {
 
     return null;
   }
-  static normalizeDetailUrl(url: unknown, source: unknown, sourceId: unknown): string {
+  static normalizeDetailUrl(
+    url: unknown,
+    source: unknown,
+    sourceId: unknown,
+  ): string {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     const src = String(source || '').toLowerCase();
     const id = Number(sourceId);
-    const sourceRoute: Record<string, string> = { house: 'houses', land: 'lands', post: 'posts' };
+    const sourceRoute: Record<string, string> = {
+      house: 'houses',
+      land: 'lands',
+      post: 'posts',
+    };
 
     if (Number.isFinite(id) && id > 0 && sourceRoute[src]) {
       return `${frontendUrl}/${sourceRoute[src]}/${id}`;
@@ -759,7 +917,11 @@ export class AiUtils {
     const location = String(item.location || 'N/A');
     const price = AiUtils.formatVnd(item.price);
     const area = AiUtils.formatArea(item.area);
-    const url = AiUtils.normalizeDetailUrl(item.url, item.source, item.sourceId);
+    const url = AiUtils.normalizeDetailUrl(
+      item.url,
+      item.source,
+      item.sourceId,
+    );
     const reason = String(item.reason || '').trim();
     const bedrooms = Number(item.bedrooms ?? 0);
     const floors = Number(item.floors ?? 0);
@@ -786,7 +948,9 @@ export class AiUtils {
   static toFastAnswer(hits: VectorHit[], intent?: ParsedIntent): string {
     let filtered = hits;
     if (intent?.maxPrice) {
-      filtered = hits.filter(h => Number(h.payload?.price ?? 0) <= intent.maxPrice!);
+      filtered = hits.filter(
+        (h) => Number(h.payload?.price ?? 0) <= intent.maxPrice!,
+      );
       if (filtered.length === 0) filtered = hits.slice(0, 1);
     }
     const recs = filtered.slice(0, 3).map((h) => h.payload || {});
@@ -804,13 +968,19 @@ export class AiUtils {
       const area = AiUtils.formatArea(r.area);
       const url = AiUtils.normalizeDetailUrl(r.url, r.source, r.sourceId);
 
-      const typeStr = String(r.source) === 'land' ? 'lô đất' : String(r.source) === 'house' ? 'căn nhà' : 'bất động sản';
+      const typeStr =
+        String(r.source) === 'land'
+          ? 'lô đất'
+          : String(r.source) === 'house'
+            ? 'căn nhà'
+            : 'bất động sản';
       const loc = [r.district, r.city].filter(Boolean).join(', ');
 
       let dynamicReason = `Gợi ý ${typeStr} tiềm năng`;
       if (loc) dynamicReason += ` khu vực ${loc}`;
       dynamicReason += `, không gian ${area}`;
-      if (Number(r.bedrooms) > 0) dynamicReason += ` cùng thiết kế ${r.bedrooms} phòng ngủ`;
+      if (Number(r.bedrooms) > 0)
+        dynamicReason += ` cùng thiết kế ${r.bedrooms} phòng ngủ`;
       dynamicReason += `, một lựa chọn đáng giá để cân nhắc.`;
 
       let line = `${idx + 1}. **${title}** — ${price} • ${area}`;

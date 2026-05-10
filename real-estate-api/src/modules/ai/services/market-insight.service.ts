@@ -3,7 +3,6 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { RedisService } from '../../../common/redis/redis.service';
 import { MarketInsight } from '../types/ai.types';
 import { AiUtils } from '../utils/ai.utils';
-import axios from 'axios';
 
 /**
  * Provides real-time market insights, investment advice, and trend analysis
@@ -12,16 +11,23 @@ import axios from 'axios';
 @Injectable()
 export class MarketInsightService {
   private readonly logger = new Logger(MarketInsightService.name);
-  private readonly cacheTtlSec = Number(process.env.MARKET_INSIGHT_CACHE_TTL || 3600); // 1 hour
+  private readonly cacheTtlSec = Number(
+    process.env.MARKET_INSIGHT_CACHE_TTL || 3600,
+  ); // 1 hour
   private readonly geminiApiKey = process.env.GEMINI_API_KEY || '';
-  private readonly geminiChatModel = process.env.GEMINI_MODEL_PRIMARY || 'gemini-2.5-flash';
-  private readonly geminiApiBase = process.env.GEMINI_API_URL || 'https://generativelanguage.googleapis.com/v1beta';
-  private readonly geminiTimeoutMs = Number(process.env.GEMINI_TIMEOUT_MS || 15000);
+  private readonly geminiChatModel =
+    process.env.GEMINI_MODEL_PRIMARY || 'gemini-2.5-flash';
+  private readonly geminiApiBase =
+    process.env.GEMINI_API_URL ||
+    'https://generativelanguage.googleapis.com/v1beta';
+  private readonly geminiTimeoutMs = Number(
+    process.env.GEMINI_TIMEOUT_MS || 15000,
+  );
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
-  ) { }
+  ) {}
 
   /**
    * Get market insight for a specific area.
@@ -55,7 +61,12 @@ export class MarketInsightService {
       return this.buildNoDataAnswer(area, propertyType);
     }
 
-    const typeLabel = propertyType === 'land' ? 'đất' : propertyType === 'house' ? 'nhà' : 'bất động sản';
+    const typeLabel =
+      propertyType === 'land'
+        ? 'đất'
+        : propertyType === 'house'
+          ? 'nhà'
+          : 'bất động sản';
     const areaLabel = area || 'tất cả khu vực';
 
     const lines: string[] = [];
@@ -67,29 +78,39 @@ export class MarketInsightService {
     lines.push(`- Giá thấp nhất: **${AiUtils.formatVnd(insight.minPrice)}**`);
     lines.push(`- Giá cao nhất: **${AiUtils.formatVnd(insight.maxPrice)}**`);
     if (insight.avgPricePerM2 > 0) {
-      lines.push(`- Giá trung bình/m²: **${AiUtils.formatVnd(insight.avgPricePerM2)}/m²**`);
+      lines.push(
+        `- Giá trung bình/m²: **${AiUtils.formatVnd(insight.avgPricePerM2)}/m²**`,
+      );
     }
 
     if (insight.priceBreakdown.length > 0) {
       lines.push('');
       lines.push('💰 **Phân bố giá:**');
       for (const segment of insight.priceBreakdown) {
-        const pct = insight.totalListings > 0
-          ? ((segment.count / insight.totalListings) * 100).toFixed(0)
-          : '0';
+        const pct =
+          insight.totalListings > 0
+            ? ((segment.count / insight.totalListings) * 100).toFixed(0)
+            : '0';
         lines.push(`- ${segment.range}: ${segment.count} tin (${pct}%)`);
       }
     }
 
     // Add AI-powered trend analysis
-    const aiAnalysis = await this.getAIMarketAnalysis(question, insight, areaLabel, typeLabel);
+    const aiAnalysis = await this.getAIMarketAnalysis(
+      question,
+      insight,
+      areaLabel,
+      typeLabel,
+    );
     if (aiAnalysis) {
       lines.push('');
       lines.push(aiAnalysis);
     }
 
     lines.push('');
-    lines.push('_Dữ liệu được tổng hợp từ hệ thống BĐS Real Estate. Giá có thể thay đổi theo thời điểm._');
+    lines.push(
+      '_Dữ liệu được tổng hợp từ hệ thống BĐS Real Estate. Giá có thể thay đổi theo thời điểm._',
+    );
 
     return lines.join('\n');
   }
@@ -119,7 +140,9 @@ export class MarketInsightService {
         contextData,
         budget ? `Ngân sách: ${AiUtils.formatVnd(budget)}` : '',
         area ? `Khu vực: ${area}` : '',
-        propertyType ? `Loại BĐS: ${propertyType === 'house' ? 'nhà' : 'đất'}` : '',
+        propertyType
+          ? `Loại BĐS: ${propertyType === 'house' ? 'nhà' : 'đất'}`
+          : '',
         '',
         'Yêu cầu:',
         '1. Phân tích tiềm năng đầu tư khu vực dựa trên dữ liệu',
@@ -128,12 +151,18 @@ export class MarketInsightService {
         '4. Cảnh báo rủi ro cần lưu ý',
         '5. Trả lời bằng tiếng Việt có dấu, dưới 300 từ',
         '6. Dùng gạch đầu dòng và in đậm cho đẹp',
-      ].filter(Boolean).join('\n');
+      ]
+        .filter(Boolean)
+        .join('\n');
 
       const text = await AiUtils.generateLlmResponse(
         prompt,
         'Bạn là chuyên gia tư vấn đầu tư BĐS Việt Nam. Trả lời chuyên nghiệp, dùng tiếng Việt có dấu.',
-        { temperature: 0.4, maxTokens: 1200, timeout: Math.max(this.geminiTimeoutMs, 25000) }
+        {
+          temperature: 0.4,
+          maxTokens: 1200,
+          timeout: Math.max(this.geminiTimeoutMs, 25000),
+        },
       );
 
       this.logger.log(`[INVESTMENT] LLM response length: ${text?.length || 0}`);
@@ -143,7 +172,12 @@ export class MarketInsightService {
     }
 
     // Fallback: rule-based advice
-    return this.buildRuleBasedInvestmentAdvice(area, budget, propertyType, insight);
+    return this.buildRuleBasedInvestmentAdvice(
+      area,
+      budget,
+      propertyType,
+      insight,
+    );
   }
 
   // ─── Private helpers ──────────────────────────────────────────────
@@ -153,22 +187,20 @@ export class MarketInsightService {
     propertyType?: 'house' | 'land',
   ): Promise<MarketInsight | null> {
     try {
-      const locationFilter = area
-        ? this.buildLocationFilter(area)
-        : {};
+      const locationFilter = area ? this.buildLocationFilter(area) : {};
 
       const [houses, lands] = await Promise.all([
         propertyType !== 'land'
           ? this.prisma.house.findMany({
-            where: { status: 1, ...locationFilter },
-            select: { price: true, area: true, district: true, city: true },
-          })
+              where: { status: 1, ...locationFilter },
+              select: { price: true, area: true, district: true, city: true },
+            })
           : Promise.resolve([]),
         propertyType !== 'house'
           ? this.prisma.land.findMany({
-            where: { status: 1, ...locationFilter },
-            select: { price: true, area: true, district: true, city: true },
-          })
+              where: { status: 1, ...locationFilter },
+              select: { price: true, area: true, district: true, city: true },
+            })
           : Promise.resolve([]),
       ]);
 
@@ -194,9 +226,10 @@ export class MarketInsightService {
       allPrices.sort((a, b) => a - b);
 
       const avgPrice = allPrices.reduce((a, b) => a + b, 0) / allPrices.length;
-      const avgPricePerM2 = allPricePerM2.length > 0
-        ? allPricePerM2.reduce((a, b) => a + b, 0) / allPricePerM2.length
-        : 0;
+      const avgPricePerM2 =
+        allPricePerM2.length > 0
+          ? allPricePerM2.reduce((a, b) => a + b, 0) / allPricePerM2.length
+          : 0;
 
       // Build price breakdown segments
       const breakdowns = [
@@ -224,7 +257,9 @@ export class MarketInsightService {
         priceBreakdown,
       };
     } catch (error) {
-      this.logger.warn(`computeMarketInsight failed: ${AiUtils.stringifyError(error)}`);
+      this.logger.warn(
+        `computeMarketInsight failed: ${AiUtils.stringifyError(error)}`,
+      );
       return null;
     }
   }
@@ -237,14 +272,14 @@ export class MarketInsightService {
       'da nang': 'Đà Nẵng',
       'ha noi': 'Hà Nội',
       'ho chi minh': 'Hồ Chí Minh',
-      'hcm': 'Hồ Chí Minh',
+      hcm: 'Hồ Chí Minh',
       'can tho': 'Cần Thơ',
       'hai phong': 'Hải Phòng',
       'binh duong': 'Bình Dương',
       'dong nai': 'Đồng Nai',
       'khanh hoa': 'Khánh Hòa',
       'nha trang': 'Nha Trang',
-      'hue': 'Huế',
+      hue: 'Huế',
       'vung tau': 'Vũng Tàu',
       'phu quoc': 'Phú Quốc',
       'quang nam': 'Quảng Nam',
@@ -266,8 +301,8 @@ export class MarketInsightService {
 
     // DB stores "TP Đà Nẵng", "TP Hà Nội", etc. — add both "TP X" and "X" variants
     const searchVariants = [
-      displayName,           // e.g. "Đà Nẵng"
-      `TP ${displayName}`,   // e.g. "TP Đà Nẵng"
+      displayName, // e.g. "Đà Nẵng"
+      `TP ${displayName}`, // e.g. "TP Đà Nẵng"
       `Thành phố ${displayName}`, // e.g. "Thành phố Đà Nẵng"
     ];
 
@@ -328,12 +363,14 @@ export class MarketInsightService {
       const text = await AiUtils.generateLlmResponse(
         prompt,
         'Bạn là chuyên gia phân tích thị trường BĐS Việt Nam. Trả lời ngắn gọn, chuyên nghiệp.',
-        { temperature: 0.3, maxTokens: 600, timeout: this.geminiTimeoutMs }
+        { temperature: 0.3, maxTokens: 600, timeout: this.geminiTimeoutMs },
       );
 
-      return (text && text.length > 30) ? `🤖 **Nhận định AI:**\n${text}` : null;
+      return text && text.length > 30 ? `🤖 **Nhận định AI:**\n${text}` : null;
     } catch (error) {
-      this.logger.warn(`AI market analysis failed: ${AiUtils.stringifyError(error)}`);
+      this.logger.warn(
+        `AI market analysis failed: ${AiUtils.stringifyError(error)}`,
+      );
       return null;
     }
   }
@@ -356,7 +393,9 @@ export class MarketInsightService {
     if (insight && insight.totalListings > 0) {
       const avgPrice = insight.avgPrice;
       if (budget && budget < avgPrice * 0.7) {
-        lines.push(`⚠️ Ngân sách thấp hơn giá trung bình khu vực (${AiUtils.formatVnd(avgPrice)}). Nên xem xét:`);
+        lines.push(
+          `⚠️ Ngân sách thấp hơn giá trung bình khu vực (${AiUtils.formatVnd(avgPrice)}). Nên xem xét:`,
+        );
         lines.push('- Khu vực lân cận giá mềm hơn');
         lines.push('- Đất nền thay vì nhà hoàn thiện');
         lines.push('- Mua và giữ lâu dài để tăng giá');
@@ -369,7 +408,9 @@ export class MarketInsightService {
     lines.push('📋 **Nguyên tắc đầu tư an toàn:**');
     lines.push('- Kiểm tra pháp lý kỹ (sổ hồng, quy hoạch)');
     lines.push('- Không dùng quá 50% vốn vay');
-    lines.push('- Ưu tiên vị trí gần hạ tầng (đường lớn, trường học, bệnh viện)');
+    lines.push(
+      '- Ưu tiên vị trí gần hạ tầng (đường lớn, trường học, bệnh viện)',
+    );
     lines.push('- Xem xét thanh khoản khu vực (dễ bán lại)');
 
     if (propertyType === 'land') {
@@ -389,8 +430,16 @@ export class MarketInsightService {
     return lines.join('\n');
   }
 
-  private buildNoDataAnswer(area?: string, propertyType?: 'house' | 'land'): string {
-    const typeLabel = propertyType === 'land' ? 'đất' : propertyType === 'house' ? 'nhà' : 'bất động sản';
+  private buildNoDataAnswer(
+    area?: string,
+    propertyType?: 'house' | 'land',
+  ): string {
+    const typeLabel =
+      propertyType === 'land'
+        ? 'đất'
+        : propertyType === 'house'
+          ? 'nhà'
+          : 'bất động sản';
     const areaLabel = area || 'khu vực này';
     return [
       `📊 Hiện tại chưa có đủ dữ liệu thị trường ${typeLabel} tại **${areaLabel}** để phân tích.`,

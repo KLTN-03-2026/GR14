@@ -114,10 +114,10 @@ export const DIVERSITY_CONFIG = {
 // Dùng trong diversity filter để gom BĐS cùng tầm giá vào 1 nhóm
 
 export const PRICE_BUCKETS = {
-  UNDER_1B: 1_000_000_000,     // Dưới 1 tỷ
-  UNDER_3B: 3_000_000_000,     // Dưới 3 tỷ
-  UNDER_5B: 5_000_000_000,     // Dưới 5 tỷ
-  UNDER_10B: 10_000_000_000,   // Dưới 10 tỷ
+  UNDER_1B: 1_000_000_000, // Dưới 1 tỷ
+  UNDER_3B: 3_000_000_000, // Dưới 3 tỷ
+  UNDER_5B: 5_000_000_000, // Dưới 5 tỷ
+  UNDER_10B: 10_000_000_000, // Dưới 10 tỷ
   // Trên 10 tỷ = "over10ty"
 } as const;
 

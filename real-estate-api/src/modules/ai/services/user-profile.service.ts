@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '../../../common/redis/redis.service';
-import { UserProfile, ParsedIntent, ChatTurn } from '../types/ai.types';
+import { UserProfile, ParsedIntent } from '../types/ai.types';
 import { AiUtils } from '../utils/ai.utils';
 
 /**
@@ -10,7 +10,9 @@ import { AiUtils } from '../utils/ai.utils';
 @Injectable()
 export class UserProfileService {
   private readonly logger = new Logger(UserProfileService.name);
-  private readonly profileTtlSec = Number(process.env.USER_PROFILE_TTL || 7 * 24 * 3600); // 7 days
+  private readonly profileTtlSec = Number(
+    process.env.USER_PROFILE_TTL || 7 * 24 * 3600,
+  ); // 7 days
 
   constructor(private readonly redis: RedisService) {}
 
@@ -19,7 +21,9 @@ export class UserProfileService {
   }
 
   async getProfile(sessionId: string): Promise<UserProfile> {
-    const cached = await this.redis.get<UserProfile>(this.profileKey(sessionId));
+    const cached = await this.redis.get<UserProfile>(
+      this.profileKey(sessionId),
+    );
     if (cached) return cached;
 
     return this.createEmptyProfile(sessionId);
@@ -27,7 +31,11 @@ export class UserProfileService {
 
   async saveProfile(profile: UserProfile): Promise<void> {
     profile.lastActiveAt = new Date().toISOString();
-    await this.redis.set(this.profileKey(profile.sessionId), profile, this.profileTtlSec);
+    await this.redis.set(
+      this.profileKey(profile.sessionId),
+      profile,
+      this.profileTtlSec,
+    );
   }
 
   /**
@@ -132,7 +140,9 @@ export class UserProfileService {
    */
   detectDislike(question: string): boolean {
     const normalized = AiUtils.normalizeText(question);
-    return /\b(khong phu hop|khong thich|khong can|khong muon|khong ok|khong duoc|khong hay|khong tot|bo qua|thoi|next|skip)\b/.test(normalized);
+    return /\b(khong phu hop|khong thich|khong can|khong muon|khong ok|khong duoc|khong hay|khong tot|bo qua|thoi|next|skip)\b/.test(
+      normalized,
+    );
   }
 
   /**
@@ -147,13 +157,21 @@ export class UserProfileService {
       parts.push(`Ngân sách: dưới ${AiUtils.formatVnd(profile.budgetMax)}`);
     }
     if (profile.preferredAreas.length > 0) {
-      parts.push(`Khu vực quan tâm: ${profile.preferredAreas.slice(-3).join(', ')}`);
+      parts.push(
+        `Khu vực quan tâm: ${profile.preferredAreas.slice(-3).join(', ')}`,
+      );
     }
     if (profile.propertyType) {
-      parts.push(`Loại BĐS: ${profile.propertyType === 'house' ? 'nhà' : 'đất'}`);
+      parts.push(
+        `Loại BĐS: ${profile.propertyType === 'house' ? 'nhà' : 'đất'}`,
+      );
     }
     if (profile.purpose) {
-      const purposeMap = { invest: 'đầu tư', live: 'để ở', rent_out: 'cho thuê lại' };
+      const purposeMap = {
+        invest: 'đầu tư',
+        live: 'để ở',
+        rent_out: 'cho thuê lại',
+      };
       parts.push(`Mục đích: ${purposeMap[profile.purpose]}`);
     }
     if (profile.keywords.length > 0) {
@@ -173,7 +191,9 @@ export class UserProfileService {
     profile: UserProfile,
     excludeDisliked = true,
   ): T[] {
-    const dislikedSet = new Set(excludeDisliked ? profile.dislikedPropertyIds : []);
+    const dislikedSet = new Set(
+      excludeDisliked ? profile.dislikedPropertyIds : [],
+    );
 
     return hits.filter((h) => {
       const sourceId = Number(h.payload?.sourceId ?? 0);

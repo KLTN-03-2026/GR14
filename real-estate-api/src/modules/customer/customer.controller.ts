@@ -56,13 +56,10 @@ export class CustomerController {
     return this.customerService.delete(id);
   }
   // customer.controller.ts
-@Patch(':id/vip')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN', 'EMPLOYEE')
-async toggleVip(
-  @Param('id') id: string,
-  @Body() body: { isVip: boolean },
-) {
-  return this.customerService.toggleVip(Number(id), body.isVip);
-}
+  @Patch(':id/vip')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'EMPLOYEE')
+  async toggleVip(@Param('id') id: string, @Body() body: { isVip: boolean }) {
+    return this.customerService.toggleVip(Number(id), body.isVip);
+  }
 }

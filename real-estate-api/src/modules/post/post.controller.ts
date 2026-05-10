@@ -20,7 +20,6 @@ import { PostService } from './post.service';
 import { CreatePostDto, UpdatePostDto, PostType } from './dto/post.dto';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('posts')
 export class PostController {
@@ -100,7 +99,13 @@ export class PostController {
     @UploadedFiles() files: Express.Multer.File[],
     @Req() req: any,
   ) {
-    return this.postService.update(id, dto, req.user.id, files, dto.keepImageIds);
+    return this.postService.update(
+      id,
+      dto,
+      req.user.id,
+      files,
+      dto.keepImageIds,
+    );
   }
 
   @Put(':id/approve')
@@ -122,10 +127,9 @@ export class PostController {
   delete(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     return this.postService.delete(id, req.user.id, req.user.roles);
   }
-   upgradeToVip(
-  @Param('id', ParseIntPipe) id: number,
-  @Req() req: any
-) {
-  return this.postService.initiatePostVipUpgrade(id, req.user.id);
-}
+  @Put(':id/upgrade-vip')
+  @UseGuards(AuthGuard('jwt'))
+  upgradeToVip(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    return this.postService.initiatePostVipUpgrade(id, req.user.id);
+  }
 }

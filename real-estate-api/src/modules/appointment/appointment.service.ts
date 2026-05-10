@@ -110,7 +110,7 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     private mailProducer: MailProducerService,
     private autoAssignProducer: AppointmentAutoAssignProducerService,
     private notificationService: NotificationService,
-  ) { }
+  ) {}
 
   onModuleInit() {
     this.slaTimer = setInterval(() => {
@@ -257,7 +257,7 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     return result;
   }
 
- private assertWorkingSlot(start: Date, durationMinutes: number) {
+  private assertWorkingSlot(start: Date, durationMinutes: number) {
     const end = new Date(start.getTime() + durationMinutes * 60_000);
 
     if (!this.isSlotAligned(start)) {
@@ -265,11 +265,15 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (durationMinutes % 30 !== 0) {
-      throw new BadRequestException('Thời lượng lịch hẹn phải chia hết cho 30 phút');
+      throw new BadRequestException(
+        'Thời lượng lịch hẹn phải chia hết cho 30 phút',
+      );
     }
 
     if (!this.isInsideWorkingWindow(start, end)) {
-      throw new BadRequestException('Giờ hẹn phải nằm trong khung làm việc 08:00-12:00 hoặc 13:30-17:30');
+      throw new BadRequestException(
+        'Giờ hẹn phải nằm trong khung làm việc 08:00-12:00 hoặc 13:30-17:30',
+      );
     }
   }
 
@@ -277,7 +281,10 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
    * [ADD] Validate: không cho phép đặt lịch hẹn quá MAX_BOOKING_DAYS_AHEAD (10 ngày) kể từ hôm nay.
    * Tính theo ngày đầy đủ: hết ngày thứ 10 (23:59:59) là deadline.
    */
-  private assertBookingDateWithinLimit(appointmentDate: Date, now = new Date()) {
+  private assertBookingDateWithinLimit(
+    appointmentDate: Date,
+    now = new Date(),
+  ) {
     const maxDate = this.endOfDay(this.addDays(now, MAX_BOOKING_DAYS_AHEAD));
     if (appointmentDate.getTime() > maxDate.getTime()) {
       throw new BadRequestException(
@@ -434,10 +441,10 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
       );
       const fairnessHours = employee.lastAssignedAt
         ? Math.min(
-          72,
-          (Date.now() - new Date(employee.lastAssignedAt).getTime()) /
-          3_600_000,
-        )
+            72,
+            (Date.now() - new Date(employee.lastAssignedAt).getTime()) /
+              3_600_000,
+          )
         : 72;
       const fairnessScore = fairnessHours / 72;
 
@@ -496,19 +503,19 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
         endHour: number;
         endMinute: number;
       }> = [
-          {
-            startHour: WORKING_HOURS.morningStartHour,
-            startMinute: WORKING_HOURS.morningStartMinute,
-            endHour: WORKING_HOURS.morningEndHour,
-            endMinute: WORKING_HOURS.morningEndMinute,
-          },
-          {
-            startHour: WORKING_HOURS.afternoonStartHour,
-            startMinute: WORKING_HOURS.afternoonStartMinute,
-            endHour: WORKING_HOURS.afternoonEndHour,
-            endMinute: WORKING_HOURS.afternoonEndMinute,
-          },
-        ];
+        {
+          startHour: WORKING_HOURS.morningStartHour,
+          startMinute: WORKING_HOURS.morningStartMinute,
+          endHour: WORKING_HOURS.morningEndHour,
+          endMinute: WORKING_HOURS.morningEndMinute,
+        },
+        {
+          startHour: WORKING_HOURS.afternoonStartHour,
+          startMinute: WORKING_HOURS.afternoonStartMinute,
+          endHour: WORKING_HOURS.afternoonEndHour,
+          endMinute: WORKING_HOURS.afternoonEndMinute,
+        },
+      ];
 
       for (const window of windows) {
         let slot = this.toClockDate(base, window.startHour, window.startMinute);
@@ -695,7 +702,9 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
         throw new NotFoundException('Bất động sản không tồn tại');
       }
       if (selectedHouse.depositStatus === 1) {
-        throw new BadRequestException('Bất động sản đang được giữ cọc, không thể đặt lịch hẹn');
+        throw new BadRequestException(
+          'Bất động sản đang được giữ cọc, không thể đặt lịch hẹn',
+        );
       }
     }
     if (dto.landId) {
@@ -707,7 +716,9 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
         throw new NotFoundException('Bất động sản không tồn tại');
       }
       if (selectedLand.depositStatus === 1) {
-        throw new BadRequestException('Bất động sản đang được giữ cọc, không thể đặt lịch hẹn');
+        throw new BadRequestException(
+          'Bất động sản đang được giữ cọc, không thể đặt lịch hẹn',
+        );
       }
     }
 
@@ -839,7 +850,9 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
         throw new NotFoundException('Bất động sản không tồn tại');
       }
       if (selectedHouse.depositStatus === 1) {
-        throw new BadRequestException('Bất động sản đang được giữ cọc, không thể đặt lịch hẹn');
+        throw new BadRequestException(
+          'Bất động sản đang được giữ cọc, không thể đặt lịch hẹn',
+        );
       }
     }
     if (dto.landId) {
@@ -851,7 +864,9 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
         throw new NotFoundException('Bất động sản không tồn tại');
       }
       if (selectedLand.depositStatus === 1) {
-        throw new BadRequestException('Bất động sản đang được giữ cọc, không thể đặt lịch hẹn');
+        throw new BadRequestException(
+          'Bất động sản đang được giữ cọc, không thể đặt lịch hẹn',
+        );
       }
     }
 
@@ -996,12 +1011,18 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
 
     // Gửi thông báo trong ứng dụng khi trạng thái thay đổi
     if (dto.status === 1 || dto.status === 2) {
-      const updateCustomerUserId = appointmentFull?.customer?.userId as number | undefined;
+      const updateCustomerUserId = appointmentFull?.customer?.userId;
       if (updateCustomerUserId) {
-        const propertyTitle = appointmentFull?.house?.title || appointmentFull?.land?.title || '';
+        const propertyTitle =
+          appointmentFull?.house?.title || appointmentFull?.land?.title || '';
         if (dto.status === 1) {
           void this.notificationService
-            .notifyAppointmentApproved(updateCustomerUserId, id, propertyTitle, appointmentFull!.appointmentDate)
+            .notifyAppointmentApproved(
+              updateCustomerUserId,
+              id,
+              propertyTitle,
+              appointmentFull.appointmentDate,
+            )
             .catch(() => null);
         } else {
           void this.notificationService
@@ -1012,7 +1033,6 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     }
 
     return { message: 'Cập nhật lịch hẹn thành công', data: updated };
-
   }
 
   async delete(id: number) {
@@ -1146,9 +1166,15 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     // Gửi thông báo trong ứng dụng cho customer
     const customerUserId = appointment.customer?.userId as number | undefined;
     if (customerUserId) {
-      const propertyTitle = appointment.house?.title || appointment.land?.title || '';
+      const propertyTitle =
+        appointment.house?.title || appointment.land?.title || '';
       void this.notificationService
-        .notifyAppointmentApproved(customerUserId, id, propertyTitle, appointment.appointmentDate)
+        .notifyAppointmentApproved(
+          customerUserId,
+          id,
+          propertyTitle,
+          appointment.appointmentDate,
+        )
         .catch(() => null);
     }
 
@@ -1196,11 +1222,19 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
     }
 
     // Gửi thông báo trong ứng dụng cho customer
-    const cancelCustomerUserId = appointment.customer?.userId as number | undefined;
+    const cancelCustomerUserId = appointment.customer?.userId as
+      | number
+      | undefined;
     if (cancelCustomerUserId) {
-      const propertyTitle = appointment.house?.title || appointment.land?.title || '';
+      const propertyTitle =
+        appointment.house?.title || appointment.land?.title || '';
       void this.notificationService
-        .notifyAppointmentRejected(cancelCustomerUserId, id, propertyTitle, dto?.cancelReason)
+        .notifyAppointmentRejected(
+          cancelCustomerUserId,
+          id,
+          propertyTitle,
+          dto?.cancelReason,
+        )
         .catch(() => null);
     }
 
@@ -1243,7 +1277,9 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
       undefined;
     const durationMinutes = appointment.durationMinutes || 60;
     const preferredEmployeeId =
-      appointment.house?.employeeId || appointment.land?.employeeId || undefined;
+      appointment.house?.employeeId ||
+      appointment.land?.employeeId ||
+      undefined;
     this.assertWorkingSlot(appointment.appointmentDate, durationMinutes);
 
     const candidates = await this.buildAutoAssignCandidates(
@@ -1364,7 +1400,9 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
       appointment.land?.district ||
       undefined;
     const preferredEmployeeId =
-      appointment.house?.employeeId || appointment.land?.employeeId || undefined;
+      appointment.house?.employeeId ||
+      appointment.land?.employeeId ||
+      undefined;
 
     return this.suggestAlternativeSlots(
       appointment.id,
@@ -1425,16 +1463,23 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
         id: item.id,
         title: `${title} - ${customerName}`,
         start: item.appointmentDate.toISOString(),
-        end: this.addMinutes(item.appointmentDate, durationMinutes).toISOString(),
+        end: this.addMinutes(
+          item.appointmentDate,
+          durationMinutes,
+        ).toISOString(),
         allDay: false,
-       extendedProps: {
-      employeeId: item.employeeId,
-      employeeName,
-      customerName,
-      durationMinutes,
-      actualStatus: item.actualStatus, // ← thêm dòng này
-      location: `${item.house?.district || item.land?.district || ''}, ${item.house?.city || item.land?.city || ''}`.replace(/^,\s*|,\s*$/g, ''),
-    },
+        extendedProps: {
+          employeeId: item.employeeId,
+          employeeName,
+          customerName,
+          durationMinutes,
+          actualStatus: item.actualStatus, // ← thêm dòng này
+          location:
+            `${item.house?.district || item.land?.district || ''}, ${item.house?.city || item.land?.city || ''}`.replace(
+              /^,\s*|,\s*$/g,
+              '',
+            ),
+        },
       };
     });
   }
@@ -1492,10 +1537,10 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
         durationMinutes,
         entity?.house?.city || entity?.land?.city || undefined,
         entity?.house?.ward ||
-        entity?.land?.ward ||
-        entity?.house?.district ||
-        entity?.land?.district ||
-        undefined,
+          entity?.land?.ward ||
+          entity?.house?.district ||
+          entity?.land?.district ||
+          undefined,
       );
 
       throw new BadRequestException({
@@ -1671,12 +1716,13 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
 
     return { message: 'Cập nhật trạng thái thực tế thành công', data: updated };
   }
- async findMyAppointments(userId: number, status?: number) {
+  async findMyAppointments(userId: number, status?: number) {
     const customer = await this.prisma.customer.findUnique({
       where: { userId },
       select: { id: true },
     });
-    if (!customer) throw new NotFoundException('Không tìm thấy thông tin khách hàng');
+    if (!customer)
+      throw new NotFoundException('Không tìm thấy thông tin khách hàng');
 
     const where: any = { customerId: customer.id };
     if (typeof status === 'number') {
@@ -1695,24 +1741,27 @@ export class AppointmentService implements OnModuleInit, OnModuleDestroy {
       where: { userId },
       select: { id: true },
     });
-    if (!customer) throw new NotFoundException('Không tìm thấy thông tin khách hàng');
+    if (!customer)
+      throw new NotFoundException('Không tìm thấy thông tin khách hàng');
 
     const appointment = await this.prisma.appointment.findFirst({
-      where: { 
-        id: appointmentId, 
-        customerId: customer.id 
+      where: {
+        id: appointmentId,
+        customerId: customer.id,
       },
       include: appointmentInclude,
     });
 
     if (!appointment) {
-      throw new NotFoundException('Lịch hẹn không tồn tại hoặc không thuộc về bạn');
+      throw new NotFoundException(
+        'Lịch hẹn không tồn tại hoặc không thuộc về bạn',
+      );
     }
 
     return appointment;
   }
-// Thêm vào DepositService để sửa lỗi tại file cron.ts
-async findExpiredDepositIds(now: Date): Promise<number[]> {
+  // Thêm vào DepositService để sửa lỗi tại file cron.ts
+  async findExpiredDepositIds(now: Date): Promise<number[]> {
     const expiredDeposits = await this.prisma.propertyDeposit.findMany({
       where: {
         status: 1, // Trạng thái 1: Đang giữ chỗ (Active)
@@ -1725,7 +1774,7 @@ async findExpiredDepositIds(now: Date): Promise<number[]> {
 
     return expiredDeposits.map((d) => d.id);
   }
-async expireDeposit(depositId: number) {
+  async expireDeposit(depositId: number) {
     return await this.prisma.$transaction(async (tx) => {
       const deposit = await tx.propertyDeposit.findUnique({
         where: { id: depositId },
@@ -1745,7 +1794,7 @@ async expireDeposit(depositId: number) {
       // 1. Cập nhật trạng thái Deposit thành Hết hạn (giả định status 5 là EXPIRED)
       await tx.propertyDeposit.update({
         where: { id: depositId },
-        data: { status: 5 }, 
+        data: { status: 5 },
       });
 
       // 2. Giải phóng trạng thái bất động sản (depositStatus: 0 - Trống)
@@ -1768,36 +1817,42 @@ async expireDeposit(depositId: number) {
     });
   }
 
-
-
-async cancelMyAppointment(appointmentId: number, userId: number, dto?: CancelAppointmentDto) {
-    const customer = await this.prisma.customer.findUnique({ where: { userId } });
+  async cancelMyAppointment(
+    appointmentId: number,
+    userId: number,
+    dto?: CancelAppointmentDto,
+  ) {
+    const customer = await this.prisma.customer.findUnique({
+      where: { userId },
+    });
     if (!customer) throw new NotFoundException('Khách hàng không tồn tại');
 
     const appointment = await this.prisma.appointment.findFirst({
-      where: { 
-        id: appointmentId, 
-        customerId: customer.id, 
-        status: { in: [0, 1] } 
+      where: {
+        id: appointmentId,
+        customerId: customer.id,
+        status: { in: [0, 1] },
       },
     });
 
     if (!appointment) {
-      throw new BadRequestException('Không thể hủy lịch này (đã từ chối hoặc không tồn tại)');
+      throw new BadRequestException(
+        'Không thể hủy lịch này (đã từ chối hoặc không tồn tại)',
+      );
     }
 
     const updated = await this.prisma.appointment.update({
       where: { id: appointmentId },
-      data: { 
-        status: 2, 
-        cancelReason: dto?.cancelReason?.trim() || null 
+      data: {
+        status: 2,
+        cancelReason: dto?.cancelReason?.trim() || null,
       },
       include: appointmentInclude,
     });
 
-    return { 
-      message: 'Hủy lịch hẹn thành công', 
-      data: updated 
+    return {
+      message: 'Hủy lịch hẹn thành công',
+      data: updated,
     };
   }
 }

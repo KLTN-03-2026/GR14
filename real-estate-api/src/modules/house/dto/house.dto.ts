@@ -1,6 +1,5 @@
-import { IsNotEmpty, IsString, IsOptional, IsNumber } from 'class-validator';
+import { IsNotEmpty, IsString, IsOptional } from 'class-validator';
 import { PartialType } from '@nestjs/mapped-types';
-import { Type } from 'class-transformer';
 
 export class CreateHouseDto {
   @IsNotEmpty()

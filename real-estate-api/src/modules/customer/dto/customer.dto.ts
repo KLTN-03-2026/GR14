@@ -36,5 +36,4 @@ export class UpdateCustomerDto extends PartialType(CreateCustomerDto) {
   @IsOptional()
   @IsBoolean()
   isVip?: boolean;
-  
 }

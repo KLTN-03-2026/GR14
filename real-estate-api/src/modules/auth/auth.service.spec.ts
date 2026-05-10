@@ -97,9 +97,7 @@ describe('AuthService', () => {
         isVip: false,
         vipExpiry: null,
       });
-      prisma.userRole.findMany.mockResolvedValue([
-        { role: { code: 'ADMIN' } },
-      ]);
+      prisma.userRole.findMany.mockResolvedValue([{ role: { code: 'ADMIN' } }]);
 
       const result = await authService.login({
         username: 'admin',

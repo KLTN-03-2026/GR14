@@ -15,8 +15,24 @@ describe('UserProfileService', () => {
   describe('buildUserProfile', () => {
     it('should calculate weighted average price', () => {
       const items: WeightedItem[] = [
-        { id: 1, price: 2_000_000_000, city: null, district: null, area: null, categoryId: null, weight: 1 },
-        { id: 2, price: 4_000_000_000, city: null, district: null, area: null, categoryId: null, weight: 3 },
+        {
+          id: 1,
+          price: 2_000_000_000,
+          city: null,
+          district: null,
+          area: null,
+          categoryId: null,
+          weight: 1,
+        },
+        {
+          id: 2,
+          price: 4_000_000_000,
+          city: null,
+          district: null,
+          area: null,
+          categoryId: null,
+          weight: 3,
+        },
       ];
       const profile = service.buildUserProfile(items);
       // weighted avg = (2e9*1 + 4e9*3) / (1+3) = 14e9/4 = 3.5e9
@@ -25,8 +41,24 @@ describe('UserProfileService', () => {
 
     it('should calculate weighted average area', () => {
       const items: WeightedItem[] = [
-        { id: 1, price: null, city: null, district: null, area: 80, categoryId: null, weight: 2 },
-        { id: 2, price: null, city: null, district: null, area: 120, categoryId: null, weight: 2 },
+        {
+          id: 1,
+          price: null,
+          city: null,
+          district: null,
+          area: 80,
+          categoryId: null,
+          weight: 2,
+        },
+        {
+          id: 2,
+          price: null,
+          city: null,
+          district: null,
+          area: 120,
+          categoryId: null,
+          weight: 2,
+        },
       ];
       const profile = service.buildUserProfile(items);
       // weighted avg = (80*2 + 120*2) / (2+2) = 400/4 = 100
@@ -35,9 +67,33 @@ describe('UserProfileService', () => {
 
     it('should count locations by weight', () => {
       const items: WeightedItem[] = [
-        { id: 1, price: null, city: 'HCM', district: 'Q7', area: null, categoryId: null, weight: 3 },
-        { id: 2, price: null, city: 'HCM', district: 'Q7', area: null, categoryId: null, weight: 2 },
-        { id: 3, price: null, city: 'HN', district: 'CG', area: null, categoryId: null, weight: 1 },
+        {
+          id: 1,
+          price: null,
+          city: 'HCM',
+          district: 'Q7',
+          area: null,
+          categoryId: null,
+          weight: 3,
+        },
+        {
+          id: 2,
+          price: null,
+          city: 'HCM',
+          district: 'Q7',
+          area: null,
+          categoryId: null,
+          weight: 2,
+        },
+        {
+          id: 3,
+          price: null,
+          city: 'HN',
+          district: 'CG',
+          area: null,
+          categoryId: null,
+          weight: 1,
+        },
       ];
       const profile = service.buildUserProfile(items);
       expect(profile.locationCounts['HCM|Q7']).toBe(5);
@@ -46,9 +102,33 @@ describe('UserProfileService', () => {
 
     it('should count categories by weight', () => {
       const items: WeightedItem[] = [
-        { id: 1, price: null, city: null, district: null, area: null, categoryId: 1, weight: 3 },
-        { id: 2, price: null, city: null, district: null, area: null, categoryId: 1, weight: 2 },
-        { id: 3, price: null, city: null, district: null, area: null, categoryId: 2, weight: 1 },
+        {
+          id: 1,
+          price: null,
+          city: null,
+          district: null,
+          area: null,
+          categoryId: 1,
+          weight: 3,
+        },
+        {
+          id: 2,
+          price: null,
+          city: null,
+          district: null,
+          area: null,
+          categoryId: 1,
+          weight: 2,
+        },
+        {
+          id: 3,
+          price: null,
+          city: null,
+          district: null,
+          area: null,
+          categoryId: 2,
+          weight: 1,
+        },
       ];
       const profile = service.buildUserProfile(items);
       expect(profile.categoryCounts[1]).toBe(5);
@@ -65,8 +145,24 @@ describe('UserProfileService', () => {
 
     it('should skip null prices and areas in averaging', () => {
       const items: WeightedItem[] = [
-        { id: 1, price: null, city: null, district: null, area: null, categoryId: null, weight: 3 },
-        { id: 2, price: 5_000_000_000, city: null, district: null, area: 100, categoryId: null, weight: 1 },
+        {
+          id: 1,
+          price: null,
+          city: null,
+          district: null,
+          area: null,
+          categoryId: null,
+          weight: 3,
+        },
+        {
+          id: 2,
+          price: 5_000_000_000,
+          city: null,
+          district: null,
+          area: 100,
+          categoryId: null,
+          weight: 1,
+        },
       ];
       const profile = service.buildUserProfile(items);
       expect(profile.avgPrice).toBe(5_000_000_000);
@@ -79,7 +175,15 @@ describe('UserProfileService', () => {
   describe('buildCandidateFilters', () => {
     it('should build price range filter (±50%)', () => {
       const profile = service.buildUserProfile([
-        { id: 1, price: 4_000_000_000, city: null, district: null, area: null, categoryId: null, weight: 1 },
+        {
+          id: 1,
+          price: 4_000_000_000,
+          city: null,
+          district: null,
+          area: null,
+          categoryId: null,
+          weight: 1,
+        },
       ]);
       const filters = service.buildCandidateFilters(profile);
       const priceFilter = filters.find((f: any) => f.price);
@@ -90,7 +194,15 @@ describe('UserProfileService', () => {
 
     it('should include top locations as filters', () => {
       const profile = service.buildUserProfile([
-        { id: 1, price: null, city: 'HCM', district: 'Q7', area: null, categoryId: null, weight: 1 },
+        {
+          id: 1,
+          price: null,
+          city: 'HCM',
+          district: 'Q7',
+          area: null,
+          categoryId: null,
+          weight: 1,
+        },
       ]);
       const filters = service.buildCandidateFilters(profile);
       const locationFilter = filters.find((f: any) => f.city && f.district);
@@ -101,7 +213,15 @@ describe('UserProfileService', () => {
 
     it('should include category filter', () => {
       const profile = service.buildUserProfile([
-        { id: 1, price: null, city: null, district: null, area: null, categoryId: 5, weight: 1 },
+        {
+          id: 1,
+          price: null,
+          city: null,
+          district: null,
+          area: null,
+          categoryId: 5,
+          weight: 1,
+        },
       ]);
       const filters = service.buildCandidateFilters(profile);
       const catFilter = filters.find((f: any) => f.categoryId);
