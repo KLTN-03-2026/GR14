@@ -39,6 +39,7 @@ export type ParsedIntent = {
   purpose?: 'invest' | 'live' | 'rent_out'; // user's purpose for buying
   monthlyIncome?: number; // for financing calculations
   downPayment?: number; // for financing calculations
+  expandedQuery?: string; // LLM-generated optimized query for vector search
 };
 
 export type VectorHit = {

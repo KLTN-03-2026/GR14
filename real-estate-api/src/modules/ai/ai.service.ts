@@ -106,7 +106,7 @@ export class AiService {
     private readonly marketInsightService: MarketInsightService,
     private readonly consultationFlowService: ConsultationFlowService,
     private readonly financingAdvisorService: FinancingAdvisorService,
-  ) {}
+  ) { }
 
   async indexOne(type: 'house' | 'land' | 'post', id: number): Promise<void> {
     try {
@@ -128,10 +128,22 @@ export class AiService {
 
       await this.ensureCollection(768);
       const vector = await this.embed(doc.text);
+      const sparse = AiUtils.buildBm25SparseVector(doc.text);
       await axios.put(
         `${this.qdrantUrl}/collections/${this.ragCollection}/points?wait=true`,
         {
-          points: [{ id: doc.id, vector, payload: doc.payload }],
+          points: [
+            {
+              id: doc.id,
+              vector: {
+                dense: vector,
+                ...(sparse.indices.length > 0
+                  ? { sparse: { indices: sparse.indices, values: sparse.values } }
+                  : {}),
+              },
+              payload: doc.payload,
+            },
+          ],
         },
       );
       this.logger.log(`Indexed ${type}:${id} (qdrant id=${doc.id})`);
@@ -196,7 +208,17 @@ export class AiService {
       this.embedConcurrency,
       async (doc) => {
         const vector = await this.embed(doc.text);
-        return { id: doc.id, vector, payload: doc.payload };
+        const sparse = AiUtils.buildBm25SparseVector(doc.text);
+        return {
+          id: doc.id,
+          vector: {
+            dense: vector,
+            ...(sparse.indices.length > 0
+              ? { sparse: { indices: sparse.indices, values: sparse.values } }
+              : {}),
+          },
+          payload: doc.payload,
+        };
       },
     );
 
@@ -230,9 +252,9 @@ export class AiService {
     const timings: Record<string, number> = {};
     const question = dto.question.trim();
     const sessionId = dto.sessionId.trim();
-    const intent = AiUtils.parseIntent(question);
+    const intent = await AiUtils.parseIntent(question);
     this.logger.log(
-      `[INTENT] "${question.slice(0, 60)}" → ${intent.type} | loc=${intent.location} | max=${intent.maxPrice} | purpose=${intent.purpose}`,
+      `[INTENT] "${question.slice(0, 60)}" → ${intent.type} | loc=${intent.location} | max=${intent.maxPrice} | purpose=${intent.purpose}${intent.expandedQuery ? ` | expanded="${intent.expandedQuery.slice(0, 50)}"` : ''}`,
     );
     const normalizedQuestion = AiUtils.normalizeText(question);
     const hasIntentFilter =
@@ -328,34 +350,58 @@ export class AiService {
 
     const candidateLimit = hasIntentFilter
       ? Math.max(
-          this.retrievalTopK * this.retrievalCandidateMultiplier,
-          this.retrievalTopK * 3,
-        )
+        this.retrievalTopK * this.retrievalCandidateMultiplier,
+        this.retrievalTopK * 3,
+      )
       : this.retrievalTopK;
 
     let rawHits: VectorHit[] = [];
     const relatedPool: VectorHit[] = [];
+    // Build Qdrant metadata filter for more precise retrieval
+    const qdrantFilter = this.buildQdrantFilter(intent);
     try {
       const embedStartedAt = Date.now();
-      const queryVector = await this.getCachedQueryEmbedding(question);
+      // Query Expansion: use LLM-generated optimized query for embedding
+      // when available, otherwise fall back to the original question.
+      const searchText = intent.expandedQuery || question;
+      const queryVector = await this.getCachedQueryEmbedding(searchText);
+      const querySparse = AiUtils.buildBm25SparseVector(searchText);
       timings.embedMs = Date.now() - embedStartedAt;
 
       const searchStartedAt = Date.now();
-      // Build Qdrant metadata filter for more precise retrieval
-      const qdrantFilter = this.buildQdrantFilter(intent);
-      const searchResp = await axios.post(
-        `${this.qdrantUrl}/collections/${this.ragCollection}/points/search`,
+      // Hybrid Search: combine Dense (semantic) + Sparse (BM25 keyword) vectors
+      // using Qdrant's query API with Reciprocal Rank Fusion (RRF)
+      const hasSparse = querySparse.indices.length > 0;
+      const prefetch: any[] = [
         {
-          vector: queryVector,
+          query: queryVector,
+          using: 'dense',
+          limit: candidateLimit,
+          ...(qdrantFilter ? { filter: qdrantFilter } : {}),
+        },
+      ];
+      if (hasSparse) {
+        prefetch.push({
+          query: { indices: querySparse.indices, values: querySparse.values },
+          using: 'sparse',
+          limit: candidateLimit,
+          ...(qdrantFilter ? { filter: qdrantFilter } : {}),
+        });
+      }
+
+      const searchResp = await axios.post(
+        `${this.qdrantUrl}/collections/${this.ragCollection}/points/query`,
+        {
+          prefetch,
+          query: { fusion: 'rrf' },
           limit: candidateLimit,
           with_payload: true,
-          ...(qdrantFilter ? { filter: qdrantFilter } : {}),
         },
         { timeout: this.qdrantTimeoutMs },
       );
       timings.searchMs = Date.now() - searchStartedAt;
 
-      rawHits = (searchResp.data?.result || []) as VectorHit[];
+      rawHits = (searchResp.data?.result?.points || searchResp.data?.result || []) as VectorHit[];
       relatedPool.push(...rawHits);
     } catch (error) {
       this.logger.warn(
@@ -637,8 +683,8 @@ export class AiService {
     // Extract suggestedQuestions from LLM structured output if available
     const llmSuggestions = Array.isArray(structured?.suggestedQuestions)
       ? (structured.suggestedQuestions as string[])
-          .filter((s) => typeof s === 'string' && s.trim().length > 0)
-          .slice(0, 3)
+        .filter((s) => typeof s === 'string' && s.trim().length > 0)
+        .slice(0, 3)
       : [];
     const suggestedQuestions =
       llmSuggestions.length > 0 ? llmSuggestions : defaultSuggestions;
@@ -1525,9 +1571,9 @@ export class AiService {
     const priceFilter: Record<string, unknown> | undefined =
       intent.minPrice !== undefined || intent.maxPrice !== undefined
         ? {
-            ...(intent.minPrice !== undefined ? { gte: intent.minPrice } : {}),
-            ...(intent.maxPrice !== undefined ? { lte: intent.maxPrice } : {}),
-          }
+          ...(intent.minPrice !== undefined ? { gte: intent.minPrice } : {}),
+          ...(intent.maxPrice !== undefined ? { lte: intent.maxPrice } : {}),
+        }
         : undefined;
 
     const locationStopTokens = new Set([
@@ -1579,31 +1625,31 @@ export class AiService {
     const [houses, lands] = await Promise.all([
       intent.sourceType !== 'land'
         ? this.prisma.house.findMany({
-            where: buildWhere(),
-            orderBy: { updatedAt: 'desc' },
-            take: fetchLimit,
-            include: {
-              images: {
-                take: 1,
-                orderBy: { position: 'asc' },
-                select: { url: true },
-              },
+          where: buildWhere(),
+          orderBy: { updatedAt: 'desc' },
+          take: fetchLimit,
+          include: {
+            images: {
+              take: 1,
+              orderBy: { position: 'asc' },
+              select: { url: true },
             },
-          })
+          },
+        })
         : Promise.resolve([]),
       intent.sourceType !== 'house'
         ? this.prisma.land.findMany({
-            where: buildWhere(),
-            orderBy: { updatedAt: 'desc' },
-            take: fetchLimit,
-            include: {
-              images: {
-                take: 1,
-                orderBy: { position: 'asc' },
-                select: { url: true },
-              },
+          where: buildWhere(),
+          orderBy: { updatedAt: 'desc' },
+          take: fetchLimit,
+          include: {
+            images: {
+              take: 1,
+              orderBy: { position: 'asc' },
+              select: { url: true },
             },
-          })
+          },
+        })
         : Promise.resolve([]),
     ]);
 
@@ -1628,8 +1674,14 @@ export class AiService {
 
   private async ensureCollection(size: number) {
     try {
+      // Create collection with Named Vectors (dense + sparse) for Hybrid Search
       await axios.put(`${this.qdrantUrl}/collections/${this.ragCollection}`, {
-        vectors: { size, distance: 'Cosine' },
+        vectors: {
+          dense: { size, distance: 'Cosine' },
+        },
+        sparse_vectors: {
+          sparse: {},
+        },
       });
     } catch (error) {
       this.logger.warn(
