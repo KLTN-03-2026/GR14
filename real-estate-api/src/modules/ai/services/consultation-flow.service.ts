@@ -59,38 +59,13 @@ export class ConsultationFlowService {
     sessionId: string,
     profile: UserProfile,
   ): Promise<string> {
-    // Pre-fill from profile if available
+    // Always start from step 1 regardless of profile.
+    // Profile data is only used to show smart hints inside each question,
+    // NOT to auto-skip steps (which caused the "jumps to step 5" bug).
     const state: ConsultationState = {
       step: 'ask_purpose',
-      purpose: profile.purpose,
-      budgetMin: profile.budgetMin,
-      budgetMax: profile.budgetMax,
-      location:
-        profile.preferredAreas.length > 0
-          ? profile.preferredAreas[profile.preferredAreas.length - 1]
-          : undefined,
-      propertyType: profile.propertyType,
       startedAt: new Date().toISOString(),
     };
-
-    // Skip steps we already know from profile
-    if (state.purpose) {
-      state.step = 'ask_budget';
-    }
-    if (state.purpose && state.budgetMax) {
-      state.step = 'ask_location';
-    }
-    if (state.purpose && state.budgetMax && state.location) {
-      state.step = 'ask_property_type';
-    }
-    if (
-      state.purpose &&
-      state.budgetMax &&
-      state.location &&
-      state.propertyType
-    ) {
-      state.step = 'ask_criteria';
-    }
 
     await this.saveState(sessionId, state);
     return this.buildStepQuestion(state, profile);
