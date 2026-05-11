@@ -346,7 +346,130 @@ export class AiUtils {
     return descriptions.length >= 2 ? descriptions.slice(0, 2) : [];
   }
 
-  static parseIntent(question: string): ParsedIntent {
+  /**
+   * LLM-based intent parsing with regex fallback.
+   * Uses Gemini to understand natural language intent, extract entities,
+   * and generate an optimized query for vector search (Query Expansion).
+   */
+  static async parseIntent(question: string): Promise<ParsedIntent> {
+    // Fast-path: very short greetings don't need LLM
+    const quickNorm = AiUtils.normalizeText(question);
+    if (/^(xin chao|hello|hi|hey|chao ban|chao|alo)\b/.test(quickNorm)) {
+      return { type: 'greeting' };
+    }
+
+    const systemInstruction = [
+      'Bạn là chuyên gia NLP cho chatbot bất động sản Việt Nam.',
+      'Phân tích tin nhắn người dùng, trích xuất ý định và thực thể.',
+      'CHỈ trả về JSON hợp lệ, KHÔNG kèm giải thích hay markdown.',
+      '',
+      'Cấu trúc JSON:',
+      '{',
+      '  "type": "search_property" | "recommend_property" | "qa_real_estate" | "compare_property" | "booking" | "upgrade_account" | "upgrade_listing" | "greeting" | "investment_advice" | "market_analysis" | "financing_advice" | "consultation" | "unknown",',
+      '  "minPrice": number | null,',
+      '  "maxPrice": number | null,',
+      '  "location": "string | null (tên địa điểm CÓ DẤU, viết hoa: Đà Nẵng, Quận 7, Hải Châu)",',
+      '  "sourceType": "house" | "land" | null,',
+      '  "requiredKeyword": "string | null (VD: mat tien, hem, bien, gara, vuon, ho boi, thang may, nha pho)",',
+      '  "compareIds": [number] | null,',
+      '  "compareDescriptions": ["string"] | null,',
+      '  "transactionType": "sale" | "rent" | null,',
+      '  "purpose": "invest" | "live" | "rent_out" | null,',
+      '  "monthlyIncome": number | null,',
+      '  "downPayment": number | null,',
+      '  "expandedQuery": "string (câu query tối ưu cho tìm kiếm vector, tiếng Việt KHÔNG DẤU, chứa đầy đủ từ khóa BĐS liên quan)"',
+      '}',
+      '',
+      'Quy tắc phân loại type:',
+      '- greeting: Chào hỏi đơn giản',
+      '- search_property: Tìm/mua/thuê BĐS cụ thể (có giá, vị trí, loại)',
+      '- recommend_property: Nhờ gợi ý, đề xuất BĐS phù hợp',
+      '- consultation: Nhờ tư vấn chung, chưa rõ nhu cầu',
+      '- qa_real_estate: Hỏi kiến thức BĐS (sổ đỏ, pháp lý, thủ tục, kinh nghiệm)',
+      '- market_analysis: Hỏi về thị trường, giá trung bình, xu hướng',
+      '- financing_advice: Hỏi vay vốn, trả góp, lãi suất, khả năng tài chính',
+      '- investment_advice: Hỏi đầu tư, sinh lời, chiến lược',
+      '- compare_property: So sánh các BĐS với nhau',
+      '- booking: Đặt lịch xem nhà/đất',
+      '- upgrade_account: Nâng cấp tài khoản VIP',
+      '- upgrade_listing: Đẩy tin, nâng cấp bài đăng',
+      '',
+      'Quy tắc giá tiền (chuyển sang VNĐ):',
+      '- "1 tỷ 5" hoặc "1.5 tỷ" → 1500000000',
+      '- "500 triệu" → 500000000',
+      '- "dưới 3 tỷ" → maxPrice: 3000000000',
+      '- "từ 2 đến 5 tỷ" → minPrice: 2000000000, maxPrice: 5000000000',
+      '- "tầm 2 tỏi" hoặc "2 củ to" (tiếng lóng) → maxPrice: 2000000000',
+      '',
+      'Quy tắc expandedQuery:',
+      '- Viết tiếng Việt KHÔNG DẤU, đầy đủ từ khóa BĐS',
+      '- Mở rộng từ viết tắt/tiếng lóng thành từ chuẩn',
+      '- VD: "có miếng nào cắm dùi 2 tỏi" → "dat nen gia re duoi 2 ty de o xay nha"',
+      '- VD: "nhà HĐ dưới 3 tỷ" → "nha o hai chau da nang gia duoi 3 ty"',
+    ].join('\n');
+
+    try {
+      const response = await AiUtils.generateLlmResponse(
+        question,
+        systemInstruction,
+        {
+          temperature: 0.05,
+          isJson: true,
+          maxTokens: 512,
+          timeout: 8000,
+        },
+      );
+
+      if (response) {
+        const parsed = AiUtils.tryParseJson(response);
+        if (parsed && parsed.type && typeof parsed.type === 'string') {
+          // Clean null values from LLM output
+          const intent: ParsedIntent = { type: parsed.type as any };
+          if (parsed.minPrice && Number.isFinite(Number(parsed.minPrice)))
+            intent.minPrice = Number(parsed.minPrice);
+          if (parsed.maxPrice && Number.isFinite(Number(parsed.maxPrice)))
+            intent.maxPrice = Number(parsed.maxPrice);
+          if (parsed.location && typeof parsed.location === 'string') {
+            intent.location = parsed.location as string;
+            intent.locationTokens = AiUtils.normalizeText(intent.location)
+              .split(/\s+/)
+              .filter((t: string) => t.length >= 2);
+          }
+          if (parsed.sourceType === 'house' || parsed.sourceType === 'land')
+            intent.sourceType = parsed.sourceType;
+          if (parsed.requiredKeyword && typeof parsed.requiredKeyword === 'string')
+            intent.requiredKeyword = parsed.requiredKeyword as string;
+          if (Array.isArray(parsed.compareIds) && parsed.compareIds.length >= 2)
+            intent.compareIds = parsed.compareIds.map(Number).filter((n: number) => Number.isFinite(n) && n > 0);
+          if (Array.isArray(parsed.compareDescriptions) && parsed.compareDescriptions.length >= 2)
+            intent.compareDescriptions = parsed.compareDescriptions as string[];
+          if (parsed.transactionType === 'sale' || parsed.transactionType === 'rent')
+            intent.transactionType = parsed.transactionType;
+          if (parsed.purpose === 'invest' || parsed.purpose === 'live' || parsed.purpose === 'rent_out')
+            intent.purpose = parsed.purpose;
+          if (parsed.monthlyIncome && Number.isFinite(Number(parsed.monthlyIncome)))
+            intent.monthlyIncome = Number(parsed.monthlyIncome);
+          if (parsed.downPayment && Number.isFinite(Number(parsed.downPayment)))
+            intent.downPayment = Number(parsed.downPayment);
+          if (parsed.expandedQuery && typeof parsed.expandedQuery === 'string')
+            intent.expandedQuery = parsed.expandedQuery as string;
+
+          return intent;
+        }
+      }
+    } catch (err) {
+      // LLM failed — fall through to regex
+    }
+
+    // Fallback to deterministic regex parser
+    return AiUtils.parseIntentRegex(question);
+  }
+
+  /**
+   * Deterministic regex-based intent parser (fallback).
+   * Kept as backup when LLM is unavailable or returns invalid data.
+   */
+  static parseIntentRegex(question: string): ParsedIntent {
     const normalized = AiUtils.normalizeText(question);
     const intent: ParsedIntent = { type: 'unknown' };
 
@@ -756,6 +879,79 @@ export class AiUtils {
     }
 
     return intent;
+  }
+
+  // ─── BM25 Sparse Vector ──────────────────────────────────────────
+
+  /**
+   * Vietnamese stopwords to exclude from BM25 tokenization.
+   * Keeps the sparse vector focused on meaningful content words.
+   */
+  private static readonly VI_STOPWORDS = new Set([
+    'va', 'cua', 'la', 'co', 'o', 'tai', 'cho', 'trong', 'ngoai',
+    'voi', 'tu', 'den', 'ma', 'thi', 'nhung', 'cac', 'mot', 'nhu',
+    'se', 'da', 'dang', 'duoc', 'boi', 'vi', 'nen', 'hay', 'hoac',
+    'khi', 'nay', 'do', 'no', 'cung', 'nao', 'rat', 'roi', 'tren',
+    'duoi', 'sau', 'truoc', 'day', 'the', 'gi', 'de', 'vay', 'thi',
+    'minh', 'ban', 'anh', 'chi', 'em', 'bao', 'nhieu', 'sao',
+    'dau', 'rong', 'nho', 'lon', 'cao', 'thap', 'moi', 'cu',
+  ]);
+
+  /**
+   * Build a BM25-style sparse vector from Vietnamese text.
+   * Returns an object with `indices` and `values` arrays for Qdrant sparse vector.
+   *
+   * Uses simple term-frequency (TF) weighting with Vietnamese stopword removal.
+   * Token IDs are generated via a stable hash function for consistency.
+   */
+  static buildBm25SparseVector(text: string): {
+    indices: number[];
+    values: number[];
+  } {
+    const normalized = AiUtils.normalizeText(text);
+    const tokens = normalized
+      .split(/\s+/)
+      .filter(
+        (t) => t.length >= 2 && !AiUtils.VI_STOPWORDS.has(t) && !/^\d+$/.test(t),
+      );
+
+    if (tokens.length === 0) return { indices: [], values: [] };
+
+    // Count term frequencies
+    const tf = new Map<string, number>();
+    for (const token of tokens) {
+      tf.set(token, (tf.get(token) || 0) + 1);
+    }
+
+    // Convert tokens to stable numeric IDs using a simple hash
+    const entries: Array<{ index: number; value: number }> = [];
+    for (const [term, count] of tf) {
+      const hash = AiUtils.stableHash(term);
+      // BM25-inspired TF saturation: tf / (tf + 1.2)
+      const weight = count / (count + 1.2);
+      entries.push({ index: hash, value: weight });
+    }
+
+    // Sort by index for Qdrant requirement
+    entries.sort((a, b) => a.index - b.index);
+
+    return {
+      indices: entries.map((e) => e.index),
+      values: entries.map((e) => e.value),
+    };
+  }
+
+  /**
+   * Stable 32-bit hash for a string token.
+   * Returns a non-negative integer suitable for sparse vector indices.
+   */
+  private static stableHash(str: string): number {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash + char) | 0; // Convert to 32bit integer
+    }
+    return Math.abs(hash) % 1_000_000; // Keep within reasonable range
   }
 
   static buildIntentInstructions(intent: ParsedIntent): string {
