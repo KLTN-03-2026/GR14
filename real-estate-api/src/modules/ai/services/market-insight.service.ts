@@ -5,6 +5,27 @@ import { MarketInsight } from '../types/ai.types';
 import { AiUtils } from '../utils/ai.utils';
 
 /**
+ * @file market-insight.service.ts
+ * @description Phân tích thị trường BĐS theo khu vực, tư vấn đầu tư và đưa ra xu hướng giá.
+ *
+ * CHỨC NĂNG CHÍNH:
+ *   1. getMarketInsight()           — Lấy dữ liệu thị trường (có cache Redis 1h)
+ *   2. buildMarketAnalysisAnswer()  — Xây dựng báo cáo phân tích (thống kê + AI)
+ *   3. buildInvestmentAdvice()      — Tư vấn đầu tư theo ngân sách + khu vực
+ *   4. computeMarketInsight()       — Aggregate MySQL để tính giá TB, min, max, phân bố
+ *   5. getAIMarketAnalysis()        — Gemini nhận định về thị trường dựa trên số liệu
+ *
+ * DATA SOURCE:
+ *   - MySQL: bảng house và land (lọc status=1, giá >= 100 triệu — loại bỏ giá thuê)
+ *   - Redis: Cache kết quả (key: ai:market:{area}:{type}, TTL 1h)
+ *
+ * PHÂN BỐ GIÁ (priceBreakdown):
+ *   Dưới 1 tỷ | 1–3 tỷ | 3–5 tỷ | 5–10 tỷ | Trên 10 tỷ
+ *
+ * LÓGICAL FALLBACK:
+ *   Gemini fail → buildRuleBasedInvestmentAdvice() (rule-based, không cần API)
+ */
+/**
  * Provides real-time market insights, investment advice, and trend analysis
  * by aggregating data from the property database.
  */

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useDebounce } from '@/hooks/useDebounce';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { appointmentApi, employeeApi } from '@/api';
@@ -52,7 +53,8 @@ const AppointmentManagementPage: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(1);
-    const [search, setSearch] = useState('');
+    const [searchInput, setSearchInput] = useState('');
+    const search = useDebounce(searchInput, 400);
     const [activeTab, setActiveTab] = useState<AppointmentFilterTab>('all');
     const [statusCounts, setStatusCounts] = useState<AppointmentStatusCounts>({
         all: 0,
@@ -519,8 +521,8 @@ const AppointmentManagementPage: React.FC = () => {
                     type="text"
                     placeholder="Tìm kiếm theo tiêu đề hoặc địa chỉ..."
                     className="admin-control admin-filter-input w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                    value={search}
-                    onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                    value={searchInput}
+                    onChange={(e) => { setSearchInput(e.target.value); setPage(1); }}
                 />
             </div>
 

@@ -1,14 +1,47 @@
+/**
+ * @file ai-chat-compare.service.ts
+ * @description Xử lý luồng so sánh BĐS (compare_property intent) trong chatbot.
+ *
+ * MỤC ĐÍCH:
+ *   Khi user muốn so sánh 2 BĐS với nhau, service này:
+ *   1. Xác định ID của 2 BĐS cần so sánh (qua nhiều chiến lược)
+ *   2. Lấy thông tin chi tiết từ MySQL
+ *   3. Render HTML table so sánh đẹp mắt (price bar, area bar, badges)
+ *
+ * 5 CHIẼN LƯỢC TÌM ID (theo độ ưu tiên):
+ *   1. compareIds[] từ ParsedIntent (LLM đã trích xuất được ID cụ thể từ user)
+ *   2. extractIdsFromHistory()   — Scan lịch sử chat gần đây tìm ID (ví dụ: "ID 123")
+ *   3. getLastSources()          — Lấy BĐS từ lần search trước (Redis cache 30ph)
+ *   4. findIdByDescription()     — Tìm theo mô tả văn bản (price + location + type)
+ *   5. filterActiveIds()         — Loại BĐS không còn hoạt động (status != 1)
+ *
+ * KẼT QUẢ SẢN PHẨM (buildCompareAnswer):
+ *   HTML có property cards với:
+ *   - Price bar: thanh ngang của giá tương đối
+ *   - Area bar: thanh ngang của diện tích tương đối
+ *   - Badges: GIÁ TỐT NHẤT | DIỆN TÍCH LỚN | GIÁ/M² TỐT
+ *   - Kết luận phân tích 3 tiêu chí
+ */
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getSuggestedQuestionsByPreset } from './constants/suggested-questions.constants';
 
+/** Loại nội bộ — một turn trong lịch sử chat (dùng để scan ID từ history). */
 type ChatTurn = {
   role: 'user' | 'assistant';
   text: string;
   at: string;
 };
 
+/** Loại nội bộ — payload của một BDS trong response (cùng kiểu với types/ai.types.ts). */
 type ChatSourcePayload = Record<string, unknown>;
 
+/**
+ * AiChatCompareService
+ *
+ * Được inject vào AiService và được gọi từ handleCompareFlow().
+ * Phụ thuộc PrismaService để truy vấn MySQL (house / land tables).
+ */
 @Injectable()
 export class AiChatCompareService {
   private readonly logger = new Logger(AiChatCompareService.name);
@@ -17,6 +50,11 @@ export class AiChatCompareService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * filterActiveIds — Kiểm tra danh sách ID xem cái nào vẫn đang active.
+   * Query song song house và land, trả về { active[], stale[] }.
+   * ID stale sẽ bị bỏ, chỉ active ID được đưa vào buildCompareAnswer().
+   */
   async filterActiveIds(
     ids: number[],
   ): Promise<{ active: number[]; stale: number[] }> {
@@ -164,6 +202,19 @@ export class AiChatCompareService {
   /**
    * Find a property by price + location + type using precise DB queries.
    * This is the primary strategy for compare descriptions that include prices.
+   */
+  /**
+   * findByPriceAndLocation — Tìm BĐS bằng giá + vị trí + loại (độ chính xác cao).
+   * Đây là Strategy chính cho compare descriptions có chứa giá.
+   *
+   * SCORING ALGORITHM:
+   *   - Price proximity:  Điểm theo % sai lệch (< 0.1% = +20, < 1% = +15, < 5% = +10)
+   *   - Location tokens:  Mỗi token khớp trong title/address = +3 điểm
+   *   - Threshold:        cần tối thiểu 3 điểm mới trả kết quả
+   *
+   * QUERY STRATEGY:
+   *   Lần 1: lọc thểo price range + location tokens
+   *   Lần 2 (fallback): chỉ lọc theo price range nếu lần 1 không có kết quả
    */
   async findByPriceAndLocation(
     description: string,
@@ -332,6 +383,15 @@ export class AiChatCompareService {
    * Find the sourceId of a property matching a free-text description.
    * Tries price+location DB query first, then falls back to text token scoring.
    */
+  /**
+   * findIdByDescription — Tìm ID của BĐS khớp với mô tả văn bản.
+   * 2 Chiến lược theo thứ tự:
+   *   Strategy 1: findByPriceAndLocation() — nếu mô tả có giá
+   *   Strategy 2: findByTextInDb()         — token scoring từ title/address
+   *
+   * @param description - Mô tả tự do (ví dụ: "đất Sơn Trà giá 3 tỷ")
+   * @param excludeId   - ID đã tìm cái trước (tránh match trùng)
+   */
   async findIdByDescription(
     description: string,
     excludeId?: number,
@@ -399,6 +459,19 @@ export class AiChatCompareService {
   /**
    * Fallback property lookup: tokenise the free-text description and count keyword
    * matches against title + address fields of every active house/land record.
+   */
+  /**
+   * findByTextInDb — Tìm BĐS bằng token scoring từ MySQL (chạy chậm hơn nhưng tổng quát).
+   *
+   * SCORING:
+   *   - Unigram trong title:   +2 điểm mỗi token
+   *   - Unigram trong address: +1 điểm mỗi token
+   *   - Bigram trong fullText: +3 điểm mỗi bigram
+   *
+   * 2 PHA QUERY:
+   *   Phase 1 (targeted): Lọc theo tokenOrFilters (OR condition) — fast path, lấy tối đa 250 kết quả
+   *   Phase 2 (fallback):  Quét tất cả (status=1, lấy tối đa 1200) nếu phase 1 < score 2
+   *   Ngưỡng tối thiểu: ≥ 2 điểm mới được chấp nhận (tránh false positive)
    */
   async findByTextInDb(
     description: string,
@@ -605,6 +678,21 @@ export class AiChatCompareService {
     }
   }
 
+  /**
+   * buildCompareAnswer — Xây dựng HTML so sánh 2+ BĐS.
+   *
+   * QUÁ TRÌNH:
+   *   1. findById() cho mỗi ID (parallel) — tìm trong cả house và land
+   *   2. Nếu có hỗn hợp house/land: ưu tiên sử dụng loại có nhiều hơn
+   *   3. Tính metrics: cheapest, largest area, best price/m²
+   *   4. Render HTML card với:
+   *      - Price bar và Area bar (% tương đối với max)
+   *      - Badges: GIÁ TỐT NHẤT, DIỆN TÍCH LỚN, GIÁ/M² TỐT
+   *      - Kết luận 3 tiêu chí
+   *   5. Trả { answer (HTML), sources[], suggestedQuestions[] }
+   *
+   * @param ids - Mảng ID cần so sánh (tối thiểu 2)
+   */
   async buildCompareAnswer(ids: number[]): Promise<{
     answer: string;
     sources: ChatSourcePayload[];
@@ -644,9 +732,9 @@ export class AiChatCompareService {
     if (found.length < 2) {
       return {
         answer:
-          'Mình chưa tìm thấy đủ bất động sản để so sánh. Bạn có thể mở lại 2 tin cần so sánh hoặc gửi link chi tiết của từng tin.',
+          'Minh chua tim thay du bat dong san de so sanh. Ban co the mo lai 2 tin can so sanh hoac gui link chi tiet cua tung tin.',
         sources: [],
-        suggestedQuestions: ['Tìm nhà dưới 5 tỷ', 'Tìm đất nền giá rẻ'],
+        suggestedQuestions: getSuggestedQuestionsByPreset('compare_property'),
       };
     }
 
@@ -658,7 +746,7 @@ export class AiChatCompareService {
       const area = this.toNumber(d.area);
       const pricePerM2 = area > 0 ? Math.round(price / area) : 0;
       const url = `${this.frontendUrl}/${item.type === 'house' ? 'houses' : 'lands'}/${String(d.id)}`;
-      const typeLabel = item.type === 'house' ? 'Nhà' : 'Đất';
+      const typeLabel = item.type === 'house' ? 'Nha' : 'Dat';
 
       sources.push({
         source: item.type,
@@ -725,9 +813,9 @@ export class AiChatCompareService {
         const priceBar = Math.round((row.price / maxPrice) * 100);
         const areaBar = Math.round((row.area / maxArea) * 100);
         const badges = [
-          isCheapest ? 'GIÁ TỐT NHẤT' : '',
-          isLargest ? 'DIỆN TÍCH LỚN' : '',
-          isBestValue ? 'GIÁ/M² TỐT' : '',
+          isCheapest ? 'GIA TOT NHAT' : '',
+          isLargest ? 'DIEN TICH LON' : '',
+          isBestValue ? 'GIA/M2 TOT' : '',
         ].filter((b) => b);
         const badgesHtml = badges
           .map(
@@ -742,7 +830,7 @@ export class AiChatCompareService {
         return `
 <div style="background:${cardBg};border:${cardBorder};border-radius:8px;padding:12px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
     <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px;">
-        <span style="font-weight:700;color:#667eea;font-size:14px;">Bất động sản ${row.idx}</span>
+        <span style="font-weight:700;color:#667eea;font-size:14px;">Bat dong san ${row.idx}</span>
         <span style="font-size:11px;color:#666;">${row.type}</span>
     </div>
     ${badgesHtml ? `<div style="margin-bottom:8px;">${badgesHtml}</div>` : ''}
@@ -752,14 +840,14 @@ export class AiChatCompareService {
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
         <div>
-            <span style="font-size:11px;color:#666;font-weight:500;">Giá</span>
+            <span style="font-size:11px;color:#666;font-weight:500;">Gia</span>
             <div style="font-weight:700;color:#d32f2f;font-size:13px;">${row.priceFormatted}</div>
             <div style="width:100%;height:4px;background:#e0e0e0;border-radius:2px;margin-top:4px;overflow:hidden;">
                 <div style="height:100%;background:linear-gradient(90deg,#d32f2f,#f44336);width:${priceBar}%;border-radius:2px;"></div>
             </div>
         </div>
         <div>
-            <span style="font-size:11px;color:#666;font-weight:500;">Diện tích</span>
+            <span style="font-size:11px;color:#666;font-weight:500;">Dien tich</span>
             <div style="font-weight:700;color:#1976d2;font-size:13px;">${row.areaFormatted}</div>
             <div style="width:100%;height:4px;background:#e0e0e0;border-radius:2px;margin-top:4px;overflow:hidden;">
                 <div style="height:100%;background:linear-gradient(90deg,#1976d2,#42a5f5);width:${areaBar}%;border-radius:2px;"></div>
@@ -767,7 +855,7 @@ export class AiChatCompareService {
         </div>
     </div>
     <div style="background:#f5f5f5;padding:6px 8px;border-radius:4px;text-align:center;font-size:13px;color:#333;font-weight:600;">
-        ${row.pricePerM2Formatted}/m² <span style="color:#999;">|</span> ${row.type}
+        ${row.pricePerM2Formatted}/m2 <span style="color:#999;">|</span> ${row.type}
     </div>
 </div>`;
       })
@@ -775,29 +863,25 @@ export class AiChatCompareService {
 
     const htmlTable = `
 <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:12px 0;max-width:100%;">
-    <h3 style="color:#1a1a1a;margin:0 0 16px 0;font-size:16px;font-weight:700;">So sánh ${found.length} bất động sản</h3>
+    <h3 style="color:#1a1a1a;margin:0 0 16px 0;font-size:16px;font-weight:700;">So sanh ${found.length} bat dong san</h3>
     <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px;">${propertyCardsHtml}</div>
     <div style="background:linear-gradient(135deg,#f0f7ff 0%,#e3f2fd 100%);border-left:4px solid #2196F3;padding:12px;border-radius:6px;margin-bottom:12px;">
-        <h4 style="color:#1565c0;margin:0 0 10px 0;font-size:13px;font-weight:700;">KẾT LUẬN PHÂN TÍCH</h4>
+        <h4 style="color:#1565c0;margin:0 0 10px 0;font-size:13px;font-weight:700;">KET LUAN PHAN TICH</h4>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;color:#333;line-height:1.6;">
-            <div style="background:rgba(211,47,47,0.08);padding:8px;border-radius:4px;border-left:3px solid #d32f2f;"><strong style="color:#d32f2f;">Giá rẻ nhất</strong><br/>Căn ${cheapestIdx}: ${this.formatVnd(cheapestPrice)}</div>
-            <div style="background:rgba(25,118,210,0.08);padding:8px;border-radius:4px;border-left:3px solid #1976d2;"><strong style="color:#1976d2;">Diện tích lớn</strong><br/>Căn ${largestIdx}: ${this.formatArea(largestArea)}</div>
-            <div style="background:rgba(251,192,45,0.1);padding:8px;border-radius:4px;border-left:3px solid #fbc02d;grid-column:1/3;"><strong style="color:#f57f17;">Giá/m² tốt nhất</strong> - Căn ${bestValueIdx}: <strong style="color:#d32f2f;">${this.formatVnd(bestValuePM)}/m²</strong></div>
+            <div style="background:rgba(211,47,47,0.08);padding:8px;border-radius:4px;border-left:3px solid #d32f2f;"><strong style="color:#d32f2f;">Gia re nhat</strong><br/>Can ${cheapestIdx}: ${this.formatVnd(cheapestPrice)}</div>
+            <div style="background:rgba(25,118,210,0.08);padding:8px;border-radius:4px;border-left:3px solid #1976d2;"><strong style="color:#1976d2;">Dien tich lon</strong><br/>Can ${largestIdx}: ${this.formatArea(largestArea)}</div>
+            <div style="background:rgba(251,192,45,0.1);padding:8px;border-radius:4px;border-left:3px solid #fbc02d;grid-column:1/3;"><strong style="color:#f57f17;">Gia/m2 tot nhat</strong> - Can ${bestValueIdx}: <strong style="color:#d32f2f;">${this.formatVnd(bestValuePM)}/m2</strong></div>
         </div>
     </div>
     <div style="background:#fff9c4;border-left:4px solid #fbc02d;padding:12px;border-radius:6px;color:#f57f17;font-size:12px;">
-        <strong>Bạn muốn xem chi tiết hoặc tìm thêm lựa chọn khác?</strong>
+        <strong>Ban muon xem chi tiet hoac tim them lua chon khac?</strong>
     </div>
 </div>`.trim();
 
     return {
       answer: htmlTable,
       sources,
-      suggestedQuestions: [
-        'Xem chi tiết bất động sản đầu tiên',
-        'Tìm nhà tương tự dưới 5 tỷ',
-        'Kinh nghiệm mua nhà lần đầu',
-      ],
+      suggestedQuestions: getSuggestedQuestionsByPreset('compare_property'),
     };
   }
 
@@ -868,3 +952,4 @@ export class AiChatCompareService {
     return `${new Intl.NumberFormat('vi-VN').format(area)} m²`;
   }
 }
+

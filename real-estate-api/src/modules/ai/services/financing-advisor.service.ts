@@ -3,6 +3,26 @@ import { FinancingResult } from '../types/ai.types';
 import { AiUtils } from '../utils/ai.utils';
 
 /**
+ * @file financing-advisor.service.ts
+ * @description Tư vấn tài chính và tính toán khả năng vay mua BĐS.
+ *
+ * CHỨC NĂNG:
+ *   1. calculateFinancing()      — Tính toán với công thức PMT (chính xác toán học)
+ *   2. buildFinancingAnswer()    — Xây dựng câu trả lời tư vấn toàn diện
+ *   3. getGeminiFinancingAdvice()— Gọi Gemini khi câu hỏi tài chính chung chung
+ *   4. getDefaultFinancingAdvice()—Fallback hướng dẫn chuẩn (không cần API)
+ *
+ * THÔNG SỐ MẶC ĐỊNH (thực tế Việt Nam):
+ *   - Lãi suất: 8%/năm (ưu đãi năm đầu)
+ *   - Tỷ lệ vay/giá trị (LTV): 70%
+ *   - Kỳ hạn vay: 20 năm
+ *   - Tỉ lệ trả góp tối đa: 40% thu nhập
+ *
+ * CÔNG THỨC PMT (Payment per period):
+ *   Chế độ thu nhập → tính ngược PMT: PV = PMT × [(1 - (1+r)^-n) / r]
+ *   Chế độ giá BDS → tính PMT: PMT = PV × [r(1+r)^n / ((1+r)^n - 1)]
+ */
+/**
  * Provides mortgage/financing calculations and advice.
  * Helps users understand how much they can afford and what their monthly payments would be.
  */

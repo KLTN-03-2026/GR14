@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useDebounce } from '@/hooks/useDebounce';
 import { toast } from 'react-hot-toast';
 import { postApi } from '@/api';
 import { formatCurrency, formatDateTime } from '@/utils';
@@ -45,7 +46,8 @@ const PostManagementPage: React.FC = () => {
     const [totalItems, setTotalItems] = useState(0);
     const [loading, setLoading] = useState(false);
     const [activeTab, setActiveTab] = useState<ActiveTab>('all');
-    const [search, setSearch] = useState('');
+    const [search, setSearch] = useState('');       // debounced → dùng để gọi API
+    const [searchInput, setSearchInput] = useState(''); // controlled → bind vào input
     const [page, setPage] = useState(1);
 
     // Modal & UI state
@@ -61,7 +63,7 @@ const PostManagementPage: React.FC = () => {
     const [formRenderKey, setFormRenderKey] = useState('admin-post-form-create');
     const formScrollRef = useRef<HTMLDivElement>(null);
     const [detailItem, setDetailItem] = useState<Post | null>(null);
-    const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const debouncedSearch = useDebounce(searchInput, 400);
 
     const loadPosts = useCallback(async (
         currentPage: number,
@@ -110,19 +112,22 @@ const PostManagementPage: React.FC = () => {
         loadPosts(1, 'all', '');
     }, [loadPosts]);
 
+    // Khi debouncedSearch thay đổi, reset về trang 1 và fetch lại
+    useEffect(() => {
+        setSearch(debouncedSearch);
+        setPage(1);
+        loadPosts(1, activeTab, debouncedSearch);
+    }, [debouncedSearch]); // eslint-disable-line react-hooks/exhaustive-deps
+
     const handleSearchChange = (value: string) => {
-        setSearch(value);
-        if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-        searchTimerRef.current = setTimeout(() => {
-            setPage(1);
-            loadPosts(1, activeTab, value);
-        }, 400);
+        setSearchInput(value);
     };
 
     const handleTabChange = (tab: ActiveTab) => {
         setActiveTab(tab);
         setPage(1);
         setSearch('');
+        setSearchInput('');
         loadPosts(1, tab, '');
     };
 
@@ -470,7 +475,7 @@ const PostManagementPage: React.FC = () => {
                     type="text"
                     placeholder="Tìm kiếm theo tiêu đề hoặc địa chỉ..."
                     className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                    value={search}
+                    value={searchInput}
                     onChange={(e) => handleSearchChange(e.target.value)}
                 />
             </div>
