@@ -1,7 +1,55 @@
+/**
+ * @file ai.utils.ts
+ * @description Tập hợp các hàm tiện ích (Utility Class) dùng xuyên suốt toàn bộ AI module.
+ *
+ * TẤT CẢ LÀ STATIC METHODS — không cần khởi tạo, gọi trực tiếp qua AiUtils.method().
+ *
+ * NHÓM CHỨC NĂNG:
+ *
+ * 1. FORMAT & CONVERT (Cơ bản)
+ *    normalizeText()          — Chuẩn hoá tiếng Việt: bỏ dấu, lowercase, dọn khoảng trắng
+ *    toNumber()               — Ép kiểu an toàn sang số (để tránh NaN)
+ *    toVnd()                  — Chuyển "2.5 tỷ" | "500 triệu" → số nguyên VND
+ *    formatVnd()              — Format số người Việt: 2.500.000 VNĐ
+ *    formatArea()             — Format diện tích: 85 m²
+ *    stringifyError()         — Chuyển error → chuỗi an toàn cho logger
+ *    compactMemoryText()      — Cắt ngắn chuỗi dài (dùng cho chat history)
+ *
+ * 2. LLM ENGINE (Trái tim của hệ thống)
+ *    generateLlmResponse()    — Gọi LLM với fallback chain: Gemini → Groq → OpenRouter
+ *
+ * 3. INTENT PARSING
+ *    parseIntent()            — Phân tích ý định bằng Gemini (LLM-first, regex fallback)
+ *    parseIntentRegex()       — Fallback parser dùng regex thuần (deterministic)
+ *    parseCompareDescriptions()— Tách 2 mô tả BDS từ câu "so sánh X với Y"
+ *    extractAllPricesFromText()— Tích xuất tất cả giá tiền trong đoạn text
+ *
+ * 4. VECTOR SEARCH HELPERS
+ *    buildBm25SparseVector()  — Tính BM25 Sparse Vector từ text (cho Hybrid Search)
+ *    buildQdrantFilter()      — Xây dựng metadata filter cho Qdrant query
+ *    applyIntentFilter()      — Lọc VectorHit[] theo giá, loại, vị trí
+ *
+ * 5. RESPONSE GENERATION
+ *    toDisplayAnswer()        — Chuyển JSON từ LLM → chuỗi markdown để hiển thị
+ *    toFastAnswer()           — Tạo câu trả lời nhanh khi LLM fail (không cần AI)
+ *    buildIntentInstructions()— Sinh system prompt riêng theo từng loại intent
+ *    buildSuggestedQuestions()— Gợi ý câu hỏi tiếp theo phù hợp ngữ cảnh
+ *    tryParseJson()           — Parse JSON an toàn, trả null thay vì throw
+ */
 import axios from 'axios';
 import { ParsedIntent, VectorHit } from '../types/ai.types';
 
+/**
+ * AiUtils — Utility class tĩnh (static-only).
+ * Chứa toàn bộ logic hệ thống không phụ thuộc vào NestJS DI hay state.
+ */
 export class AiUtils {
+  /**
+   * normalizeText — Chuẩn hoá tiếng Việt cho xử lý NLP.
+   * Quy trình: lowercase → bỏ dấu (NFD) → đ → d → loại ký tự đặc biệt → dọn khoảng trắng
+   * Ví dụ: "Tìm Nhà ở Đà Nẵng" → "tim nha o da nang"
+   * Được gọi ở mọi nơi trước khi chạy regex match.
+   */
   static normalizeText(value: string): string {
     return value
       .toLowerCase()
@@ -13,12 +61,23 @@ export class AiUtils {
       .trim();
   }
 
+  /**
+   * toNumber — Ép kiểu an toàn sang number.
+   * Trả 0 nếu null / undefined / NaN thay vì throw.
+   * Dùng khi lấy gia/diện tích từ Prisma (BigInt/Decimal).
+   */
   static toNumber(value: unknown): number {
     if (value === null || value === undefined) return 0;
     const num = Number(String(value).replace(/[^0-9.-]/g, ''));
     return Number.isFinite(num) ? num : 0;
   }
 
+  /**
+   * toVnd — Chuyển số + đơn vị sang VND.
+   * Ví dụ: toVnd('2.5', 'ty') → 2_500_000_000
+   *          toVnd('500', 'trieu') → 500_000_000
+   * Trả undefined nếu không xác định được đơn vị (dùng để bế khỏi set giá).
+   */
   static toVnd(amountText: string, unit?: string): number | undefined {
     const amount = Number(String(amountText).replace(/,/g, '.'));
     if (!Number.isFinite(amount)) return undefined;
@@ -31,18 +90,28 @@ export class AiUtils {
     return undefined;
   }
 
+  /**
+   * formatVnd — Format số tiền theo định dạng Việt Nam.
+   * Ví dụ: 2_500_000_000 → "2.500.000.000 VNĐ"
+   * Trả 'N/A' nếu giá trị không hợp lệ.
+   */
   static formatVnd(value: unknown): string {
     const amount = AiUtils.toNumber(value);
     if (!Number.isFinite(amount) || amount <= 0) return 'N/A';
     return `${new Intl.NumberFormat('vi-VN').format(amount)} VNĐ`;
   }
 
+  /** formatArea — Format diện tích. Ví dụ: 85 → "85 m²". Trả 'N/A' nếu không hợp lệ. */
   static formatArea(value: unknown): string {
     const area = AiUtils.toNumber(value);
     if (!Number.isFinite(area) || area <= 0) return 'N/A';
     return `${new Intl.NumberFormat('vi-VN').format(area)} m²`;
   }
 
+  /**
+   * stringifyError — Chuyển error object sang chuỗi an toàn (không throw).
+   * Dùng trong catch block khi log lỗi từ Gemini/Qdrant/Axios.
+   */
   static stringifyError(error: unknown): string {
     if (error instanceof Error) return error.message;
     try {
@@ -52,6 +121,11 @@ export class AiUtils {
     }
   }
 
+  /**
+   * compactMemoryText — Cắt ngắn và gộp khoảng trắng của chuỗi dài.
+   * Dùng khi inject lịch sử chat vào prompt (giới hạn context window).
+   * Ví dụ: compactMemoryText(longText, 300) → "..." nếu vượt 300 ky tự
+   */
   static compactMemoryText(value: string, limit: number): string {
     const oneLine = String(value || '')
       .replace(/\s+/g, ' ')
@@ -61,6 +135,28 @@ export class AiUtils {
     return `${oneLine.slice(0, Math.max(0, limit - 3))}...`;
   }
 
+  /**
+   * generateLlmResponse — Gọi LLM với cơ chế fallback đa tầng.
+   *
+   * LUỒNG GỌI:
+   *   1. Thử lần lượt từng Gemini API key (comma-separated trong GEMINI_API_KEY)
+   *      - Nếu 429 (rate-limit) → thử key tiếp theo
+   *      - Nếu lỗi khác (5xx, timeout) → thoát vòng lặp, đi Groq
+   *      - Nếu bị block bởi safety filter → log warn, đi key tiếp theo
+   *   2. Fallback Groq LLaMA 3.3 70B (OpenAI-compatible API)
+   *      - Convert Gemini format → OpenAI messages format
+   *   3. Fallback OpenRouter (Gemini 2.5 Flash qua gateway)
+   *   4. Trả null nếu tất cả đều fail → AiService dùng Fast Answer
+   *
+   * THƯ NHẠNG MODEL (Gemini 2.5):
+   *   - thinkingBudget = 0: tắt thinking để tiết kiệm token quota
+   *   - isJson = true: yêu cầu output JSON sạch (application/json MIME type)
+   *
+   * @param promptOrContents - Câu hỏi (string) hoặc mảng multi-turn (Gemini format)
+   * @param systemInstruction - System role prompt cho LLM
+   * @param options - { temperature, maxTokens, timeout, isJson }
+   * @returns Chuỗi text từ LLM hoặc null nếu thất bại
+   */
   static async generateLlmResponse(
     promptOrContents: string | any[],
     systemInstruction: string,
@@ -281,6 +377,14 @@ export class AiUtils {
     return null;
   }
 
+  /**
+   * extractAllPricesFromText — Tích xuất tất cả giá tiền trong đoạn text.
+   * Hỗ trợ 3 định dạng:
+   *   1. Việt Nam dot-separated: 2.050.000.000 đ
+   *   2. X tỷ Y triệu: "2 tỷ 50 triệu" → 2_050_000_000
+   *   3. X triệu độc lập: "500 triệu"
+   * Dùng trong AiChatCompareService để tìm BDS theo giá từ description.
+   */
   static extractAllPricesFromText(text: string): number[] {
     const prices: number[] = [];
     const seen = new Set<number>();
@@ -319,6 +423,13 @@ export class AiUtils {
     return prices;
   }
 
+  /**
+   * parseCompareDescriptions — Tách 2 mô tả BDS từ câu so sánh của user.
+   * Ví dụ: "so sánh nhà 3 phòng nhưng Hải Châu với đất Sơn Trà"
+   *          → ["nhà 3 phòng ngủ Hải Châu", "đất Sơn Trà"]
+   * Lọc bỏ các cụm referential ("nhà này", "cái kia"...) không phải mô tả cụ thể.
+   * Trả [] nếu không phân tích được 2 mô tả rõ ràng.
+   */
   static parseCompareDescriptions(question: string): string[] {
     const stripped = question
       .replace(
@@ -365,7 +476,7 @@ export class AiUtils {
       '',
       'Cấu trúc JSON:',
       '{',
-      '  "type": "search_property" | "recommend_property" | "qa_real_estate" | "compare_property" | "booking" | "upgrade_account" | "upgrade_listing" | "greeting" | "investment_advice" | "market_analysis" | "financing_advice" | "consultation" | "unknown",',
+      '  "type": "search_property" | "recommend_property" | "qa_real_estate" | "compare_property" | "booking" | "upgrade_account" | "upgrade_listing" | "greeting" | "investment_advice" | "market_analysis" | "financing_advice" | "unknown",',
       '  "minPrice": number | null,',
       '  "maxPrice": number | null,',
       '  "location": "string | null (tên địa điểm CÓ DẤU, viết hoa: Đà Nẵng, Quận 7, Hải Châu)",',
@@ -384,7 +495,6 @@ export class AiUtils {
       '- greeting: Chào hỏi đơn giản',
       '- search_property: Tìm/mua/thuê BĐS cụ thể (có giá, vị trí, loại)',
       '- recommend_property: Nhờ gợi ý, đề xuất BĐS phù hợp',
-      '- consultation: Nhờ tư vấn chung, chưa rõ nhu cầu',
       '- qa_real_estate: Hỏi kiến thức BĐS (sổ đỏ, pháp lý, thủ tục, kinh nghiệm)',
       '- market_analysis: Hỏi về thị trường, giá trung bình, xu hướng',
       '- financing_advice: Hỏi vay vốn, trả góp, lãi suất, khả năng tài chính',
@@ -468,6 +578,28 @@ export class AiUtils {
   /**
    * Deterministic regex-based intent parser (fallback).
    * Kept as backup when LLM is unavailable or returns invalid data.
+   */
+  /**
+   * parseIntentRegex — Fallback parser dùng regex thuần (deterministic).
+   * Được gọi khi parseIntent() LLM fail hoặc trả về JSON không hợp lệ.
+   *
+   * THỨ TỰ Ư U TIÊN:
+   *   1. greeting  → chào hỏi (ưu tiên cao nhất, trả sớm)
+   *   2. compare   → so sánh (với ID hoặc description)
+   *   3. booking   → đặt lịch xem nhà
+   *   4. upgrade   → nâng cấp tài khoản / tin đăng
+   *   5. financing → tư vấn tài chính
+   *   6. investment→ tư vấn đầu tư
+   *   7. market    → phân tích thị trường
+   *   8. qa        → hỏi kiến thức pháp lý
+   *   10. recommend→ gợi ý BDS
+   *   11. search   → tìm kiếm BDS cụ thể
+   *   12. unknown  → không xác định
+   *
+   * Sau khi xác định intent type, tiếp tục extract:
+   *   - Giá: range (từ X đến Y), upper (dưới X), lower (trên X), exact, giá rẻ
+   *   - Vị trí: 4-tier pattern matching (prefix, property+loc, admin unit, known list)
+   *   - Loại BDS: house / land / post
    */
   static parseIntentRegex(question: string): ParsedIntent {
     const normalized = AiUtils.normalizeText(question);
@@ -568,12 +700,6 @@ export class AiUtils {
         !/\b(tim|can mua|can thue|ty|trieu|can ho)\b/.test(normalized))
     ) {
       intent.type = 'qa_real_estate';
-    } else if (
-      /\b(tu van cho minh|giup minh chon|huong dan mua|nen mua gi|mua nha nao|giup minh tim|ban tu van|muon duoc tu van|can tu van)\b/.test(
-        normalized,
-      )
-    ) {
-      intent.type = 'consultation';
     } else if (
       /\b(nen mua|goi y|recommend|phu hop|nhu cau)\b/.test(normalized)
     ) {

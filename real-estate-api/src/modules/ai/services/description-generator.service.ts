@@ -1,3 +1,28 @@
+/**
+ * @file description-generator.service.ts
+ * @description Tạo nội dung mô tả tin đăng BĐS bằng Gemini AI (tính năng VIP).
+ *
+ * MỤC ĐÍCH:
+ *   Giúp User (phải có tài khoản VIP) tự động tạo nội dung mô tả tin đăng
+ *   chuyên nghiệp, chi tiết (500–800 từ) dựa trên thông tin BDS được cung cấp.
+ *
+ * LOẠI TIN HỘ TRỢ (8 loại — postTypeIntentMap):
+ *   SELL_HOUSE  — Bán nhà: nhấn mạnh giá trị tài sản và thanh khoản
+ *   SELL_LAND   — Bán đất: tiềm năng tăng giá, pháp lý, mặt tiền
+ *   RENT_HOUSE  — Cho thuê nhà/căn hộ/phòng trọ: điều kiện thuê, tiện ích
+ *   RENT_LAND   — Cho thuê đất/mặt bằng: mục đích phù hợp
+ *   NEED_BUY    — Cần mua: viết TỪ GÓC NHÌN NGƯỜI MUA (không phải rao bán)
+ *   NEED_RENT   — Cần thuê: viết từ góc nhìn người thuê
+ *   NEWS        — Tin tức: trung lập, không mang tính chốt sale
+ *   PROMOTION   — Khuyến mãi: mã giảm giá, thời gian áp dụng
+ *
+ * TONE VĂN PHONG:
+ *   'polite'   — Lịch sự, chuyên nghiệp, rõ ràng
+ *   'friendly' — Thân thiện, gần gũi, dùng emoji vừa phải
+ *
+ * FALLBACK NếU GEMINI FAIL:
+ *   buildTemplateDescription() — Tạo mô tả từ template regex + dữ liệu có sẵn
+ */
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import { GenerateDescriptionDto } from '../dto/generate-description.dto';

@@ -1,3 +1,34 @@
+/**
+ * @file ai.service.ts
+ * @description Orchestrator chính của toàn bộ AI Chatbot module.
+ *
+ * ĐÂY LÀ FILE QUAN TRỌNG NHẤT trong module — điều phối toàn bộ pipeline
+ * từ khi nhận request đến khi trả response.
+ *
+ * PIPELINE CHAT (được thực hiện trong chat()):
+ *   1. parseIntent()         → Gọi AiUtils.parseIntent() (Gemini LLM + regex fallback)
+ *   2. getConversationState()→ Lấy memory + summary từ Redis
+
+ *   4. handleDislikeDetection()→ Phát hiện và lưu dislike BDS
+ *   5. handleDirectIntent()  → Intent không cần RAG (greeting/booking/QA)
+ *   6. handleCompareFlow()   → Nếu compare intent → xử lý riêng
+ *   7. Hybrid Search Qdrant   → Dense + Sparse + RRF
+ *   8. applyIntentFilter()   → Lọc kết quả theo giá/loại/vị trí
+ *   9. DB Fallback           → Nếu Qdrant = 0 kết quả → query MySQL
+ *  10. filterSeenProperties()→ Loại BDS đã dislike (User Profile)
+ *  11. generateLlmResponse() → Build prompt + gọi Gemini (fallback: Fast Answer)
+ *  12. returnChatWithMemory()→ Lưu memory vào Redis + trả ChatResult
+ *
+ * CÁC PHƯƠNG THỨC QUAN TRỌNG:
+ *   chat()              — Entry point xử lý câu hỏi
+ *   indexData()         — Re-index dữ liệu vào Qdrant
+ *   indexOne()          — Index một bản ghi
+ *   generateDescription()— Tạo mô tả tin đăng (tính năng VIP)
+ *   embed()             — Gọi Ollama nomic-embed-text → vector 768D
+ *   houseToDoc()        — Chuyển house record → IndexedDoc
+ *   landToDoc()         — Chuyển land record → IndexedDoc
+ *   postToDoc()         — Chuyển post record → IndexedDoc
+ */
 import { Injectable, Logger, ForbiddenException } from '@nestjs/common';
 import axios from 'axios';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -10,7 +41,6 @@ import {
   AiQAService,
   UserProfileService,
   MarketInsightService,
-  ConsultationFlowService,
   FinancingAdvisorService,
 } from './services';
 import {
@@ -25,7 +55,17 @@ import {
   ChatResult,
 } from './types/ai.types';
 import { AiUtils } from './utils/ai.utils';
+import {
+  getSuggestedQuestionsByPreset,
+  getSuggestedQuestionsForIntent,
+} from './constants/suggested-questions.constants';
 
+/**
+ * AiService — Orchestrator chính của AI module.
+ *
+ * Inject toàn bộ sub-services qua constructor và điều phối chúng.
+ * Các giá trị cấu hình được đọc từ environment variables với fallback defaults.
+ */
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
@@ -38,63 +78,63 @@ export class AiService {
     process.env.OLLAMA_URL || 'http://host.docker.internal:11434';
   private readonly ragCollection =
     process.env.RAG_COLLECTION || 'real_estate_rag';
-  // Gemini config (LLM chat only — embedding still uses Ollama nomic-embed-text)
+  // Gemini config (LLM chat only — embedding vẫn dùng Ollama nomic-embed-text)
   private readonly geminiApiKey = process.env.GEMINI_API_KEY || '';
   private readonly geminiChatModel =
     process.env.GEMINI_MODEL_PRIMARY || 'gemini-2.5-flash';
   private readonly geminiApiBase =
     process.env.GEMINI_API_URL ||
     'https://generativelanguage.googleapis.com/v1beta';
-  // Ollama embed model (lightweight ~274MB, runs fine on VPS)
+  // Ollama embed model (nhẹ ~274MB, chạy tốt trên VPS)
   private readonly embedModel = process.env.EMBED_MODEL || 'nomic-embed-text';
-  private readonly retrievalTopK = Number(process.env.RAG_TOP_K || 8);
-  private readonly contextTopK = Number(process.env.RAG_CONTEXT_K || 5);
-  private readonly minScore = Number(process.env.RAG_MIN_SCORE || 0.18);
+  private readonly retrievalTopK = Number(process.env.RAG_TOP_K || 8);           // Số kết quả vector lấy về
+  private readonly contextTopK = Number(process.env.RAG_CONTEXT_K || 5);         // Số kết quả đưa vào prompt
+  private readonly minScore = Number(process.env.RAG_MIN_SCORE || 0.18);          // Điểm tương đồng tối thiểu
   private readonly embedConcurrency = Number(
     process.env.EMBED_CONCURRENCY || 8,
-  );
+  );                                                                               // Số embed song song khi indexData()
   private readonly chatHistoryTurns = Number(
     process.env.RAG_HISTORY_TURNS || 4,
-  );
+  );                                                                               // Số turns gần nhất inject vào prompt
   private readonly chatHistoryMaxTurns = Number(
     process.env.RAG_HISTORY_MAX_TURNS || 20,
-  );
+  );                                                                               // Tối đa turns lưu trong Redis
   private readonly chatSummaryMaxChars = Number(
     process.env.RAG_HISTORY_SUMMARY_CHARS || 1000,
-  );
+  );                                                                               // Tối đa ký tự tóm tắt memory
   private readonly retrievalCandidateMultiplier = Number(
     process.env.RAG_CANDIDATE_MULTIPLIER || 10,
-  );
+  );                                                                               // Nhân số candidate khi có filter
   private readonly maxPromptDescriptionChars = Number(
     process.env.RAG_DESCRIPTION_CHARS || 120,
-  );
+  );                                                                               // Cắt ngắn mô tả BDS trong prompt
   private readonly embedCacheTtlSec = Number(
     process.env.EMBED_QUERY_CACHE_TTL || 600,
-  );
+  );                                                                               // Cache embedding 10 phút
   private readonly responseCacheTtlSec = Number(
     process.env.RAG_RESPONSE_CACHE_TTL || 120,
-  );
+  );                                                                               // Cache response 2 phút
   private readonly lastSourcesTtlSec = Number(
     process.env.RAG_LAST_SOURCES_TTL || 1800,
-  );
-  private readonly enableChatCache = false;
-  private readonly enableLastSources = true;
+  );                                                                               // Cache last sources 30 phút
+  private readonly enableChatCache = false;                                        // Tắt cache chat (tránh stale)
+  private readonly enableLastSources = true;                                       // Bật lưu last sources cho compare
   private readonly enableLlm =
-    String(process.env.RAG_ENABLE_LLM || 'true').toLowerCase() !== 'false';
-  // Fast mode disabled by default — Gemini needs to reason for accurate results
+    String(process.env.RAG_ENABLE_LLM || 'true').toLowerCase() !== 'false';      // Tắt LLM để debug
+  // Fast mode: bỏ qua LLM, trả thẳng từ vector hits (tốc độ cao, chất lượng thấp hơn)
   private readonly fastMode =
     String(process.env.RAG_FAST_MODE || 'false').toLowerCase() === 'true';
   private readonly geminiTimeoutMs = Number(
     process.env.GEMINI_TIMEOUT_MS || 15000,
-  );
+  );                                                                               // Timeout Gemini API
   private readonly qdrantTimeoutMs = Number(
     process.env.QDRANT_TIMEOUT_MS || 2500,
-  );
+  );                                                                               // Timeout Qdrant query
   private readonly embedTimeoutMs = Number(
     process.env.EMBED_TIMEOUT_MS || 5000,
-  );
+  );                                                                               // Timeout Ollama embed
   private readonly logTimings =
-    String(process.env.RAG_LOG_TIMINGS || 'false').toLowerCase() === 'true';
+    String(process.env.RAG_LOG_TIMINGS || 'false').toLowerCase() === 'true';     // Log timing phân tích hiệu năng
 
   constructor(
     private readonly prisma: PrismaService,
@@ -104,10 +144,20 @@ export class AiService {
     private readonly qaService: AiQAService,
     private readonly userProfileService: UserProfileService,
     private readonly marketInsightService: MarketInsightService,
-    private readonly consultationFlowService: ConsultationFlowService,
     private readonly financingAdvisorService: FinancingAdvisorService,
   ) { }
 
+  /**
+   * indexOne — Index một bản ghi BĐS vào Qdrant (dùng khi có record mới được tạo/cập nhận).
+   * Được gọi từ event handler khi tạo tin đăng (không cần re-index toàn bộ).
+   *
+   * Quy trình:
+   *   1. Lấy record từ MySQL theo type và id
+   *   2. Kiểm tra status (chỉ index BDS đang active)
+   *   3. Gọi embed() → Dense Vector 768D
+   *   4. Gọi buildBm25SparseVector() → Sparse Vector
+   *   5. PUT vào Qdrant (upsert)
+   */
   async indexOne(type: 'house' | 'land' | 'post', id: number): Promise<void> {
     try {
       let doc: IndexedDoc;
@@ -154,6 +204,13 @@ export class AiService {
     }
   }
 
+  /**
+   * indexData — Re-index toàn bộ dữ liệu BĐS vào Qdrant.
+   * Trigger từ POST /ai/index. Chạy song song với embedConcurrency (mặc định 8 worker).
+   * Batch size 32 để tránh timeout Qdrant API.
+   *
+   * @param limit - Số bản ghi tối đa mỗi loại (mặc định 200)
+   */
   async indexData(limit = 200) {
     const [houses, lands, posts] = await Promise.all([
       this.prisma.house.findMany({
@@ -247,6 +304,18 @@ export class AiService {
     };
   }
 
+  /**
+   * chat — Entry point xử lý một lượt chat từ người dùng.
+   *
+   * Pipeline đầy đủ 12 bước (xem mô tả @file trên đầu file).
+   * Hầu hết các nánh đều gọi returnChatWithMemory() để đảm bảo:
+   *   - Lưu turn mới vào Redis memory
+   *   - Tự động nén khi vượt chatHistoryMaxTurns
+   *   - Trả ChatResult đầy đủ
+   *
+   * @param dto { sessionId, question } — từ ChatDto
+   * @returns ChatResult
+   */
   async chat(dto: ChatDto) {
     const chatStartedAt = Date.now();
     const timings: Record<string, number> = {};
@@ -281,16 +350,7 @@ export class AiService {
     // Fetch conversation state early (needed for multi-turn flows)
     const conversationEarly = await this.getConversationState(sessionId);
 
-    // Handle consultation flow FIRST (multi-step wizard)
-    // Must run before content generation to avoid consultation answers being
-    // intercepted by the generate-content follow-up detector.
-    const consultationResponse = await this.handleConsultationFlow(
-      sessionId,
-      question,
-      intent,
-      conversationEarly,
-    );
-    if (consultationResponse) return consultationResponse;
+
 
     // Detect user dislike and mark properties
     await this.handleDislikeDetection(sessionId, question, conversationEarly);
@@ -490,15 +550,11 @@ export class AiService {
         confidence: 0,
         sources: [],
         relatedSources,
-        suggestedQuestions: [
-          'Tìm nhà dưới 3 tỷ',
-          'Tìm đất nền giá rẻ',
-          'Kinh nghiệm mua nhà lần đầu',
-        ],
+        suggestedQuestions: getSuggestedQuestionsForIntent(intent),
       });
     }
 
-    const defaultSuggestions = this.buildSuggestedQuestions(intent, hits);
+    const defaultSuggestions = getSuggestedQuestionsForIntent(intent);
 
     // Fast mode skips LLM generation for better UX latency.
     if (this.fastMode || !this.enableLlm) {
@@ -598,7 +654,7 @@ export class AiService {
       '8. suggestedQuestions liên quan nhu cầu hiện tại.',
       '',
       '=== ĐỊNH DẠNG JSON ===',
-      '{"summary":"string","recommendations":[{"title":"string","location":"string","price":number,"area":number,"bedrooms":number,"floors":number,"direction":"string","reason":"string","source":"string","sourceId":number,"url":"string"}],"followUp":"string","suggestedQuestions":["string"]}',
+      '{"summary":"string","recommendations":[{"title":"string","location":"string","price":number,"area":number,"bedrooms":number,"floors":number,"direction":"string","reason":"string","source":"string","sourceId":number,"url":"string"}],"followUp":"string"}',
     ]
       .filter(Boolean)
       .join('\n');
@@ -680,14 +736,7 @@ export class AiService {
       answer = AiUtils.toFastAnswer(hits, intent);
     }
 
-    // Extract suggestedQuestions from LLM structured output if available
-    const llmSuggestions = Array.isArray(structured?.suggestedQuestions)
-      ? (structured.suggestedQuestions as string[])
-        .filter((s) => typeof s === 'string' && s.trim().length > 0)
-        .slice(0, 3)
-      : [];
-    const suggestedQuestions =
-      llmSuggestions.length > 0 ? llmSuggestions : defaultSuggestions;
+    const suggestedQuestions = defaultSuggestions;
 
     const sources = hits.map((h) => ({ ...h.payload, score: h.score }));
     if (shouldStoreLastSources && sources.length > 0) {
@@ -735,10 +784,17 @@ export class AiService {
     });
   }
 
+  /**
+   * Tạo Redis key để lưu danh sách BĐS vừa trả về cho user (dùng cho luồng compare).
+   */
   private lastSourcesKey(sessionId: string): string {
     return `ai:chat:lastSources:${sessionId}`;
   }
 
+  /**
+   * Lưu lại 5 kết quả tìm kiếm gần nhất vào Redis.
+   * Để khi user hỏi "So sánh 2 căn này", hệ thống biết "2 căn này" là căn nào.
+   */
   private async storeLastSources(
     sessionId: string,
     sources: ChatSourcePayload[],
@@ -770,6 +826,9 @@ export class AiService {
     );
   }
 
+  /**
+   * Lấy danh sách kết quả tìm kiếm gần nhất từ Redis cache.
+   */
   private async getLastSources(
     sessionId: string,
   ): Promise<ChatSourcePayload[]> {
@@ -779,6 +838,10 @@ export class AiService {
     return cached?.sources ?? [];
   }
 
+  /**
+   * Lấy toàn bộ Context của phiên chat hiện tại từ Redis.
+   * Bao gồm lịch sử chi tiết (20 lượt) và Tóm tắt dài hạn (nếu có).
+   */
   private async getConversationState(
     sessionId: string,
   ): Promise<ConversationState> {
@@ -795,6 +858,13 @@ export class AiService {
     };
   }
 
+  /**
+   * Method then chốt để kết thúc một turn chat.
+   * Chịu trách nhiệm:
+   * 1. Nối thêm ID nguồn vào câu trả lời để LLM dễ nhận diện lần sau.
+   * 2. Gọi updateConversationMemory() để lưu cặp (Question/Answer) vào Redis.
+   * 3. Đóng gói response chuẩn (ChatResult) để trả về Controller.
+   */
   private async returnChatWithMemory(
     sessionId: string,
     question: string,
@@ -839,6 +909,11 @@ export class AiService {
     };
   }
 
+  /**
+   * Xử lý luồng So Sánh BĐS (Compare Flow).
+   * Cố gắng tìm ít nhất 2 BĐS dựa trên ID từ intent, history, description, hoặc giá.
+   * Nếu tìm được, gọi AiChatCompareService để build HTML table và dùng LLM giải thích thêm.
+   */
   private async handleCompareFlow(
     sessionId: string,
     question: string,
@@ -847,14 +922,13 @@ export class AiService {
   ): Promise<ChatResult | null> {
     if (intent.type !== 'compare_property') return null;
 
-    // Helper to return compare result with AI reasoning
     const returnCompare = async (ids: number[]) => {
       const { active, stale } = await this.compareService.filterActiveIds(ids);
       if (active.length < 2) {
         const staleAnswer =
           stale.length > 0
-            ? 'Một số bất động sản đã hết hoặc đã bị xóa. Bạn vui lòng tìm lại để mình so sánh chính xác hơn.'
-            : 'Mình chưa tìm thấy đủ bất động sản để so sánh. Bạn có thể gửi link chi tiết hoặc mô tả ngắn từng BĐS.';
+            ? 'Mot so bat dong san da het hoac da bi xoa. Ban vui long tim lai de minh so sanh chinh xac hon.'
+            : 'Minh chua tim thay du bat dong san de so sanh. Ban co the gui link chi tiet hoac mo ta ngan tung bat dong san.';
 
         return this.returnChatWithMemory(sessionId, question, conversation, {
           answer: staleAnswer,
@@ -863,19 +937,13 @@ export class AiService {
           confidence: 0,
           sources: [],
           relatedSources: [],
-          suggestedQuestions: [
-            'Tìm nhà dưới 3 tỷ',
-            'Tìm đất nền giá rẻ',
-            'So sánh 2 bất động sản vừa tìm',
-          ],
+          suggestedQuestions: getSuggestedQuestionsByPreset('compare_property'),
         });
       }
 
-      const compareAnswer =
-        await this.compareService.buildCompareAnswer(active);
-
-      // Enrich with AI reasoning via Gemini for expert analysis
+      const compareAnswer = await this.compareService.buildCompareAnswer(active);
       let enrichedAnswer = compareAnswer.answer;
+
       if (
         this.enableLlm &&
         this.geminiApiKey &&
@@ -897,7 +965,7 @@ export class AiService {
         confidence: 1,
         sources: compareAnswer.sources,
         relatedSources: [],
-        suggestedQuestions: compareAnswer.suggestedQuestions,
+        suggestedQuestions: getSuggestedQuestionsByPreset('compare_property'),
       });
     };
 
@@ -906,7 +974,6 @@ export class AiService {
       (!intent.compareIds || intent.compareIds.length === 0) &&
       (!intent.compareDescriptions || intent.compareDescriptions.length === 0)
     ) {
-      // Strategy -1: compare from last search sources (recently returned results)
       const lastSources = await this.getLastSources(sessionId);
       const lastIds = lastSources
         .map((s) => Number(s.sourceId))
@@ -917,12 +984,10 @@ export class AiService {
       }
     }
 
-    // Strategy 0: explicit IDs parsed from the question
     if (intent.compareIds && intent.compareIds.length >= 2) {
       return returnCompare(intent.compareIds);
     }
 
-    // Strategy 1: user named two specific properties — search each separately
     if (intent.compareDescriptions && intent.compareDescriptions.length >= 2) {
       const idA = await this.compareService.findIdByDescription(
         intent.compareDescriptions[0],
@@ -934,16 +999,8 @@ export class AiService {
       if (idA !== null && idB !== null && idA !== idB) {
         return returnCompare([idA, idB]);
       }
-
-      // Strategy 1.5: If description matching failed, try extracting
-      // multiple prices from the full question and match each to a property.
-      // This handles "Đất Hòa Vang 2.050.000.000 đ so sánh với Đất Hòa Vang 2.100.000.000 đ"
-      this.logger.log(
-        `Compare Strategy 1 partial fail: idA=${idA} idB=${idB}, trying multi-price extraction`,
-      );
     }
 
-    // Strategy 1.5: Extract all prices from the full question and find matching properties
     {
       const allPrices = AiUtils.extractAllPricesFromText(question);
       if (allPrices.length >= 2) {
@@ -951,14 +1008,12 @@ export class AiService {
           this.compareService.extractSourceTypeFromText(question);
         const locationTokens =
           this.compareService.extractLocationTokens(question);
-
         const foundIds: number[] = [];
         const usedIds = new Set<number>();
 
         for (const price of allPrices.slice(0, 3)) {
-          // Build a synthetic description for each price
           const syntheticDesc = [
-            sourceType === 'land' ? 'Đất' : sourceType === 'house' ? 'Nhà' : '',
+            sourceType === 'land' ? 'Dat' : sourceType === 'house' ? 'Nha' : '',
             ...locationTokens.slice(0, 5),
             price.toString(),
           ]
@@ -966,7 +1021,6 @@ export class AiService {
             .join(' ');
 
           const id = await this.compareService.findByPriceAndLocation(
-            // Use original question fragments for better location matching
             `${syntheticDesc} ${question}`.slice(0, 300),
             usedIds.size > 0 ? [...usedIds][0] : undefined,
           );
@@ -980,16 +1034,11 @@ export class AiService {
         }
 
         if (foundIds.length >= 2) {
-          this.logger.log(
-            `Compare Strategy 1.5 success: found ids=${foundIds.join(',')} via multi-price extraction`,
-          );
           return returnCompare(foundIds);
         }
       }
     }
 
-    // Strategy 2: referential language or fallback — always try IDs from history
-    // when earlier strategies didn't return a result
     {
       const historyIds = this.compareService.extractIdsFromHistory(
         conversation.memory,
@@ -999,7 +1048,6 @@ export class AiService {
       }
     }
 
-    // Strategy 3: use filters to find candidates in DB
     const hasFilter =
       Boolean(intent.location) ||
       intent.minPrice !== undefined ||
@@ -1018,15 +1066,12 @@ export class AiService {
       }
     }
 
-    // Strategy 4: last resort — extract any prices from the full question
-    // and search broadly for properties matching those prices
     {
       const allPrices = AiUtils.extractAllPricesFromText(question);
       const sourceType =
         this.compareService.extractSourceTypeFromText(question);
 
       if (allPrices.length >= 1 || sourceType) {
-        // Build a broader intent from the question
         const broadIntent: ParsedIntent = {
           type: 'compare_property',
           sourceType: sourceType || intent.sourceType,
@@ -1047,34 +1092,27 @@ export class AiService {
             .map((c) => Number(c.payload?.sourceId))
             .filter((id) => Number.isFinite(id) && id > 0);
           if (ids.length >= 2) {
-            this.logger.log(
-              `Compare Strategy 4 success: found ids=${ids.join(',')} via broad price search`,
-            );
             return returnCompare(ids);
           }
         }
       }
     }
 
-    const compareFailAnswer =
-      'Mình chưa tìm thấy đủ thông tin để so sánh 2 bất động sản bạn yêu cầu. Bạn có thể:\n' +
-      '- Gửi lại link của từng bất động sản cần so sánh\n' +
-      '- Hoặc mô tả chi tiết hơn về địa chỉ từng BDS (số nhà, đường, phường/xã, quận/huyện, tỉnh/thành)';
     return this.returnChatWithMemory(sessionId, question, conversation, {
-      answer: compareFailAnswer,
+      answer:
+        'Minh chua tim thay du thong tin de so sanh 2 bat dong san ban yeu cau. Ban co the gui lai link hoac mo ta chi tiet hon.',
       structured: null,
       intent,
       confidence: 0,
       sources: [],
       relatedSources: [],
-      suggestedQuestions: [
-        'Tìm nhà dưới 3 tỷ',
-        'So sánh 2 bất động sản đang xem',
-        'Kinh nghiệm mua nhà lần đầu',
-      ],
+      suggestedQuestions: getSuggestedQuestionsByPreset('compare_property'),
     });
   }
-
+  /**
+   * Lấy kết quả trả lời từ Redis cache nếu câu hỏi trùng khớp.
+   * Giúp tiết kiệm token Gemini và giảm độ trễ cho các câu hỏi phổ biến.
+   */
   private async tryCachedChatResponse(
     sessionId: string,
     question: string,
@@ -1113,6 +1151,11 @@ export class AiService {
     });
   }
 
+  /**
+   * Cập nhật Memory và Summary vào Redis sau mỗi lượt chat.
+   * - Nén memory (tối đa chatHistoryMaxTurns)
+   * - Nén summary (tối đa chatSummaryMaxChars)
+   */
   private async updateConversationMemory(
     memoryKey: string,
     summaryKey: string,
@@ -1153,6 +1196,11 @@ export class AiService {
     return { newMemory, newSummary };
   }
 
+  /**
+   * Xử lý các luồng trực tiếp không cần Vector Search (RAG).
+   * Ví dụ: Chào hỏi, phân tích thị trường, tư vấn tài chính, kiến thức pháp lý, đặt lịch.
+   * Rẽ nhánh và gọi các Service chuyên biệt tương ứng.
+   */
   private async handleDirectIntent(
     intent: ParsedIntent,
     question: string,
@@ -1181,14 +1229,7 @@ export class AiService {
       }
       return {
         answer: `${greetingPrefix} Mình có thể giúp bạn:\n\n🔍 **Tìm kiếm** nhà, đất phù hợp nhu cầu\n📊 **Phân tích thị trường** giá cả khu vực\n💰 **Tư vấn tài chính** vay vốn, trả góp\n🏦 **Tư vấn đầu tư** BĐS sinh lời\n⚖️ **Hướng dẫn pháp lý** thủ tục mua bán\n\nBạn cần hỗ trợ gì?`,
-        suggestedQuestions: [
-          'Tư vấn cho mình mua nhà',
-          'Phân tích thị trường BĐS Đà Nẵng',
-          'Tìm nhà dưới 3 tỷ',
-          'Tính khả năng vay mua nhà',
-          'Kinh nghiệm đầu tư BĐS',
-          'Sổ hồng là gì?',
-        ],
+        suggestedQuestions: getSuggestedQuestionsByPreset('greeting'),
       };
     }
 
@@ -1201,13 +1242,7 @@ export class AiService {
       );
       return {
         answer,
-        suggestedQuestions: [
-          intent.location
-            ? `Tìm nhà ở ${intent.location}`
-            : 'Tìm nhà dưới 3 tỷ',
-          'Tư vấn đầu tư BĐS',
-          'Tính khả năng vay mua nhà',
-        ],
+        suggestedQuestions: getSuggestedQuestionsByPreset('market_analysis'),
       };
     }
 
@@ -1221,11 +1256,7 @@ export class AiService {
       );
       return {
         answer,
-        suggestedQuestions: [
-          'Phân tích thị trường khu vực Đà Nẵng',
-          'Tìm đất nền đầu tư giá tốt',
-          'Tính khả năng vay mua nhà',
-        ],
+        suggestedQuestions: getSuggestedQuestionsByPreset('investment_advice'),
       };
     }
 
@@ -1235,11 +1266,7 @@ export class AiService {
         await this.financingAdvisorService.buildFinancingAnswer(question);
       return {
         answer,
-        suggestedQuestions: [
-          'Tìm nhà phù hợp ngân sách',
-          'Kinh nghiệm mua nhà lần đầu',
-          'Tư vấn đầu tư BĐS',
-        ],
+        suggestedQuestions: getSuggestedQuestionsByPreset('financing_advice'),
       };
     }
 
@@ -1252,11 +1279,7 @@ export class AiService {
       if (geminiQA) {
         return {
           answer: geminiQA,
-          suggestedQuestions: [
-            'Sổ hồng là gì?',
-            'Tìm nhà dưới 3 tỷ',
-            'Kinh nghiệm mua nhà lần đầu',
-          ],
+          suggestedQuestions: getSuggestedQuestionsByPreset('qa_real_estate'),
         };
       }
     }
@@ -1278,11 +1301,7 @@ export class AiService {
           '',
           'Sau khi đặt, nhân viên sẽ xác nhận lịch qua điện thoại. Bạn cần hỗ trợ tìm BĐS để đặt lịch không?',
         ].join('\n'),
-        suggestedQuestions: [
-          'Tìm nhà dưới 3 tỷ để xem',
-          'Tìm đất nền Bình Dương',
-          'Nhà cho thuê giá rẻ',
-        ],
+        suggestedQuestions: getSuggestedQuestionsByPreset('booking'),
       };
     }
 
@@ -1305,11 +1324,7 @@ export class AiService {
           '',
           'Bạn có câu hỏi về các gói VIP không?',
         ].join('\n'),
-        suggestedQuestions: [
-          'Hướng dẫn đăng bài viết BĐS',
-          'Tìm đất nền giá rẻ',
-          'Tìm nhà dưới 5 tỷ',
-        ],
+        suggestedQuestions: getSuggestedQuestionsByPreset('upgrade_account'),
       };
     }
 
@@ -1317,11 +1332,7 @@ export class AiService {
       return {
         answer:
           'Để nâng cấp tin đăng (đẩy tin, tin nổi bật), bạn vui lòng truy cập vào phần **[Quản lý tin đăng](/my-posts)** của mình, chọn tin cần nâng cấp và bấm vào nút "Nâng cấp" nhé.',
-        suggestedQuestions: [
-          'Tìm nhà dưới 5 tỷ',
-          'So sánh 2 bất động sản phù hợp nhất',
-          'Nâng cấp tài khoản VIP',
-        ],
+        suggestedQuestions: getSuggestedQuestionsByPreset('upgrade_listing'),
       };
     }
 
@@ -1339,154 +1350,10 @@ export class AiService {
     return null;
   }
 
-  /**
-   * Handle multi-step consultation flow.
-   */
-  private async handleConsultationFlow(
-    sessionId: string,
-    question: string,
-    intent: ParsedIntent,
-    conversation: ConversationState,
-  ): Promise<ChatResult | null> {
-    // Check if there's an active consultation
-    const currentState = await this.consultationFlowService.getState(sessionId);
-
-    if (
-      currentState &&
-      currentState.step !== 'idle' &&
-      currentState.step !== 'completed'
-    ) {
-      // Escape hatch: If user explicitly starts over with a greeting or a strong different intent
-      const breakoutIntents = [
-        'greeting',
-        'search_property',
-        'recommend_property',
-        'market_analysis',
-        'investment_advice',
-        'financing_advice',
-        'qa_real_estate',
-        'compare_property',
-        'booking',
-        'upgrade_account',
-        'upgrade_listing',
-      ];
-
-      if (breakoutIntents.includes(intent.type)) {
-        await this.consultationFlowService.clearState(sessionId);
-        return null; // Let the main flow handle the new intent
-      }
-
-      // If user asks for consultation AGAIN, restart the consultation
-      if (intent.type === 'consultation') {
-        await this.consultationFlowService.clearState(sessionId);
-        const profile = await this.userProfileService.getProfile(sessionId);
-        const startAnswer =
-          await this.consultationFlowService.startConsultation(
-            sessionId,
-            profile,
-          );
-
-        return this.returnChatWithMemory(sessionId, question, conversation, {
-          answer: startAnswer,
-          structured: null,
-          intent: { type: 'consultation' },
-          confidence: 1,
-          sources: [],
-          relatedSources: [],
-          suggestedQuestions: [],
-        });
-      }
-
-      // Continue existing consultation
-      const result = await this.consultationFlowService.processAnswer(
-        sessionId,
-        question,
-        currentState,
-      );
-
-      if (result.completed && result.intent) {
-        // Consultation completed - trigger a search with gathered criteria
-        // Save the consultation summary in memory, then let the main chat flow handle the search
-        const summaryAnswer = result.answer;
-        await this.returnChatWithMemory(sessionId, question, conversation, {
-          answer: summaryAnswer,
-          structured: null,
-          intent: result.intent,
-          confidence: 1,
-          sources: [],
-          relatedSources: [],
-          suggestedQuestions: [],
-        });
-
-        // Now execute the search with the consultation-derived intent
-        const searchDto: ChatDto = {
-          sessionId,
-          question: this.buildConsultationSearchQuery(result.state),
-        };
-        return this.chat(searchDto);
-      }
-
-      return this.returnChatWithMemory(sessionId, question, conversation, {
-        answer: result.answer,
-        structured: null,
-        intent: { type: 'consultation' },
-        confidence: 1,
-        sources: [],
-        relatedSources: [],
-        suggestedQuestions: ['Hủy tư vấn'],
-      });
-    }
-
-    // Start new consultation ONLY when intent is explicitly 'consultation'.
-    // Do NOT use isConsultationTrigger fallback here — it was too aggressive
-    // and matched search queries like "đất nền đầu tư" (nen dau tu).
-    if (intent.type === 'consultation') {
-      const profile = await this.userProfileService.getProfile(sessionId);
-      const startAnswer = await this.consultationFlowService.startConsultation(
-        sessionId,
-        profile,
-      );
-
-      return this.returnChatWithMemory(sessionId, question, conversation, {
-        answer: startAnswer,
-        structured: null,
-        intent: { type: 'consultation' },
-        confidence: 1,
-        sources: [],
-        relatedSources: [],
-        suggestedQuestions: [],
-      });
-    }
-
-    return null;
-  }
 
   /**
-   * Build a search query from consultation state.
-   */
-  private buildConsultationSearchQuery(state: any): string {
-    const parts: string[] = ['Tìm'];
-    if (state.propertyType === 'land') parts.push('đất');
-    else parts.push('nhà');
-
-    if (state.location) parts.push(`ở ${state.location}`);
-    if (state.budgetMax) {
-      const label =
-        state.budgetMax >= 1_000_000_000
-          ? `${(state.budgetMax / 1_000_000_000).toFixed(1).replace('.0', '')} tỷ`
-          : `${Math.round(state.budgetMax / 1_000_000)} triệu`;
-      parts.push(`dưới ${label}`);
-    }
-    if (state.bedrooms) parts.push(`${state.bedrooms} phòng ngủ`);
-    if (state.additionalCriteria && state.additionalCriteria !== 'khong co') {
-      parts.push(state.additionalCriteria);
-    }
-
-    return parts.join(' ');
-  }
-
-  /**
-   * Detect if user dislikes current results and mark properties accordingly.
+   * Phát hiện intent "chê/không thích" của người dùng đối với kết quả vừa trả về.
+   * Lưu các ID bị chê vào Redis UserProfile để loại bỏ ở các lần search sau.
    */
   private async handleDislikeDetection(
     sessionId: string,
@@ -1516,54 +1383,10 @@ export class AiService {
     }
   }
 
-  private buildSuggestedQuestions(
-    intent: ParsedIntent,
-    hits: VectorHit[],
-  ): string[] {
-    const suggestions: string[] = [];
-    const firstHit = hits[0]?.payload;
-
-    // User-friendly compare suggestion (no raw IDs exposed)
-    // Backend Strategy 2 will extract IDs from recent chat history automatically
-    if (hits.length >= 2) {
-      suggestions.push('So sánh các bất động sản vừa tìm');
-    }
-
-    if (firstHit) {
-      const city = String(firstHit.city || '');
-      const district = String(firstHit.district || '');
-      const source = String(firstHit.source || '');
-      const locationLabel = district || city;
-      if (locationLabel) {
-        suggestions.push(
-          `Tìm ${source === 'land' ? 'đất' : 'nhà'} khác ở ${locationLabel}`,
-        );
-      }
-    }
-
-    if (intent.maxPrice) {
-      const priceLabel =
-        intent.maxPrice >= 1_000_000_000
-          ? `${(intent.maxPrice / 1_000_000_000).toFixed(1).replace('.0', '')} tỷ`
-          : `${Math.round(intent.maxPrice / 1_000_000)} triệu`;
-      suggestions.push(`Tìm nhà dưới ${priceLabel}`);
-    } else if (intent.minPrice) {
-      suggestions.push('Xem thêm bất động sản giá tương tự');
-    } else {
-      suggestions.push('Tìm nhà dưới 3 tỷ');
-    }
-
-    if (!intent.location) {
-      suggestions.push('Tìm bất động sản ở Đà Nẵng');
-    }
-
-    if (suggestions.length < 3) {
-      suggestions.push('Kinh nghiệm mua nhà lần đầu');
-    }
-
-    return suggestions.slice(0, 3);
-  }
-
+  /**
+   * Truy vấn Fallback trực tiếp vào MySQL (Database).
+   * Được gọi khi Qdrant (Vector DB) trả về 0 kết quả, hoặc khi dùng luồng Compare.
+   */
   private async findDbCandidatesByIntent(
     intent: ParsedIntent,
     limit: number,
@@ -1672,6 +1495,11 @@ export class AiService {
     return locationFiltered.slice(0, limit);
   }
 
+  /**
+   * Khởi tạo Collection trên Qdrant với cấu hình Hybrid Search.
+   * Gồm: Dense Vector (Cosine distance) và Sparse Vector (BM25).
+   * Tạo luôn các keyword index cho metadata (city, district, ward).
+   */
   private async ensureCollection(size: number) {
     try {
       // Create collection with Named Vectors (dense + sparse) for Hybrid Search
@@ -1711,6 +1539,10 @@ export class AiService {
     }
   }
 
+  /**
+   * Gọi tới Ollama (Nomic Embed Text) để chuyển đổi text sang Dense Vector.
+   * Đây là mảng 768 chiều dùng để so sánh khoảng cách ngữ nghĩa.
+   */
   private async embed(input: string): Promise<number[]> {
     // Use Ollama nomic-embed-text for embedding (lightweight, runs on VPS)
     const resp = await axios.post(
@@ -1730,6 +1562,10 @@ export class AiService {
     return vector;
   }
 
+  /**
+   * Lấy vector của câu hỏi từ cache (Redis), nếu chưa có thì gọi embed().
+   * Giúp tăng tốc độ xử lý khi người dùng hỏi lại câu cũ.
+   */
   private async getCachedQueryEmbedding(question: string): Promise<number[]> {
     const normalized = AiUtils.normalizeText(question);
     const cacheKey = `ai:embed:q:${encodeURIComponent(normalized).slice(0, 200)}`;
@@ -1743,6 +1579,10 @@ export class AiService {
     return vector;
   }
 
+  /**
+   * Chuẩn bị dữ liệu để index/embed cho bảng Nhà (House).
+   * Format lại text để Nomic Embed Text hiểu rõ các trường dữ liệu.
+   */
   private houseToDoc(house: Record<string, unknown>): IndexedDoc {
     const id = 1_000_000 + Number(house.id || 0);
     const price = AiUtils.toNumber(house.price);
@@ -1801,6 +1641,10 @@ export class AiService {
     return { id, text, payload };
   }
 
+  /**
+   * Chuẩn bị dữ liệu để index/embed cho bảng Đất (Land).
+   * Format lại text, đặc biệt lưu ý các trường như mặt tiền, loại đất.
+   */
   private landToDoc(land: Record<string, unknown>): IndexedDoc {
     const id = 2_000_000 + Number(land.id || 0);
     const price = AiUtils.toNumber(land.price);
@@ -1857,6 +1701,9 @@ export class AiService {
     return { id, text, payload };
   }
 
+  /**
+   * Chuẩn bị dữ liệu để index/embed cho bảng Tin đăng (Post).
+   */
   private postToDoc(post: Record<string, unknown>): IndexedDoc {
     const id = 3_000_000 + Number(post.id || 0);
     const price = AiUtils.toNumber(post.price);
@@ -1893,6 +1740,10 @@ export class AiService {
     return { id, text, payload };
   }
 
+  /**
+   * Lọc kết quả trả về từ Qdrant/MySQL theo các điều kiện cứng từ Intent.
+   * Áp dụng filter giá, vị trí (token matching), loại BDS (house/land/post), và loại giao dịch (mua/thuê).
+   */
   private applyIntentFilter<T extends { payload: Record<string, unknown> }>(
     hits: T[],
     intent: ParsedIntent,
@@ -2016,8 +1867,9 @@ export class AiService {
   }
 
   /**
-   * Build Qdrant metadata filter to push filtering into the vector search
-   * instead of filtering client-side after retrieval.
+   * Xây dựng bộ lọc Qdrant Metadata Filter từ Intent.
+   * Chuyển các bộ lọc (giá, vị trí, loại BDS) xuống tầng Vector Search
+   * thay vì lọc ở client-side để đảm bảo luôn lấy đủ top K kết quả.
    */
   private buildQdrantFilter(
     intent: ParsedIntent,
@@ -2053,8 +1905,9 @@ export class AiService {
   }
 
   /**
-   * Call Gemini to produce expert AI analysis for property comparison.
-   * Returns a formatted analysis paragraph or null if the call fails.
+   * Gọi Gemini AI để phân tích, đánh giá ưu nhược điểm và so sánh các BĐS.
+   * Dùng riêng cho luồng Compare (so sánh).
+   * Trả về chuỗi phân tích định dạng Markdown.
    */
   private async getCompareAIAnalysis(
     sources: ChatSourcePayload[],
@@ -2114,6 +1967,10 @@ export class AiService {
     }
   }
 
+  /**
+   * Lấy danh sách các BĐS liên quan từ Vector Hits (pool chung).
+   * Loại trừ các BĐS đã nằm trong primaryHits để làm gợi ý "Xem thêm".
+   */
   private buildRelatedSources(
     pool: VectorHit[],
     primaryHits: VectorHit[],
@@ -2169,6 +2026,10 @@ export class AiService {
     return out;
   }
 
+  /**
+   * Fallback: Lấy danh sách BĐS liên quan từ MySQL nếu Vector Search không đủ số lượng.
+   * Dùng tính điểm (score) bằng token matching thủ công.
+   */
   private async findRelatedFromDb(
     intent: ParsedIntent,
     primaryHits: VectorHit[],
@@ -2241,6 +2102,10 @@ export class AiService {
       .map((x) => x.payload);
   }
 
+  /**
+   * Utility method: Xử lý Promise song song có giới hạn (Concurrency) và tùy chọn Delay.
+   * Dùng khi re-index số lượng lớn BĐS (tránh Rate Limit từ Ollama/Qdrant).
+   */
   private async mapWithConcurrency<T, R>(
     items: T[],
     concurrency: number,
@@ -2273,6 +2138,10 @@ export class AiService {
     return results;
   }
 
+  /**
+   * API độc lập: Sinh mô tả BĐS tự động cho tin đăng bằng Gemini.
+   * Quyền: Chỉ dành cho ADMIN, EMPLOYEE hoặc CUSTOMER đang có gói VIP active.
+   */
   async generateDescription(
     dto: GenerateDescriptionDto,
     userId?: number,
@@ -2304,3 +2173,4 @@ export class AiService {
     return this.descriptionGeneratorService.generateDescription(dto);
   }
 }
+

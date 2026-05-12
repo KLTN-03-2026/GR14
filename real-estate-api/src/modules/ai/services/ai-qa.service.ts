@@ -1,19 +1,76 @@
+/**
+ * @file ai-qa.service.ts
+ * @description Service hỏi đáp kiến thức cơ bản về bất động sản Việt Nam.
+ *
+ * CƠ CHừe (2 TẦNG):
+ *   Tầng 1 — answerQA():            Static QA Bank — 13 pattern regex sắp sẵn
+ *              Nếu câu hỏi khớp với pattern → trả lời ngay không cần LLM (nhanh, 0 token)
+ *
+ *   Tầng 2 — answerQAWithGemini():  LLM fallback — gọi Gemini API
+ *              Được gọi từ AiService khi Tầng 1 trả null
+ *
+ * CÁC CHỦ ĐỀ QA BANK (được hiểu biết với tiếng Việt không dấu):
+ *   1.  Sổ hồng (giấy chứng nhận QSDD)
+ *   2.  Sổ đỏ (GCNQSDD bìa đỏ cũ)
+ *   3.  Công chứng / sang tên / thủ tục
+ *   4.  Thuế, phí, lệ phí trước bạ
+ *   5.  Kinh nghiệm mua nhà lần đầu
+ *   6.  Phong thủy / hướng nhà / tuổi
+ *   7.  Vay ngân hàng / lãi suất / trả góp
+ *   8.  Quy hoạch / kiểm tra quy hoạch
+ *   9.  Đặt cọc / hợp đồng đặt cọc
+ *   10. Loại đất (đất nền, đất nông nghiệp, đất thổ cư)
+ *   11. Giấy phép xây dựng
+ *   12. Diện tích tim tường / thông thủy
+ *   13. Đầu tư BDS / sinh lời / lợi nhuận
+ *
+ * LƯƠNG GỌI (từ AiService):
+ *   answerQA(question)          → trả { answer, suggestedQuestions } hoặc null
+ *   (nếu null) → answerQAWithGemini(question) → trả string hoặc null
+ *   (nếu null) → AiService dùng RAG pipeline bình thường
+ */
 import { Injectable, Logger } from '@nestjs/common';
 import { AiUtils } from '../utils/ai.utils';
 
+/**
+ * AiQAService — Chuyên gia hỏi đáp kiến thức BĐS.
+ *
+ * Không phụ thuộc vào Vector DB hay MySQL, chỉ dùng regex matching
+ * và Gemini API. Phù hợp cho các câu hỏi pháp lý, thủ tục, kiến thức nền tảng.
+ */
 @Injectable()
 export class AiQAService {
   private readonly logger = new Logger(AiQAService.name);
+  // API key Gemini — lấy từ env, dùng cho answerQAWithGemini()
   private readonly geminiApiKey = process.env.GEMINI_API_KEY || '';
   private readonly geminiChatModel =
     process.env.GEMINI_MODEL_PRIMARY || 'gemini-2.5-flash';
   private readonly geminiApiBase =
     process.env.GEMINI_API_URL ||
     'https://generativelanguage.googleapis.com/v1beta';
+  // Timeout cho Gemini API (mặc định 15 giây)
   private readonly geminiTimeoutMs = Number(
     process.env.GEMINI_TIMEOUT_MS || 15000,
   );
 
+  /**
+   * Tầng 1: answerQA — Static QA Bank
+   *
+   * Kiểm tra câu hỏi người dùng với 13 pattern regex được định nghĩa sẵn.
+   * Quá trình:
+   *   1. Chuẩn hoá câu hỏi (bỏ dấu, chường hóa) qua AiUtils.normalizeText()
+   *   2. Kiểm tra lần lượt từng pattern trong qaBank[]
+   *   3. Nếu khớp → trả ngay câu trả lời + 3 câu hỏi gợi ý liên quan
+   *   4. Không khớp bất kỳ pattern nào → trả null (AiService sẽ gọi Tầng 2)
+   *
+   * Tại sao dùng regex thay vì LLM?
+   *   - Tốc độ: phản hồi < 1ms, không tốn API token
+   *   - Deterministic: kết quả nhất quán, không bị "hallucination"
+   *   - Kiểm soát nội dung: câu trả lời được viết và kiểm duyệt kỹ
+   *
+   * @param question - Câu hỏi gốc của người dùng
+   * @returns { answer, suggestedQuestions } nếu khớp, null nếu không khớp
+   */
   public answerQA(
     question: string,
   ): { answer: string; suggestedQuestions: string[] } | null {
@@ -170,6 +227,23 @@ export class AiQAService {
     return null;
   }
 
+  /**
+   * Tầng 2: answerQAWithGemini — LLM Fallback
+   *
+   * Được gọi từ AiService khi answerQA() trả về null (câu hỏi không khớp bất kỳ pattern nào).
+   * Gọi Gemini API với system prompt chuyên gia BĐS Việt Nam.
+   *
+   * Config Gemini:
+   *   - temperature: 0.3 (conservative, ưu tiên chính xác hơn sáng tạo)
+   *   - maxTokens: 1000 (giới hạn 200 từ theo system prompt)
+   *   - timeout: geminiTimeoutMs (mặc định 15s)
+   *
+   * Failsafe: Nếu text trả về < 20 ký tự hoặc bị lỗi → trả null
+   * → AiService có thể fallback sang RAG pipeline thông thường
+   *
+   * @param question - Câu hỏi gốc của người dùng
+   * @returns Chuỗi câu trả lời hoặc null nếu thất bại
+   */
   public async answerQAWithGemini(question: string): Promise<string | null> {
     if (!this.geminiApiKey) return null;
     try {

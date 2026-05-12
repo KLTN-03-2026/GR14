@@ -4,6 +4,31 @@ import { UserProfile, ParsedIntent } from '../types/ai.types';
 import { AiUtils } from '../utils/ai.utils';
 
 /**
+ * @file user-profile.service.ts
+ * @description Quản lý hồ sơ cá nhân của người dùng theo sessionId (lưu Redis, TTL 7 ngày).
+ *
+ * MỤC ĐÍCH:
+ *   Cá nhân hóa kết quả chatbot dựa trên lịch sử tương tác của từng user.
+ *
+ * CHỨC NĂNG CHÍNH:
+ *   getProfile()          — Lấy profile từ Redis, tạo mới nếu chưa có
+ *   saveProfile()         — Lưu profile + cập nhật lastActiveAt
+ *   learnFromInteraction()— Học hỏi từ mỗi lượt chat (ngân sách, khu vực, loại BDS, keywords)
+ *   markDisliked()        — Đánh dấu BDS user không thích, loại khỏi kết quả sau
+ *   detectDislike()       — Phát hiện câu thể hiện không thích ("không phù hợp", "skip"...)
+ *   buildProfileContext() — Chuỗi ngữ cảnh inject vào Gemini prompt (để AI hiểu user)
+ *   filterSeenProperties()— Lọc bỏ BDS đã dislike khỏi VectorHit[]
+ *
+ * REDIS KEYS:
+ *   ai:profile:{sessionId} — TTL 7 ngày
+ *
+ * GIỚI HẠN BỐ NHỜ:
+ *   preferredAreas:        tối đa 5 khu vực
+ *   viewedPropertyIds:     tối đa 50 BDS
+ *   dislikedPropertyIds:   tối đa 30 BDS
+ *   keywords:              tối đa 10 từ khóa
+ */
+/**
  * Manages persistent user profiles across sessions.
  * Learns user preferences from interactions and filters out previously viewed/disliked properties.
  */
