@@ -41,7 +41,7 @@ export class RecommendationService {
     private readonly scoring: ScoringService, // Chấm điểm BĐS (rule-based)
     private readonly vector: VectorService, // AI embedding + Qdrant search
     private readonly userProfile: UserProfileService, // Phân tích sở thích user
-  ) {}
+  ) { }
 
   // ==================== HYBRID AI RECOMMENDATIONS ====================
 
@@ -104,7 +104,7 @@ export class RecommendationService {
         interactionMap.set(key, {
           id: b.houseId,
           type: 'house',
-          qdrantId: HOUSE_ID_OFFSET + b.houseId,
+          qdrantId: HOUSE_ID_OFFSET + b.houseId, // Dùng để query vector trong Qdrant
           weight: (existing?.weight || 0) + weight,
         });
       }
@@ -371,31 +371,31 @@ export class RecommendationService {
     const [fullHouses, fullLands] = await Promise.all([
       topHouseIds.length > 0
         ? this.prisma.house.findMany({
-            where: { id: { in: topHouseIds } },
-            include: {
-              images: { select: { id: true, url: true } },
-              category: true,
-              employee: {
-                include: {
-                  user: { select: { id: true, fullName: true, phone: true } },
-                },
+          where: { id: { in: topHouseIds } },
+          include: {
+            images: { select: { id: true, url: true } },
+            category: true,
+            employee: {
+              include: {
+                user: { select: { id: true, fullName: true, phone: true } },
               },
             },
-          })
+          },
+        })
         : Promise.resolve([]),
       topLandIds.length > 0
         ? this.prisma.land.findMany({
-            where: { id: { in: topLandIds } },
-            include: {
-              images: { select: { id: true, url: true } },
-              category: true,
-              employee: {
-                include: {
-                  user: { select: { id: true, fullName: true, phone: true } },
-                },
+          where: { id: { in: topLandIds } },
+          include: {
+            images: { select: { id: true, url: true } },
+            category: true,
+            employee: {
+              include: {
+                user: { select: { id: true, fullName: true, phone: true } },
               },
             },
-          })
+          },
+        })
         : Promise.resolve([]),
     ]);
 
@@ -459,30 +459,30 @@ export class RecommendationService {
     const selectFields =
       type === 'house'
         ? {
-            id: true,
-            price: true,
-            city: true,
-            district: true,
-            ward: true,
-            area: true,
-            direction: true,
-            categoryId: true,
-            bedrooms: true,
-            bathrooms: true,
-          }
+          id: true,
+          price: true,
+          city: true,
+          district: true,
+          ward: true,
+          area: true,
+          direction: true,
+          categoryId: true,
+          bedrooms: true,
+          bathrooms: true,
+        }
         : {
-            id: true,
-            price: true,
-            city: true,
-            district: true,
-            ward: true,
-            area: true,
-            direction: true,
-            categoryId: true,
-            frontWidth: true,
-            landLength: true,
-            landType: true,
-          };
+          id: true,
+          price: true,
+          city: true,
+          district: true,
+          ward: true,
+          area: true,
+          direction: true,
+          categoryId: true,
+          frontWidth: true,
+          landLength: true,
+          landType: true,
+        };
 
     const behaviors = await this.prisma.userBehavior.findMany({
       where: {

@@ -6,18 +6,18 @@
  * từ khi nhận request đến khi trả response.
  *
  * PIPELINE CHAT (được thực hiện trong chat()):
- *   1. parseIntent()         → Gọi AiUtils.parseIntent() (Gemini LLM + regex fallback)
- *   2. getConversationState()→ Lấy memory + summary từ Redis
-
+ *   1. parseIntent()          → Gọi AiUtils.parseIntent() (Gemini LLM + regex fallback)
+ *   2. getConversationState() → Lấy memory + summary từ Redis
+ *   3. Kiểm tra Cache         → Bỏ qua nếu là câu hỏi ngữ cảnh (compare/follow-up)
  *   4. handleDislikeDetection()→ Phát hiện và lưu dislike BDS
- *   5. handleDirectIntent()  → Intent không cần RAG (greeting/booking/QA)
- *   6. handleCompareFlow()   → Nếu compare intent → xử lý riêng
+ *   5. handleDirectIntent()   → Intent không cần RAG (greeting/booking/QA)
+ *   6. handleCompareFlow()    → Nếu compare intent → xử lý riêng
  *   7. Hybrid Search Qdrant   → Dense + Sparse + RRF
- *   8. applyIntentFilter()   → Lọc kết quả theo giá/loại/vị trí
- *   9. DB Fallback           → Nếu Qdrant = 0 kết quả → query MySQL
- *  10. filterSeenProperties()→ Loại BDS đã dislike (User Profile)
- *  11. generateLlmResponse() → Build prompt + gọi Gemini (fallback: Fast Answer)
- *  12. returnChatWithMemory()→ Lưu memory vào Redis + trả ChatResult
+ *   8. applyIntentFilter()    → Lọc kết quả theo giá/loại/vị trí
+ *   9. DB Fallback            → Nếu Qdrant = 0 kết quả → query MySQL
+ *  10. filterSeenProperties() → Loại BDS đã dislike (User Profile)
+ *  11. generateLlmResponse()  → Build prompt + gọi Gemini (fallback: Fast Answer)
+ *  12. returnChatWithMemory() → Lưu memory vào Redis + trả ChatResult
  *
  * CÁC PHƯƠNG THỨC QUAN TRỌNG:
  *   chat()              — Entry point xử lý câu hỏi
@@ -317,22 +317,53 @@ export class AiService {
    * @returns ChatResult
    */
   async chat(dto: ChatDto) {
+    // ═══════════════════════════════════════════════════════════════════
+    // BƯỚC 1 — KHỞI TẠO & PHÂN TÍCH INTENT (Hiểu ý định người dùng)
+    // ═══════════════════════════════════════════════════════════════════
+    // Ghi lại thời điểm bắt đầu để đo hiệu năng toàn bộ pipeline.
     const chatStartedAt = Date.now();
     const timings: Record<string, number> = {};
     const question = dto.question.trim();
     const sessionId = dto.sessionId.trim();
+
+    // parseIntent() gọi Gemini LLM để phân tích câu hỏi → trả về:
+    //   intent.type       : loại ý định (search_property, greeting, financing_advice...)
+    //   intent.location   : khu vực (vd: "Đà Nẵng", "Quận 7")
+    //   intent.maxPrice   : ngân sách tối đa
+    //   intent.sourceType : loại BDS (house/land)
+    //   intent.expandedQuery: câu hỏi được Gemini viết lại tối ưu hơn cho tìm kiếm
+    // Nếu Gemini lỗi → tự động fallback về Regex parser.
     const intent = await AiUtils.parseIntent(question);
     this.logger.log(
       `[INTENT] "${question.slice(0, 60)}" → ${intent.type} | loc=${intent.location} | max=${intent.maxPrice} | purpose=${intent.purpose}${intent.expandedQuery ? ` | expanded="${intent.expandedQuery.slice(0, 50)}"` : ''}`,
     );
+
+    // Chuẩn hóa câu hỏi (bỏ dấu, lowercase) để dùng cho cache key và regex check.
     const normalizedQuestion = AiUtils.normalizeText(question);
+
+    // hasIntentFilter = true nếu user có đặt điều kiện cụ thể (vị trí/giá/loại BDS).
+    // Khi có filter → cần tăng số lượng ứng viên (candidateLimit) để bù sau khi lọc.
     const hasIntentFilter =
       Boolean(intent.location) ||
       intent.minPrice !== undefined ||
       intent.maxPrice !== undefined ||
       Boolean(intent.sourceType);
+
+    // Câu trả lời mặc định khi không tìm được BDS nào.
     const noDataAnswer =
       'Hiện tại mình chưa tìm thấy bất động sản nào phù hợp với yêu cầu của bạn.';
+
+    // ═══════════════════════════════════════════════════════════════════
+    // BƯỚC 2 — LẤY CONVERSATION STATE (Lấy memory + summary từ Redis)
+    // ═══════════════════════════════════════════════════════════════════
+    // Fetch conversation state sớm (cần cho multi-turn flows và cache check).
+    const conversationEarly = await this.getConversationState(sessionId);
+
+    // ═══════════════════════════════════════════════════════════════════
+    // BƯỚC 3 — KIỂM TRA CACHE (Caching)
+    // ═══════════════════════════════════════════════════════════════════
+    // shouldUseCache = true khi câu hỏi mang tính tĩnh (pháp lý, chào hỏi)
+    // và không phải câu hỏi phụ thuộc context ("vừa tìm", "vừa xem").
     const isContextualCompare = intent.type === 'compare_property';
     const isContextualFollowUp = /\b(vua tim|vua xem)\b/.test(
       normalizedQuestion,
@@ -342,15 +373,28 @@ export class AiService {
       (intent.type === 'qa_real_estate' || intent.type === 'greeting') &&
       !isContextualCompare &&
       !isContextualFollowUp;
+
+    // shouldStoreLastSources = true khi cần ghi nhớ kết quả vừa tìm vào Redis.
+    // Mục đích: khi user bảo "So sánh 2 căn vừa nãy", hệ thống biết đó là căn nào.
     const shouldStoreLastSources =
       this.enableLastSources &&
       (intent.type === 'search_property' ||
         intent.type === 'recommend_property');
 
-    // Fetch conversation state early (needed for multi-turn flows)
-    const conversationEarly = await this.getConversationState(sessionId);
-
-
+    // ═══════════════════════════════════════════════════════════════════
+    // BƯỚC 4 — PHÁT HIỆN DISLIKE & BƯỚC 5 — XỬ LÝ INTENT TRỰC TIẾP
+    // ═══════════════════════════════════════════════════════════════════
+    // BƯỚC 4: handleDislikeDetection() — Phát hiện câu từ chối/không thích BDS,
+    //         lưu vào User Profile để lọc ra ở bước 10.
+    //
+    // BƯỚC 5: handleDirectIntent() — Một số intent trả lời ngay, không cần RAG:
+    //   - greeting        → Chào hỏi, cá nhân hóa dựa trên profile
+    //   - market_analysis → Gọi MarketInsightService
+    //   - financing_advice→ Gọi FinancingAdvisorService (PMT)
+    //   - qa_real_estate  → Gọi AiQAService (Regex Bank / Gemini)
+    //   - booking         → Hướng dẫn đặt lịch
+    //   - upgrade_*       → Hướng dẫn nâng cấp
+    // Nếu có kết quả trực tiếp → trả luôn, bỏ qua toàn bộ phần RAG bên dưới.
 
     // Detect user dislike and mark properties
     await this.handleDislikeDetection(sessionId, question, conversationEarly);
@@ -408,6 +452,13 @@ export class AiService {
       if (cachedResponse) return cachedResponse;
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // BƯỚC 7 — HYBRID SEARCH QDRANT (Tìm kiếm Vector DB)
+    // ═══════════════════════════════════════════════════════════════════
+    // BƯỚC 6 (handleCompareFlow) đã được xử lý ở trên (trả về sớm nếu là compare).
+    // Từ đây pipeline tiếp tục với các câu hỏi tìm kiếm/gợi ý BDS thông thường.
+    // candidateLimit: nếu có filter → cần lấy nhiều hơn (ví dụ 80 BDS)
+    // sau đó mới lọc bỏ các BDS không đúng giá/vị trí, rồi chỉ giữ top K.
     const candidateLimit = hasIntentFilter
       ? Math.max(
         this.retrievalTopK * this.retrievalCandidateMultiplier,
@@ -417,20 +468,30 @@ export class AiService {
 
     let rawHits: VectorHit[] = [];
     const relatedPool: VectorHit[] = [];
-    // Build Qdrant metadata filter for more precise retrieval
+
+    // Qdrant Metadata Filter: ép bộ lọc cứng (giá/vị trí/loại) vào chính query Vector.
+    // Giúp Qdrant chỉ quét trong tập con thỏa điều kiện, nhanh và chính xác hơn.
     const qdrantFilter = this.buildQdrantFilter(intent);
     try {
       const embedStartedAt = Date.now();
-      // Query Expansion: use LLM-generated optimized query for embedding
-      // when available, otherwise fall back to the original question.
+      // Query Expansion: nếu Gemini đã viết lại câu hỏi tốt hơn (expandedQuery)
+      // → dùng câu hỏi mới đó để embed thay vì câu hỏi gốc (chính xác hơn).
       const searchText = intent.expandedQuery || question;
+
+      // embed() gọi Ollama nomic-embed-text → Dense Vector 768 chiều.
+      // getCachedQueryEmbedding() kiểm tra Redis trước, nếu có sẵn thì trả ngay.
       const queryVector = await this.getCachedQueryEmbedding(searchText);
+
+      // buildBm25SparseVector() tính trọng số từ khóa (Sparse/BM25).
+      // Chính xác với tên địa danh, mã số cụ thể (ví dụ: "Sơn Trà", "Hải Châu").
       const querySparse = AiUtils.buildBm25SparseVector(searchText);
       timings.embedMs = Date.now() - embedStartedAt;
 
       const searchStartedAt = Date.now();
-      // Hybrid Search: combine Dense (semantic) + Sparse (BM25 keyword) vectors
-      // using Qdrant's query API with Reciprocal Rank Fusion (RRF)
+      // HYBRID SEARCH: Phóng 2 truy vấn song song xuống Qdrant:
+      //   prefetch[0]: Dense Vector (semantic) → tìm BDS có ý nghĩa gần giống nhất
+      //   prefetch[1]: Sparse Vector (BM25)    → tìm BDS có từ khóa khớp chính xác nhất
+      //   fusion: 'rrf' (Reciprocal Rank Fusion) → trộn 2 danh sách xếp hạng thành 1
       const hasSparse = querySparse.indices.length > 0;
       const prefetch: any[] = [
         {
@@ -469,6 +530,11 @@ export class AiService {
       );
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // BƯỚC 8 — APPLY INTENT FILTER (Lọc kết quả theo điều kiện)
+    // ═══════════════════════════════════════════════════════════════════
+    // Lọc kết quả vector theo giá/loại BDS/vị trí mà user yêu cầu.
+    // Giữ lại strongHits (score >= minScore). Nếu không đủ → lấy top K.
     const filterStartedAt = Date.now();
     const intentFilteredHits = this.applyIntentFilter(rawHits, intent);
     const minScoreSafe = Math.max(this.minScore, 0.12);
@@ -483,6 +549,10 @@ export class AiService {
       hits = intentFilteredHits.slice(0, this.retrievalTopK);
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // BƯỚC 9 — FALLBACK DB (Phương án dự phòng khi Qdrant = 0 kết quả)
+    // ═══════════════════════════════════════════════════════════════════
+    // Fallback 1: Có filter → tìm chính xác trong MySQL theo giá/vị trí.
     if (hits.length === 0 && hasIntentFilter) {
       const dbFallbackStartedAt = Date.now();
       const dbFallbackHits = await this.findDbCandidatesByIntent(
@@ -528,7 +598,11 @@ export class AiService {
       relatedSources = [...relatedSources, ...dbRelated].slice(0, 3);
     }
 
-    // Filter out disliked properties from user profile
+    // ═══════════════════════════════════════════════════════════════════
+    // BƯỚC 10 — FILTER SEEN PROPERTIES (Lọc BDS đã dislike)
+    // ═══════════════════════════════════════════════════════════════════
+    // Đọc User Profile từ Redis → loại bỏ các BDS người dùng đã từ chối/không thích.
+    // Cá nhân hóa kết quả, tránh gợi ý lại BDS họ đã thấy.
     const userProfile = await this.userProfileService.getProfile(sessionId);
     hits = this.userProfileService.filterSeenProperties(hits, userProfile);
 
@@ -556,7 +630,11 @@ export class AiService {
 
     const defaultSuggestions = getSuggestedQuestionsForIntent(intent);
 
-    // Fast mode skips LLM generation for better UX latency.
+    // ═══════════════════════════════════════════════════════════════════
+    // BƯỚC 11 — FAST MODE / GENERATE LLM RESPONSE (Sinh câu trả lời)
+    // ═══════════════════════════════════════════════════════════════════
+    // Bật bằng RAG_FAST_MODE=true. Trả câu trả lời thô từ vector hits
+    // (không có ngôn ngữ tự nhiên) nhưng giảm độ trễ ~10-15 giây.
     if (this.fastMode || !this.enableLlm) {
       const fastAnswerStartedAt = Date.now();
       const answer = AiUtils.toFastAnswer(hits, intent);
@@ -596,6 +674,12 @@ export class AiService {
       });
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // BƯỚC 12 — XÂY DỰNG PROMPT & GỌI GEMINI LLM (returnChatWithMemory)
+    // ═══════════════════════════════════════════════════════════════════
+    // context = nội dung các BDS tìm được, format dạng key=value để LLM dễ đọc.
+    // Mô tả được cắt bớt tối đa maxPromptDescriptionChars (mặc định 120 ký tự)
+    // để giữ prompt gọn → giảm token cost và giảm latency.
     const context = hits
       .map((hit, idx) => {
         const p = hit.payload || {};

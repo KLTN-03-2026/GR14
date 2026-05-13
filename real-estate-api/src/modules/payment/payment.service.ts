@@ -633,8 +633,10 @@ export class PaymentService {
     if (type) whereCondition.paymentType = type;
     if (startDate || endDate) {
       whereCondition.createdAt = {};
-      if (startDate) whereCondition.createdAt.gte = new Date(startDate);
-      if (endDate) whereCondition.createdAt.lte = new Date(endDate);
+      if (startDate)
+        whereCondition.createdAt.gte = new Date(startDate + 'T00:00:00.000+07:00');
+      if (endDate)
+        whereCondition.createdAt.lte = new Date(endDate + 'T23:59:59.999+07:00');
     }
 
     const [payments, total] = await Promise.all([
@@ -683,9 +685,10 @@ export class PaymentService {
     groupBy: 'day' | 'month' | 'year' = 'month',
   ) {
     const start = startDate
-      ? new Date(startDate)
+      ? new Date(startDate + 'T00:00:00.000+07:00')
       : this.getDefaultStartDate(groupBy);
-    const end = endDate ? new Date(endDate) : new Date();
+    // endDate include hết ngày cuối (23:59:59)
+    const end = endDate ? new Date(endDate + 'T23:59:59.999+07:00') : new Date();
 
     // 1. Aggregate theo loại payment (chỉ status = 1 — đã thành công)
     const [accountVipAgg, postVipAgg, depositAgg] = await Promise.all([
@@ -872,10 +875,12 @@ export class PaymentService {
 
   // ── helpers ───────────────────────────────────────────────────────────────────
   private getTimeKey(date: Date, groupBy: 'day' | 'month' | 'year'): string {
-    const d = new Date(date);
-    if (groupBy === 'day') return d.toISOString().slice(0, 10);
-    if (groupBy === 'month') return d.toISOString().slice(0, 7);
-    return String(d.getFullYear());
+    // Dùng local time Vietnam (UTC+7) để tránh lệch ngày so với UTC
+    const d = new Date(date.getTime() + 7 * 60 * 60 * 1000);
+    const iso = d.toISOString(); // giờ đã offset về UTC+7
+    if (groupBy === 'day') return iso.slice(0, 10);
+    if (groupBy === 'month') return iso.slice(0, 7);
+    return iso.slice(0, 4);
   }
 
   private getDefaultStartDate(groupBy: 'day' | 'month' | 'year'): Date {
