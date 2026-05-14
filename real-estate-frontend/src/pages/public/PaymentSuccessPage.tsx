@@ -3,8 +3,10 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Result, Button, Card, Statistic, Spin } from 'antd';
 import toast from 'react-hot-toast';
 import { CheckCircleOutlined, CalendarOutlined, GiftOutlined } from '@ant-design/icons';
-import { paymentApi, postApi } from '@/api';
+import { authApi, paymentApi, postApi } from '@/api';
+import { useAuthStore } from '@/stores/authStore';
 import { parseVipPackageBenefitLines } from '@/utils';
+import type { User } from '@/types';
 
 type Demand = '' | 'SELL' | 'RENT';
 type PostTypeApi = 'SELL_HOUSE' | 'SELL_LAND' | 'RENT_HOUSE' | 'RENT_LAND';
@@ -21,6 +23,7 @@ const PaymentSuccessPage = () => {
   const hasPendingPostDraft = Boolean(draftRaw);
   const [autoPosting, setAutoPosting] = useState(false);
   const [autoPosted, setAutoPosted] = useState(false);
+  const { user, setUser } = useAuthStore();
 
   const resolvePostTypeFromDraft = (draft: any): PostTypeApi | '' => {
     const d: Demand = draft?.demand || '';
@@ -131,6 +134,18 @@ const PaymentSuccessPage = () => {
         const res = await paymentApi.getPaymentById(parseInt(lastPaymentId));
         setPaymentData(res.data?.data);
         sessionStorage.removeItem('lastPaymentId');
+      }
+
+      if (user) {
+        try {
+          const profileRes = await authApi.getProfile();
+          const profileData = profileRes.data?.data || profileRes.data;
+          if (profileData) {
+            setUser({ ...user, ...profileData } as User);
+          }
+        } catch (profileError) {
+          console.error('Error refreshing profile after payment:', profileError);
+        }
       }
     } catch (error) {
       console.error('Error fetching payment:', error);

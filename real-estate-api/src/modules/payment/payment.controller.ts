@@ -37,6 +37,11 @@ export class PaymentController {
     return res.redirect(302, redirectUrl);
   }
 
+  @Get('vnpay-return')
+  async vnpayReturn(@Query() query: VNPayCallbackDto) {
+    return this.paymentService.handleVNPayCallback(query);
+  }
+
   @Get('vnpay/ipn')
   async vnpayIpn(@Query() query: any, @Res() res: Response) {
     const result = await this.paymentService.handleVNPayIPN(query);

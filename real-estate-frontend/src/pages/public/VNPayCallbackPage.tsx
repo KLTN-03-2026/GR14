@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Spin, Result, Button } from 'antd';
+import { paymentApi } from '@/api';
 
 function getVNPayErrorMessage(responseCode: string | null): string {
   const errorCodes: Record<string, string> = {
@@ -29,41 +30,48 @@ const VNPayCallbackPage = () => {
     if (hasFetched.current) return;
     hasFetched.current = true;
 
-    const params = new URLSearchParams(location.search);
-    const responseCode = params.get('vnp_ResponseCode');
+    const handleCallback = async () => {
+      const params = new URLSearchParams(location.search);
+      const responseCode = params.get('vnp_ResponseCode');
+      const depositId = sessionStorage.getItem('lastDepositId');
+      const isDepositCallback = Boolean(depositId);
 
-    // ✅ Detect deposit qua sessionStorage thay vì txnRef
-    // sessionStorage.setItem('lastDepositId') được set trước khi redirect sang VNPay
-    const depositId = sessionStorage.getItem('lastDepositId');
-    const isDepositCallback = Boolean(depositId);
+      try {
+        const res = await paymentApi.verifyVNPayReturn(location.search);
+        const isSuccess = responseCode === '00' && res.data?.success !== false;
 
-    if (responseCode === '00') {
-      setStatus('success');
-      setTimeout(() => {
-        if (isDepositCallback) {
-          // Giữ lại sessionStorage để PaymentResultPage đọc depositId
-          // Forward toàn bộ query string để PaymentResultPage kiểm tra vnp_ResponseCode
-          navigate(`/payment/result${location.search}`, { replace: true });
-        } else {
-          navigate('/payment/success', { replace: true });
+        if (isSuccess) {
+          setStatus('success');
+          setLoading(false);
+          setTimeout(() => {
+            if (isDepositCallback) {
+              navigate(`/payment/result${location.search}`, { replace: true });
+            } else {
+              navigate('/payment/success', { replace: true });
+            }
+          }, 500);
+          return;
         }
-      }, 1500);
-    } else {
-      setStatus('error');
-      setErrorMessage(getVNPayErrorMessage(responseCode));
 
-      // ✅ Xóa depositId khi thất bại để tránh lưu thừa
-      if (isDepositCallback) {
-        sessionStorage.removeItem('lastDepositId');
+        setStatus('error');
+        setErrorMessage(getVNPayErrorMessage(responseCode));
+        if (isDepositCallback) {
+          sessionStorage.removeItem('lastDepositId');
+        }
+      } catch {
+        setStatus('error');
+        setErrorMessage('Không thể xác nhận thanh toán với hệ thống. Vui lòng thử lại hoặc liên hệ hỗ trợ.');
+      } finally {
+        setLoading(false);
       }
 
       setTimeout(() => {
         navigate('/payment/failed', { replace: true });
       }, 1500);
-    }
+    };
 
-    setLoading(false);
-  }, []);
+    handleCallback();
+  }, [location.search, navigate]);
 
   if (loading) {
     return (
