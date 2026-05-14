@@ -140,9 +140,9 @@ const BarChart: React.FC<BarChartProps> = ({ data, groupBy, typeFilter }) => {
           const depPct  = total > 0 ? 100 - acctPct - postPct               : 0;
 
           return (
-            <div key={d.label} className="flex flex-col items-center gap-1 w-9 group relative">
+            <div key={d.label} className="flex h-full flex-col items-center gap-1 w-9 group relative">
               {/* Tooltip */}
-              <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:block z-10 whitespace-nowrap rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 shadow-md text-xs text-gray-700 pointer-events-none">
+              <div className="absolute left-0 top-1 hidden group-hover:block z-10 whitespace-nowrap rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 shadow-md text-xs text-gray-700 pointer-events-none">
                 <div className="font-medium text-gray-900 mb-1">{d.label}</div>
                 {(typeFilter === 'all' || typeFilter === 'ACCOUNT_VIP') && (
                   <div className="flex items-center gap-1.5 mb-0.5">
@@ -165,22 +165,24 @@ const BarChart: React.FC<BarChartProps> = ({ data, groupBy, typeFilter }) => {
               </div>
 
               {/* Stacked / single bar */}
-              <div
-                className="w-full flex flex-col-reverse rounded-t overflow-hidden"
-                style={{ height: `${heightPct}%`, minHeight: displayVal > 0 ? 4 : 0 }}
-              >
-                {typeFilter === 'all' ? (
-                  <>
-                    <div style={{ height: `${acctPct}%` }} className="bg-purple-500 w-full" />
-                    <div style={{ height: `${postPct}%` }} className="bg-teal-500 w-full" />
-                    <div style={{ height: `${depPct}%`  }} className="bg-orange-400 w-full" />
-                  </>
-                ) : (
-                  <div className={`w-full h-full ${
-                    typeFilter === 'ACCOUNT_VIP'      ? 'bg-purple-500' :
-                    typeFilter === 'POST_VIP'         ? 'bg-teal-500'   : 'bg-orange-400'
-                  }`} />
-                )}
+              <div className="flex min-h-0 w-full flex-1 items-end">
+                <div
+                  className="w-full flex flex-col-reverse rounded-t overflow-hidden"
+                  style={{ height: `${heightPct}%`, minHeight: displayVal > 0 ? 4 : 0 }}
+                >
+                  {typeFilter === 'all' ? (
+                    <>
+                      <div style={{ height: `${acctPct}%` }} className="bg-purple-500 w-full" />
+                      <div style={{ height: `${postPct}%` }} className="bg-teal-500 w-full" />
+                      <div style={{ height: `${depPct}%`  }} className="bg-orange-400 w-full" />
+                    </>
+                  ) : (
+                    <div className={`w-full h-full ${
+                      typeFilter === 'ACCOUNT_VIP'      ? 'bg-purple-500' :
+                      typeFilter === 'POST_VIP'         ? 'bg-teal-500'   : 'bg-orange-400'
+                    }`} />
+                  )}
+                </div>
               </div>
 
               <span className="text-[10px] text-gray-400 leading-none">{showLabel(d.label)}</span>
