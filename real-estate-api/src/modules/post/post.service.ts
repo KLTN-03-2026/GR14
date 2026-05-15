@@ -309,9 +309,12 @@ export class PostService {
 
     if (search) {
       where.OR = [
-        { title: { contains: search, mode: 'insensitive' } },
-        { address: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
+        { title: { contains: search } },
+        { address: { contains: search } },
+        { description: { contains: search } },
+        { city: { contains: search } },
+        { district: { contains: search } },
+        { ward: { contains: search } },
       ];
     }
 
