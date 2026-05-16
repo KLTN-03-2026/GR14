@@ -96,10 +96,23 @@ export class EmployeeService {
     }
   }
 
-  async findAll(page = 1, limit = 10) {
+  async findAll(page = 1, limit = 10, search?: string) {
     const skip = (page - 1) * limit;
+
+    const where: Prisma.EmployeeWhereInput = {};
+    if (search && search.trim()) {
+      const keyword = search.trim();
+      where.OR = [
+        { code: { contains: keyword } },
+        { user: { fullName: { contains: keyword } } },
+        { user: { phone: { contains: keyword } } },
+        { user: { email: { contains: keyword } } },
+      ];
+    }
+
     const [employees, total] = await Promise.all([
       this.prisma.employee.findMany({
+        where,
         skip,
         take: limit,
         include: {
@@ -115,7 +128,7 @@ export class EmployeeService {
           },
         },
       }),
-      this.prisma.employee.count(),
+      this.prisma.employee.count({ where }),
     ]);
 
     return {

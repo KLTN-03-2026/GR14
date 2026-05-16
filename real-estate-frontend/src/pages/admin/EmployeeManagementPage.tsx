@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from 'react-hot-toast';
 import dayjs from "dayjs";
 import { employeeApi, userApi } from "@/api";
@@ -27,6 +27,8 @@ const EmployeeManagementPage = () => {
   const [deleting, setDeleting] = useState(false);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const PAGE_SIZE = 10;
   const [formData, setFormData] = useState({
     code: '',
@@ -38,11 +40,19 @@ const EmployeeManagementPage = () => {
     startDate: '',
   });
 
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   // ================= LOAD DATA =================
-  const loadData = async (currentPage = page) => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await employeeApi.getAll({ page: currentPage, limit: PAGE_SIZE });
+      const params: Record<string, unknown> = { page, limit: PAGE_SIZE };
+      if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
+      const res = await employeeApi.getAll(params);
       const payload = res.data;
       setData(payload.data || payload);
       setTotal(payload.totalItems || payload.total || (payload.data?.length ?? 0));
@@ -51,15 +61,14 @@ const EmployeeManagementPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, debouncedSearch]);
 
   useEffect(() => {
-    loadData(1);
-  }, []);
+    loadData();
+  }, [loadData]);
 
   const handlePageChange = (p: number) => {
     setPage(p);
-    loadData(p);
   };
 
   // ================= MODAL =================
@@ -124,7 +133,7 @@ const EmployeeManagementPage = () => {
       }
 
       setOpen(false);
-      loadData(page);
+      loadData();
 
     } catch (err: unknown) {
       const error = err as ApiError;
@@ -279,6 +288,17 @@ const EmployeeManagementPage = () => {
         >
           Thêm mới
         </Button>
+      </div>
+
+      {/* SEARCH BAR */}
+      <div className="relative mb-4 w-full min-w-0 sm:max-w-[400px]">
+        <input
+          type="text"
+          placeholder="Tìm kiếm..."
+          className="admin-control admin-filter-input w-full rounded-xl border border-gray-300 bg-white py-2.5 px-3.5 text-sm text-gray-700 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+        />
       </div>
 
       {/* TABLE */}

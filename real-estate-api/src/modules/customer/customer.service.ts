@@ -90,17 +90,29 @@ export class CustomerService {
     return `CUS${Math.floor(1000 + Math.random() * 9000)}`;
   }
 
-  async findAll(page = 1, limit = 10) {
+  async findAll(page = 1, limit = 10, search?: string) {
     const skip = (page - 1) * limit;
+
+    const where: Prisma.CustomerWhereInput = {};
+    if (search && search.trim()) {
+      const keyword = search.trim();
+      where.OR = [
+        { code: { contains: keyword } },
+        { user: { fullName: { contains: keyword } } },
+        { user: { phone: { contains: keyword } } },
+        { user: { email: { contains: keyword } } },
+      ];
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.customer.findMany({
+        where,
         skip,
         take: limit,
         orderBy: { id: 'desc' },
         include: { user: true },
       }),
-      this.prisma.customer.count(),
+      this.prisma.customer.count({ where }),
     ]);
 
     return {

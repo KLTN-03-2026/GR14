@@ -23,8 +23,12 @@ export class EmployeeController {
 
   @Get()
   @Roles('ADMIN')
-  findAll(@Query('page') page = 1, @Query('limit') limit = 10) {
-    return this.employeeService.findAll(+page, +limit);
+  findAll(
+    @Query('page') page = 1,
+    @Query('limit') limit = 10,
+    @Query('search') search?: string,
+  ) {
+    return this.employeeService.findAll(+page, +limit, search);
   }
 
   @Get(':id')

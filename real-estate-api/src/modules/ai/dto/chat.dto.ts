@@ -15,14 +15,21 @@
  *
  *              Hỗ trợ tiếng Việt, kể cả tiếng lóng — LLM sẽ mở rộng thành expandedQuery
  */
-import { IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsNotEmpty, IsString, MaxLength, MinLength, Matches } from 'class-validator';
 
 /** DTO chứa thông tin cần thiết để gửi một lượt chat tới chatbot BĐS. */
 export class ChatDto {
-  /** ID phiên âm dầu — client tự sinh (UUID) và gửi kèm mọi request để duy trì ngữ cảnh */
+  /**
+   * ID phiên hội thoại — client tự sinh (UUID v4) và gửi kèm mọi request để duy trì ngữ cảnh.
+   * Chỉ cho phép ký tự: chữ cái, số, dấu gạch ngang (-), gạch dưới (_).
+   * Mục đích: ngăn chặn Redis Key Injection khi sessionId được dùng làm một phần của Redis key.
+   */
   @IsString()
   @IsNotEmpty()
-  @MaxLength(255)
+  @MaxLength(128)
+  @Matches(/^[a-zA-Z0-9_-]+$/, {
+    message: 'sessionId chỉ được chứa chữ cái, số và ký tự - hoặc _',
+  })
   sessionId!: string;
 
   /** Câu hỏi của người dùng — có thể viết tiếng lóng, không dấu — LLM sẽ hiểu và chuẩn hóa */

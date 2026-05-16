@@ -22,6 +22,7 @@ const UserManagementPage: React.FC = () => {
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(1);
     const [search, setSearch] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
     const [modalOpen, setModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
@@ -35,11 +36,17 @@ const UserManagementPage: React.FC = () => {
         roleId: '',
     });
 
+    // Debounce search
+    useEffect(() => {
+        const timer = setTimeout(() => setDebouncedSearch(search), 400);
+        return () => clearTimeout(timer);
+    }, [search]);
+
     const loadUsers = useCallback(async () => {
         setLoading(true);
         try {
             const params: Record<string, unknown> = { page, limit: DEFAULT_PAGE_SIZE };
-            if (search) params.search = search;
+            if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
             const res = await userApi.getAll(params);
             const data = res.data;
             setUsers(data.data || data);
@@ -49,7 +56,7 @@ const UserManagementPage: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [page, search]);
+    }, [page, debouncedSearch]);
 
     useEffect(() => {
         loadUsers();

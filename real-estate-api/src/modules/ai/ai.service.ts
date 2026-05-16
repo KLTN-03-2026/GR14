@@ -1011,8 +1011,8 @@ export class AiService {
       if (active.length < 2) {
         const staleAnswer =
           stale.length > 0
-            ? 'Mot so bat dong san da het hoac da bi xoa. Ban vui long tim lai de minh so sanh chinh xac hon.'
-            : 'Minh chua tim thay du bat dong san de so sanh. Ban co the gui link chi tiet hoac mo ta ngan tung bat dong san.';
+            ? 'Một số bất động sản đã hết hạn hoặc đã bị xóa. Bạn vui lòng tìm lại để mình so sánh chính xác hơn nhé.'
+            : 'Mình chưa tìm thấy đủ bất động sản để so sánh. Bạn có thể gửi link chi tiết hoặc mô tả ngắn từng bất động sản không?';
 
         return this.returnChatWithMemory(sessionId, question, conversation, {
           answer: staleAnswer,
@@ -1184,7 +1184,7 @@ export class AiService {
 
     return this.returnChatWithMemory(sessionId, question, conversation, {
       answer:
-        'Minh chua tim thay du thong tin de so sanh 2 bat dong san ban yeu cau. Ban co the gui lai link hoac mo ta chi tiet hon.',
+        'Mình chưa tìm thấy đủ thông tin để so sánh 2 bất động sản bạn yêu cầu. Bạn có thể gửi lại link hoặc mô tả chi tiết hơn không?',
       structured: null,
       intent,
       confidence: 0,
@@ -2234,8 +2234,16 @@ export class AiService {
     // ADMIN và EMPLOYEE không cần VIP — bypass luôn
     const isPrivileged = roles.includes('ADMIN') || roles.includes('EMPLOYEE');
 
-    if (!isPrivileged && userId) {
-      // Chỉ CUSTOMER mới cần kiểm tra VIP
+    if (!isPrivileged) {
+      // Chỉ CUSTOMER mới cần kiểm tra VIP.
+      // Guard: nếu userId không xác định được (token hợp lệ nhưng thiếu trường id)
+      // → từ chối để tránh bỏ qua VIP check.
+      if (!userId) {
+        throw new ForbiddenException(
+          'Không xác định được người dùng. Vui lòng đăng nhập lại.',
+        );
+      }
+
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
         select: { isVip: true, vipExpiry: true },
