@@ -91,10 +91,23 @@ export class UserService {
     return { exists: !!user, user: user || null };
   }
 
-  async findAll(page = 1, limit = 10) {
+  async findAll(page = 1, limit = 10, search?: string) {
     const skip = (page - 1) * limit;
+
+    const where: Prisma.UserWhereInput = {};
+    if (search && search.trim()) {
+      const keyword = search.trim();
+      where.OR = [
+        { username: { contains: keyword } },
+        { fullName: { contains: keyword } },
+        { email: { contains: keyword } },
+        { phone: { contains: keyword } },
+      ];
+    }
+
     const [users, total] = await Promise.all([
       this.prisma.user.findMany({
+        where,
         skip,
         take: limit,
         select: {
@@ -111,7 +124,7 @@ export class UserService {
           },
         },
       }),
-      this.prisma.user.count(),
+      this.prisma.user.count({ where }),
     ]);
 
     return {

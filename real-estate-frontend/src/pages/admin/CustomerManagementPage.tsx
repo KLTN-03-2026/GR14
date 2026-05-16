@@ -13,6 +13,7 @@ const CustomerManagementPage: React.FC = () => {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
@@ -29,11 +30,17 @@ const CustomerManagementPage: React.FC = () => {
     address: '',
   });
 
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const loadCustomers = useCallback(async () => {
     setLoading(true);
     try {
       const params: Record<string, unknown> = { page, limit: DEFAULT_PAGE_SIZE };
-      if (search.trim()) params.search = search.trim();
+      if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
 
       const res = await customerApi.getAll(params);
       const data = res.data;
@@ -48,7 +55,7 @@ const CustomerManagementPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, search]);
+  }, [page, debouncedSearch]);
 
   useEffect(() => {
     loadCustomers();

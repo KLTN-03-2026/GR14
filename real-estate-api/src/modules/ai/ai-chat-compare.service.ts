@@ -51,9 +51,25 @@ export class AiChatCompareService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * filterActiveIds — Kiểm tra danh sách ID xem cái nào vẫn đang active.
-   * Query song song house và land, trả về { active[], stale[] }.
-   * ID stale sẽ bị bỏ, chỉ active ID được đưa vào buildCompareAnswer().
+   * filterActiveIds — Lọc ra những ID BĐS còn hoạt động (status = 1).
+   *
+   * Được gọi từ handleCompareFlow() ngay sau khi có danh sách ID ứng viên.
+   * Mục đích: tránh so sánh BĐS đã bị xóa/ẩn, trả thông báo phù hợp cho user.
+   *
+   * FLOW:
+   *   1. Query song song (Promise.all) cả bảng house và land với điều kiện
+   *      id IN [...ids] AND status = 1  → chỉ lấy field id để giảm tải DB.
+   *   2. Gom tất cả id tìm được vào activeSet (Set<number>) để lookup O(1).
+   *   3. Chia ids gốc thành:
+   *      - active[]: id có trong activeSet → an toàn để so sánh
+   *      - stale[]:  id không có trong activeSet → BĐS đã xóa/hết hạn
+   *
+   * @param ids  - Mảng ID cần kiểm tra (có thể là house ID hoặc land ID)
+   * @returns    { active: number[], stale: number[] }
+   *             active.length >= 2 mới có thể tiếp tục so sánh
+   *
+   * LƯU Ý: Một ID có thể tồn tại ở cả house lẫn land nếu DB bị trùng,
+   * nhưng trường hợp này cực hiếm và activeSet sẽ tự dedupe.
    */
   async filterActiveIds(
     ids: number[],
@@ -83,9 +99,27 @@ export class AiChatCompareService {
   }
 
   /**
-   * Scan recent assistant turns in memory and extract property IDs.
-   * Looks for patterns like "ID 123", "(ID 456)", "/houses/789", "/lands/321",
-   * and "sourceId":123 produced by compare/search answer templates.
+   * extractIdsFromHistory — Trích xuất ID BĐS từ lịch sử hội thoại gần đây.
+   *
+   * Đây là Chiến lược 5 (cuối cùng) trong compare flow:
+   * khi user nói "so sánh 2 căn đó" mà không chỉ rõ ID hay giá.
+   *
+   * FLOW:
+   *   1. Lọc ra tối đa 8 turn gần nhất có role='assistant'.
+   *   2. Duyệt ngược từ turn mới nhất đến cũ hơn.
+   *      Ưu tiên turn mới nhất để tránh lấy nhầm ID từ cuộc tìm kiếm cũ.
+   *   3. Với mỗi turn, áp 3 nhóm regex:
+   *      - idPatterns:       /\bID\s*[:\s#]?\s*(\d+)\b/gi
+   *                          → Match: "ID 123", "ID: 456", "ID#789"
+   *      - urlPatterns:      /\/(?:houses|lands|nha|dat)\/(\d+)/gi
+   *                          → Match: "/houses/123", "/lands/456"
+   *      - sourceIdPatterns: /"sourceId"\s*:\s*(\d+)/g
+   *                          → Match: JSON payload "sourceId": 123
+   *   4. Dedupe bằng Set<number>, bỏ qua ID <= 0 hoặc NaN.
+   *   5. Nếu turn hiện tại tìm được ít nhất 1 ID → trả về ngay (không tiếp tục).
+   *
+   * @param memory - Mảng ChatTurn[] từ Redis conversation state
+   * @returns      Mảng ID duy nhất theo thứ tự xuất hiện, hoặc [] nếu không tìm thấy
    */
   extractIdsFromHistory(memory: ChatTurn[]): number[] {
     const assistantTurns = memory
@@ -124,7 +158,26 @@ export class AiChatCompareService {
   }
 
   /**
-   * Extract a VND price from free-text like "2.050.000.000 đ", "2 tỷ", "500 triệu".
+   * extractPriceFromText — Trích xuất giá tiền (VNĐ) từ chuỗi mô tả tự do.
+   *
+   * Được gọi bởi findByPriceAndLocation() và findIdByDescription()
+   * để lấy mức giá làm tiêu chí tìm kiếm chính xác nhất.
+   *
+   * 3 PATTERN NHẬN DẠNG (theo thứ tự ưu tiên):
+   *   1. Dạng số phân cách bằng dấu chấm:
+   *      "2.050.000.000", "500.000.000 đ", "3.200.000.000 đồng"
+   *      → Xóa dấu chấm → parse Number trực tiếp
+   *
+   *   2. Dạng "X tỷ Y triệu":
+   *      "2 tỷ", "1.5 tỷ", "2 tỷ 500 triệu", "3,2 tỷ"
+   *      → Tính: ty * 1_000_000_000 + trieu * 1_000_000
+   *
+   *   3. Dạng "X triệu":
+   *      "500 triệu", "800 tr"
+   *      → Tính: num * 1_000_000
+   *
+   * @param text  - Chuỗi mô tả tự do (ví dụ: "đất Sơn Trà giá 3 tỷ")
+   * @returns     Giá dạng số nguyên (VNĐ), hoặc null nếu không tìm thấy
    */
   extractPriceFromText(text: string): number | null {
     // Match Vietnamese dot-separated format: 2.050.000.000 (đ/đồng/vnd optional)
@@ -158,7 +211,18 @@ export class AiChatCompareService {
   }
 
   /**
-   * Detect property type from description text.
+   * extractSourceTypeFromText — Xác định loại BĐS từ mô tả văn bản.
+   *
+   * Normalize text (bỏ dấu, lowercase) rồi so khớp với keyword list:
+   *   - 'land'  ← "dat", "nen", "dat nen", "lo dat"
+   *   - 'house' ← "nha", "can ho", "chung cu", "biet thu", "nha pho"
+   *   - null    ← Không xác định được (không ảnh hưởng luồng, sẽ query cả 2 bảng)
+   *
+   * Kết quả được dùng để thu hẹp phạm vi query MySQL:
+   * nếu là 'land' → chỉ query bảng land, bỏ qua house và ngược lại.
+   *
+   * @param text  - Mô tả tự do từ user
+   * @returns     'house' | 'land' | null
    */
   extractSourceTypeFromText(text: string): 'house' | 'land' | null {
     const norm = this.normalizeText(text);
@@ -168,7 +232,25 @@ export class AiChatCompareService {
   }
 
   /**
-   * Extract location keywords (district, ward, city) from the description.
+   * extractLocationTokens — Trích xuất token vị trí từ mô tả văn bản.
+   *
+   * Được dùng bởi findByPriceAndLocation() để build OR filter cho MySQL
+   * (district/ward/city/street/title LIKE '%token%').
+   *
+   * FLOW:
+   *   1. normalizeText() → bỏ dấu, lowercase, xóa ký tự đặc biệt.
+   *   2. Tách thành mảng token theo whitespace.
+   *   3. Lọc bỏ:
+   *      - Token ngắn < 2 ký tự
+   *      - Token thuần số (giá tiền, diện tích)
+   *      - Stop words không mang thông tin vị trí:
+   *        dat, nha, can, ban, cho, thue, mua, gia, dien, tich, phong, ngu, tang...
+   *   4. Lấy tối đa 10 token đầu tiên.
+   *
+   * Ví dụ: "đất nền Sơn Trà 100m² giá 3 tỷ" → ["son", "tra"]
+   *
+   * @param text  - Mô tả tự do
+   * @returns     Mảng token vị trí (đã normalize, không dấu), tối đa 10 phần tử
    */
   extractLocationTokens(text: string): string[] {
     const norm = this.normalizeText(text);
@@ -200,21 +282,28 @@ export class AiChatCompareService {
   }
 
   /**
-   * Find a property by price + location + type using precise DB queries.
-   * This is the primary strategy for compare descriptions that include prices.
-   */
-  /**
    * findByPriceAndLocation — Tìm BĐS bằng giá + vị trí + loại (độ chính xác cao).
-   * Đây là Strategy chính cho compare descriptions có chứa giá.
+   *
+   * Đây là Strategy chính (và chính xác nhất) để tìm BĐS khi mô tả có chứa giá tiền cụ thể.
    *
    * SCORING ALGORITHM:
-   *   - Price proximity:  Điểm theo % sai lệch (< 0.1% = +20, < 1% = +15, < 5% = +10)
-   *   - Location tokens:  Mỗi token khớp trong title/address = +3 điểm
-   *   - Threshold:        cần tối thiểu 3 điểm mới trả kết quả
+   *   - Price proximity (điểm quan trọng nhất, dùng để phân biệt khi nhiều BĐS cùng khu vực):
+   *       diff < 0.1%  → +20 điểm  (khớp gần chính xác)
+   *       diff < 1%    → +15 điểm
+   *       diff < 5%    → +10 điểm  (tolerance mặc định ±5% khi query)
+   *       diff < 10%   →  +5 điểm
+   *       diff >= 10%  →  +1 điểm  (khớp yếu, hiếm khi xảy ra)
+   *   - Location tokens: mỗi token khớp trong title/address = +3 điểm
+   *   - Threshold: cần tối thiểu 3 điểm mới trả kết quả (tránh false positive)
    *
-   * QUERY STRATEGY:
-   *   Lần 1: lọc thểo price range + location tokens
-   *   Lần 2 (fallback): chỉ lọc theo price range nếu lần 1 không có kết quả
+   * QUERY STRATEGY (2 vòng):
+   *   Vòng 1 (strict): price range (±5%) + location OR filters → lấy tối đa 100 records mỗi loại.
+   *   Vòng 2 (fallback): nếu vòng 1 = 0 kết quả, thử lại chỉ với price range (bỏ location).
+   *   Sau đó chọn bản ghi có score cao nhất từ tất cả candidates.
+   *
+   * @param description - Mô tả tự do (đã được Gemini parse ra từ intent.compareDescriptions)
+   * @param excludeId   - ID đã tìm được cái trước (tránh match trùng 2 mô tả vào cùng 1 BĐS)
+   * @returns           ID số nguyên của BĐS khớp tốt nhất, hoặc null nếu không đạt ngưỡng
    */
   async findByPriceAndLocation(
     description: string,
@@ -380,17 +469,24 @@ export class AiChatCompareService {
   }
 
   /**
-   * Find the sourceId of a property matching a free-text description.
-   * Tries price+location DB query first, then falls back to text token scoring.
-   */
-  /**
-   * findIdByDescription — Tìm ID của BĐS khớp với mô tả văn bản.
-   * 2 Chiến lược theo thứ tự:
-   *   Strategy 1: findByPriceAndLocation() — nếu mô tả có giá
-   *   Strategy 2: findByTextInDb()         — token scoring từ title/address
+   * findIdByDescription — Tìm ID của BĐS khớp với mô tả văn bản tự do.
+   *
+   * Được gọi từ handleCompareFlow() khi Gemini parse ra intent.compareDescriptions[].
+   * Ví dụ: ["nhà Sơn Trà 3 tỷ", "đất Hải Châu 2 tỷ"] → gọi 2 lần, lần 2 truyền excludeId của lần 1.
+   *
+   * 2 CHIẺN LƯỢC THEO THỨ TỰ:
+   *   Strategy 1 — findByPriceAndLocation():
+   *     Nếu mô tả có giá tiền → tìm chính xác theo price range + location.
+   *     Score-based: trả ngay nếu đạt ngưỡng >= 3 điểm.
+   *     Ưu điểm: nhanh, chính xác hơn vì giá là đặc trưng riêng biệt.
+   *
+   *   Strategy 2 — findByTextInDb() (chỉ chạy nếu Strategy 1 trả null):
+   *     Tokenize mô tả, loại stop words, tính điểm khớp token trên title/address.
+   *     Chận hơn nhưng bao quát hơn (không cần giá).
    *
    * @param description - Mô tả tự do (ví dụ: "đất Sơn Trà giá 3 tỷ")
-   * @param excludeId   - ID đã tìm cái trước (tránh match trùng)
+   * @param excludeId   - ID đã tìm trước (tránh match trùng 2 mô tả → 1 BĐS)
+   * @returns           ID khớp tốt nhất, hoặc null nếu cả 2 chiến lược thất bại
    */
   async findIdByDescription(
     description: string,
@@ -457,21 +553,29 @@ export class AiChatCompareService {
   }
 
   /**
-   * Fallback property lookup: tokenise the free-text description and count keyword
-   * matches against title + address fields of every active house/land record.
-   */
-  /**
-   * findByTextInDb — Tìm BĐS bằng token scoring từ MySQL (chạy chậm hơn nhưng tổng quát).
+   * findByTextInDb — Tìm BĐS bằng token scoring trên MySQL (fallback cuối cùng).
    *
-   * SCORING:
-   *   - Unigram trong title:   +2 điểm mỗi token
-   *   - Unigram trong address: +1 điểm mỗi token
-   *   - Bigram trong fullText: +3 điểm mỗi bigram
+   * Chạy chậm hơn findByPriceAndLocation nhưng tổng quát hơn:
+   * không cần giá tiền, chỉ cần ít nhất 1 token vị trí/loại để tìm.
    *
-   * 2 PHA QUERY:
-   *   Phase 1 (targeted): Lọc theo tokenOrFilters (OR condition) — fast path, lấy tối đa 250 kết quả
-   *   Phase 2 (fallback):  Quét tất cả (status=1, lấy tối đa 1200) nếu phase 1 < score 2
-   *   Ngưỡng tối thiểu: ≥ 2 điểm mới được chấp nhận (tránh false positive)
+   * SCORING ALGORITHM:
+   *   - Unigram trong title:   +2 điểm / token
+   *   - Unigram trong address: +1 điểm / token
+   *   - Bigram trong fullText: +3 điểm / bigram (cụm 2 từ liên tiếp)
+   *   Ngưỡng chấp nhận: >= 2 điểm (tránh false positive do token quá chung)
+   *
+   * 2 PHA QUERY (tối ưu hiệu năng):
+   *   Phase 1 (targeted — fast path):
+   *     Lọc theo OR filter trên tất cả token (title/street/ward/district/city LIKE '%t%').
+   *     Lấy tối đa 250 records mỗi bảng. Nếu score >= 2 → trả ngay.
+   *   Phase 2 (broad scan — chỉ chạy khi Phase 1 không đạt score):
+   *     Quét toàn bộ bảng (status=1, lấy tối đa 1200 records mỗi bảng).
+   *     Tốn nhiều RAM hơn nhưng đảm bảo không bỏ sót.
+   *
+   * @param description         - Mô tả gốc (chỉ dùng khi precomputedTokens không có)
+   * @param excludeId           - ID đã tìm được trước (tránh match trùng)
+   * @param precomputedTokens   - Token đã tính sẵn từ findIdByDescription() (để khỏi tính lại)
+   * @returns                   ID khớp tốt nhất (score >= 2), hoặc null
    */
   async findByTextInDb(
     description: string,
@@ -679,19 +783,34 @@ export class AiChatCompareService {
   }
 
   /**
-   * buildCompareAnswer — Xây dựng HTML so sánh 2+ BĐS.
+   * buildCompareAnswer — Xây dựng kết quả so sánh dạng HTML cho 2+ BĐS.
    *
-   * QUÁ TRÌNH:
-   *   1. findById() cho mỗi ID (parallel) — tìm trong cả house và land
-   *   2. Nếu có hỗn hợp house/land: ưu tiên sử dụng loại có nhiều hơn
-   *   3. Tính metrics: cheapest, largest area, best price/m²
-   *   4. Render HTML card với:
-   *      - Price bar và Area bar (% tương đối với max)
-   *      - Badges: GIÁ TỐT NHẤT, DIỆN TÍCH LỚN, GIÁ/M² TỐT
-   *      - Kết luận 3 tiêu chí
-   *   5. Trả { answer (HTML), sources[], suggestedQuestions[] }
+   * Đây là bước cuối cùng trong compare flow: sau khi đã có ít nhất 2 active ID,
+   * hàm này lấy dữ liệu, tính metrics và render ra giao diện so sánh hóa.
    *
-   * @param ids - Mảng ID cần so sánh (tối thiểu 2)
+   * FLOW 5 BƯỚC:
+   *   1. findById() song song cho tất cả ID (query cả house và land).
+   *
+   *   2. Nếu có hỗn hợp house+land và ít nhất 2 cái cùng loại
+   *      → giữ lại cùng loại để so sánh có ý nghĩa hơn.
+   *      Nếu mỗi loại chỉ 1 cái → giữ cả (user có thể muốn so sánh chéo loại).
+   *
+   *   3. Tính 3 metrics:
+   *      - cheapest:  BĐS rẻ tiền nhất
+   *      - largest:   BĐS có diện tích lớn nhất
+   *      - bestValue: BĐS có giá/m² thấp nhất (bỏ qua BĐS area = 0)
+   *
+   *   4. Render HTML card cho từng BĐS:
+   *      - Price bar: thanh ngang biểu diễn % giá so với maxPrice
+   *      - Area bar:  thanh ngang biểu diễn % diện tích so với maxArea
+   *      - Badges: GIA TOT NHAT | DIEN TICH LON | GIA/M2 TOT
+   *      - Inline style (không dùng CSS class) → hoạt động mọi môi trường
+   *
+   *   5. Render bảng kết luận 3 tiêu chí + nút CTA.
+   *      Trả về: { answer (HTML string), sources[], suggestedQuestions[] }
+   *
+   * @param ids - Mảng ID cần so sánh (tối thiểu 2, đã qua filterActiveIds)
+   * @returns   { answer: HTML, sources: ChatSourcePayload[], suggestedQuestions: string[] }
    */
   async buildCompareAnswer(ids: number[]): Promise<{
     answer: string;
@@ -885,11 +1004,30 @@ export class AiChatCompareService {
     };
   }
 
+  /**
+   * stringifyError — Chuyển đối lỗi sang chuỗi để ghi log.
+   * Được dùng trong mọi catch block của service này.
+   * - Error instance → lấy .message
+   * - Giá trị khác (string, number, object) → String() cưỡng bức
+   */
   private stringifyError(error: unknown): string {
     if (error instanceof Error) return error.message;
     return String(error);
   }
 
+  /**
+   * toNumber — Chuyển đổi giá trị bất kỳ sang số thực an toàn.
+   *
+   * Cần thiết vì Prisma Decimal (Prisma.Decimal) về dạng object,
+   * không phải số thường. Hàm này xử lý 3 trường hợp:
+   *   1. number thường   → trả trực tiếp (0 nếu NaN/Infinity)
+   *   2. string           → xóa ký tự không phải số rồi parse
+   *   3. object (Decimal) → thử lần lượt: .toNumber() → .toString() → .valueOf()
+   * Trả 0 nếu tất cả đều thất bại.
+   *
+   * @param value - Giá trị đầu vào (number, string, Prisma.Decimal, unknown)
+   * @returns     Số thực hữu hạn >= 0, hoặc 0 nếu không parse được
+   */
   private toNumber(value: unknown): number {
     if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
     if (typeof value === 'string') {
@@ -930,6 +1068,17 @@ export class AiChatCompareService {
     return 0;
   }
 
+  /**
+   * normalizeText — Chuẩn hóa chuỗi tiếng Việt để tìm kiếm không phân biệt dấu.
+   *
+   * Quy trình: NFD decompose → xóa diacritic → lowercase
+   *   → xóa ký tự không phải alphanum/space → gập nhiều space → trim.
+   *
+   * Ví dụ: "Đại Lộ Đông Tây" → "dai lo dong tay"
+   *
+   * Được dùng ở khắp nơi trong service: token scoring, source type detection,
+   * location token extraction, price detection và scoring.
+   */
   private normalizeText(value: string): string {
     return String(value || '')
       .normalize('NFD')
@@ -940,12 +1089,22 @@ export class AiChatCompareService {
       .trim();
   }
 
+  /**
+   * formatVnd — Định dạng số tiền thành chuỗi VNĐ hiển thị cho user.
+   * Ví dụ: 3200000000 → "3.200.000.000 VNĐ"
+   * Trả 'N/A' nếu giá trị <= 0 hoặc không hợp lệ.
+   */
   private formatVnd(value: unknown): string {
     const amount = this.toNumber(value);
     if (!Number.isFinite(amount) || amount <= 0) return 'N/A';
     return `${new Intl.NumberFormat('vi-VN').format(amount)} VNĐ`;
   }
 
+  /**
+   * formatArea — Định dạng diện tích thành chuỗi m² hiển thị cho user.
+   * Ví dụ: 120 → "120 m²"
+   * Trả 'N/A' nếu diện tích <= 0 hoặc không hợp lệ.
+   */
   private formatArea(value: unknown): string {
     const area = this.toNumber(value);
     if (!Number.isFinite(area) || area <= 0) return 'N/A';

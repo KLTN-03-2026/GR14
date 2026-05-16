@@ -25,8 +25,12 @@ export class CustomerController {
 
   @Get()
   @Roles('ADMIN')
-  findAll(@Query('page') page = 1, @Query('limit') limit = 10) {
-    return this.customerService.findAll(+page, +limit);
+  findAll(
+    @Query('page') page = 1,
+    @Query('limit') limit = 10,
+    @Query('search') search?: string,
+  ) {
+    return this.customerService.findAll(+page, +limit, search);
   }
 
   @Get(':id')

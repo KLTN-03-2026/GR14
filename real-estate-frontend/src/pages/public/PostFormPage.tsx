@@ -300,9 +300,8 @@ const PostFormPage = () => {
                             </svg>
                         </div>
                         <p className="text-sm leading-relaxed text-amber-800">
-                            <span className="font-semibold">Lưu ý:</span> Bài đăng bất động sản cần tài
-                            khoản VIP để gửi duyệt. Nếu chưa có VIP, hệ thống sẽ lưu nháp thông tin
-                            để bạn tiếp tục sau khi nâng cấp.
+                            <span className="font-semibold">Lưu ý:</span> Bạn cần có tài khoản VIP để sử dụng
+                            chức năng tạo mô tả tự động bằng AI. Vui lòng nâng cấp tài khoản VIP để trải nghiệm tính năng này.
                         </p>
                     </div>
                 )}
